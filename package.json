@@ -1,0 +1,25 @@
+{
+  "name": "glow-salon",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5195 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "build:pages": "tsc --noEmit && vite build --mode pages",
+    "preview": "vite preview --host 127.0.0.1 --port 4195 --strictPort",
+    "test": "node scripts/test.mjs",
+    "typecheck": "tsc --noEmit",
+    "relay": "node server/coop-relay.mjs"
+  },
+  "dependencies": {
+    "pixi.js": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/ws": "^8.18.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "ws": "^8.21.3"
+  }
+}

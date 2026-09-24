@@ -1,0 +1,20 @@
+{
+  "note": "The salon and menu playlist, played in this order. Drop an mp3 into public/music/ and add its file name here. Never played during a treatment.",
+  "tracks": [
+    { "file": "a-cup-of-tea.mp3", "title": "A cup of tea", "by": "tad" },
+    { "file": "cat-caffe.mp3", "title": "Cat caffe", "by": "tad" },
+    { "file": "florist.mp3", "title": "Florist", "by": "tad" },
+    { "file": "morning-rain.mp3", "title": "Morning rain", "by": "tad" },
+    { "file": "oceanside.mp3", "title": "Oceanside", "by": "tad" },
+    { "file": "rhodes.mp3", "title": "Happy lofi day", "by": "Tarush Singhal" },
+    { "file": "chilllofir.mp3", "title": "Chill lofi", "by": "omfgdude" },
+    { "file": "countryside.mp3", "title": "Countryside", "by": "tad" },
+    { "file": "rainy-forest.mp3", "title": "Rainy forest", "by": "tad" },
+    { "file": "cue.mp3", "title": "Cue", "by": "tad" },
+    { "file": "bartender.mp3", "title": "Bartender", "by": "tad" },
+    { "file": "since-2-a.m.mp3", "title": "Since 2 a.m.", "by": "tad" },
+    { "file": "lofihiphop.mp3", "title": "Lofi hip hop", "by": "omfgdude" },
+    { "file": "lofiagain.mp3", "title": "Lofi again", "by": "omfgdude" },
+    { "file": "november-snow.mp3", "title": "November snow", "by": "cynicmusic" }
+  ]
+}
