@@ -1,6 +1,6 @@
 import { check } from './harness.ts'
 import { newSave, startDay, reduce, tick } from '../src/core/salon.ts'
-import { handleGuestMessage, parseGuestMessage, publicState, routeOp, stationCrew } from '../src/core/coop/protocol.ts'
+import { handleGuestMessage, parseGuestMessage, publicState, routeOps, stationCrew } from '../src/core/coop/protocol.ts'
 
 export function run() {
   const state = startDay(newSave(7))
@@ -49,11 +49,11 @@ export function run() {
   check('guest helps at s0', state.stations[0].lead === 0 && state.stations[0].helpers.includes(1) && state.stations[1].lead === null)
   check('crew', stationCrew(state, 's0').join() === '0,1')
   const op = { k: 'lamp' as const, x: 500, y: 600, on: true }
-  const fromGuest = handleGuestMessage(state, 1, { t: 'op', st: 's0', op })
-  check('guest op goes to the host (lead)', fromGuest.length === 1 && fromGuest[0].to === 0 && fromGuest[0].msg.t === 'op')
-  const fromHost = routeOp(state, 's0', 0, op)
+  const fromGuest = handleGuestMessage(state, 1, { t: 'ops', st: 's0', ops: [op] })
+  check('guest op goes to the host (lead)', fromGuest.length === 1 && fromGuest[0].to === 0 && fromGuest[0].msg.t === 'ops')
+  const fromHost = routeOps(state, 's0', 0, [op])
   check('host op goes to the helper', fromHost.length === 1 && fromHost[0].to === 1)
-  check('outsider ops dropped', routeOp(state, 's0', 2, op).length === 0)
+  check('outsider ops dropped', routeOps(state, 's0', 2, [op]).length === 0)
   const sync = handleGuestMessage(state, 1, { t: 'syncReq', st: 's0' })
   check('sync request goes to the lead', sync.length === 1 && sync[0].to === 0)
   check('only the lead can answer a sync', handleGuestMessage(state, 1, { t: 'sync', st: 's0', to: 0, snap: {} as never }).length === 0)
@@ -73,5 +73,5 @@ export function run() {
 
   // Parsing is defensive.
   check('parse hello', parseGuestMessage({ t: 'hello', name: 'A' })?.t === 'hello')
-  check('parse junk', parseGuestMessage({ t: 'nope' }) === null && parseGuestMessage(null) === null && parseGuestMessage({ t: 'op', st: 1 }) === null)
+  check('parse junk', parseGuestMessage({ t: 'nope' }) === null && parseGuestMessage(null) === null && parseGuestMessage({ t: 'ops', st: 1 }) === null && parseGuestMessage({ t: 'ops', st: 's0', ops: [{ k: 'tap' }] })?.t === 'ops')
 }

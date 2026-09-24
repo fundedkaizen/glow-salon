@@ -9,13 +9,13 @@ import type { Op, SessionSnapshot } from '../treatments/session.ts'
 export type GuestMessage =
   | { t: 'hello'; name: string }
   | { t: 'act'; a: Action }
-  | { t: 'op'; st: string; op: Op }
+  | { t: 'ops'; st: string; ops: Op[] }
   | { t: 'syncReq'; st: string }
   | { t: 'sync'; st: string; to: number; snap: SessionSnapshot }
 
 export type HostMessage =
   | { t: 'snap'; s: PublicState }
-  | { t: 'op'; st: string; op: Op; by: number }
+  | { t: 'ops'; st: string; ops: Op[]; by: number }
   | { t: 'syncReq'; st: string; by: number }
   | { t: 'sync'; st: string; snap: SessionSnapshot }
 
@@ -37,11 +37,11 @@ export function stationCrew(state: Pick<SalonState, 'stations'>, stationId: stri
   return [s.lead, ...s.helpers].filter((id): id is number => id !== null)
 }
 
-/** Where a treatment op from `from` goes: to the rest of that station's crew. */
-export function routeOp(state: Pick<SalonState, 'stations'>, stationId: string, from: number, op: Op): Delivery[] {
+/** Where a batch of treatment ops from `from` goes: to the rest of that station's crew. */
+export function routeOps(state: Pick<SalonState, 'stations'>, stationId: string, from: number, ops: Op[]): Delivery[] {
   const crew = stationCrew(state, stationId)
-  if (!crew.includes(from)) return []
-  return crew.filter(id => id !== from).map(to => ({ to, msg: { t: 'op', st: stationId, op, by: from } }))
+  if (!crew.includes(from) || !ops.length) return []
+  return crew.filter(id => id !== from).map(to => ({ to, msg: { t: 'ops', st: stationId, ops, by: from } }))
 }
 
 /**
@@ -55,7 +55,7 @@ export function handleGuestMessage(state: SalonState, from: number, message: Gue
       if (!message.a || typeof message.a !== 'object' || message.a.a === 'join') return []
       reduce(state, from, message.a)
       return []
-    case 'op': return routeOp(state, message.st, from, message.op)
+    case 'ops': return routeOps(state, message.st, from, message.ops)
     case 'syncReq': {
       const s = state.stations.find(st => st.id === message.st)
       if (!s || s.lead === null || s.lead === from) return []
@@ -76,7 +76,7 @@ export function parseGuestMessage(raw: unknown): GuestMessage | null {
   switch (m.t) {
     case 'hello': return typeof m.name === 'string' ? { t: 'hello', name: m.name.slice(0, 16) } : null
     case 'act': return m.a && typeof m.a === 'object' && typeof (m.a as { a?: unknown }).a === 'string' ? { t: 'act', a: m.a as Action } : null
-    case 'op': return typeof m.st === 'string' && m.op && typeof m.op === 'object' && typeof (m.op as { k?: unknown }).k === 'string' ? { t: 'op', st: m.st, op: m.op as Op } : null
+    case 'ops': return typeof m.st === 'string' && Array.isArray(m.ops) && m.ops.length <= 400 && m.ops.every(op => op && typeof op === 'object' && typeof (op as { k?: unknown }).k === 'string') ? { t: 'ops', st: m.st, ops: m.ops as Op[] } : null
     case 'syncReq': return typeof m.st === 'string' ? { t: 'syncReq', st: m.st } : null
     case 'sync': return typeof m.st === 'string' && typeof m.to === 'number' && m.snap && typeof m.snap === 'object' ? { t: 'sync', st: m.st, to: m.to, snap: m.snap as SessionSnapshot } : null
   }

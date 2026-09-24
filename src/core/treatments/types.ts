@@ -26,8 +26,9 @@ export type Gesture =
 
 export type LayerKind = 'dirt' | 'damage' | 'paint' | 'wet' | 'glow'
 
-/** A pattern the session seeds a layer with, from the customer's seed. */
-export type LayerSeed = 'full' | 'empty' | 'grime' | 'oil' | 'redness' | 'polishChips'
+
+/** How the session seeds a layer, scaled by the customer's profile (profile.ts). */
+export type LayerSeed = 'full' | 'empty' | 'grime' | 'grime2' | 'oil' | 'redness' | 'flakes' | 'polish' | 'dirt' | 'cuticle' | 'dry'
 
 export type LayerDef = {
   id: string
@@ -82,6 +83,14 @@ export type StepDef = {
   choice?: 'polish'
   /** A second player can hold the magnifier lamp during this step (four hands). */
   lamp?: boolean
+  /**
+   * When the step applies: 'targets' only if this customer has any of its targets, 'layer' only if its
+   * layer has something on it when the step comes up, 'disaster' only for disaster cases. A step that does
+   * not apply drops out of this customer's treatment with no penalty.
+   */
+  need?: 'targets' | 'layer' | 'disaster'
+  /** Layers this step clears away when it finishes, besides its own. */
+  clears?: string[]
 }
 
 export type TreatmentDef = {

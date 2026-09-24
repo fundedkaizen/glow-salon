@@ -1,7 +1,8 @@
 import { clamp, dist, inRegion } from '../geometry.ts'
 import { makeRng, type Rng } from '../rng.ts'
 import { FACE, HAND, REGIONS, freeEdgeOf, nailOf, type RegionId } from './anatomy.ts'
-import { CELL, GRID, decodeGrid, encodeGrid, paintedShare, rasterize, stamp, sumIn } from './grid.ts'
+import { GRID, decodeGrid, encodeGrid, paintedShare, rasterize, stamp, sumIn } from './grid.ts'
+import { profileFor, type FaceProfile, type HandProfile, type Profile } from './profile.ts'
 import { TREATMENTS } from './registry.ts'
 import type { StepDef, TargetKind, TreatmentDef, TreatmentId } from './types.ts'
 
@@ -9,6 +10,9 @@ import type { StepDef, TargetKind, TreatmentDef, TreatmentId } from './types.ts'
  * One treatment in progress: the pure, renderer-free step pipeline. Every change arrives as an `Op` (a stroke,
  * a hold, a tap...), so the same ops can be mirrored to a co-op partner's session and give the same result.
  * The session emits events (a stamp, a pop, a step ready) that the renderer and the sounds follow.
+ *
+ * The customer's profile (profile.ts, from their seed) decides what is on the skin and which steps apply:
+ * a step with nothing to do drops out ("na"), a disaster case gets extra steps.
  */
 
 export type Target = {
@@ -16,12 +20,15 @@ export type Target = {
   kind: TargetKind
   x: number
   y: number
-  /** 0.4 to 1.4: a big whitehead needs a longer squeeze. */
+  /** 0.4 to 1.5: a big whitehead needs a longer squeeze. */
   size: number
   progress: number
   done: boolean
   /** For nail targets: which finger. For gems: the gem colour. */
   n?: number
+  /** Deep pimples: squeezes still needed (2, then 1). A new press is needed for the second. */
+  stage?: number
+  gripped?: boolean
 }
 
 export type Op =
@@ -37,6 +44,7 @@ export type Op =
 export type SessionEvent =
   | { e: 'stamp'; layer: string; x: number; y: number; r: number; amount: number; changed: number }
   | { e: 'target'; id: number; progress: number }
+  | { e: 'targetStage'; id: number; x: number; y: number; size: number }
   | { e: 'targetDone'; id: number; kind: TargetKind; x: number; y: number; size: number; n?: number }
   | { e: 'miss'; x: number; y: number }
   | { e: 'ready'; step: number }
@@ -44,15 +52,15 @@ export type SessionEvent =
   | { e: 'peel'; progress: number; tension: number; released: boolean; unstuck: boolean }
   | { e: 'hold'; progress: number }
   | { e: 'choose'; index: number }
-  | { e: 'advance'; from: number; to: number; skipped: boolean }
+  | { e: 'advance'; from: number; to: number; skipped: boolean; na: boolean }
   | { e: 'setup'; step: number }
   | { e: 'done' }
 
 export type SessionOptions = {
   treatment: TreatmentId
   seed: number
-  /** 1 for a normal customer; up to 2 for a "disaster case". */
-  grime?: number
+  /** A "disaster case": extreme grime, extra steps, bigger pay. */
+  disaster?: boolean
   /** Tool tier, 1 to 3: faster and prettier. */
   tier?: number
   /** The polish colour the customer asked for, if any. */
@@ -61,7 +69,8 @@ export type SessionOptions = {
   startStep?: number
 }
 
-export type StepStatus = 'todo' | 'done' | 'skipped'
+/** 'na': the step did not apply to this customer (nothing to do), so it is not counted. */
+export type StepStatus = 'todo' | 'done' | 'skipped' | 'na'
 
 export type TreatmentResult = {
   treatment: TreatmentId
@@ -75,6 +84,7 @@ export type TreatmentResult = {
   extracted: number
   fourHands: boolean
   wishMatched: boolean | null
+  disaster: boolean
   /** 0 to 1: every step done well, plus extras. */
   thoroughness: number
 }
@@ -95,7 +105,7 @@ export function regionMask(id: RegionId) {
 
 /** How long a whitehead or hangnail must be held, in seconds at tier 1. */
 export function holdTime(target: Target) {
-  if (target.kind === 'whitehead') return 0.35 + 0.65 * target.size
+  if (target.kind === 'whitehead') return 0.35 + 0.6 * target.size
   if (target.kind === 'hangnail') return 0.32
   return 0
 }
@@ -109,12 +119,22 @@ export function hitRadius(target: Target) {
   return 48
 }
 
+/** Where whiteheads gather, by cluster: boxes in art space [x0, x1, y0, y1]. */
+const ZONES: Record<string, [number, number, number, number][]> = {
+  forehead: [[380, 644, 330, 410]],
+  tzone: [[420, 604, 340, 400], [470, 554, 540, 600], [440, 584, 820, 880]],
+  chin: [[420, 604, 810, 890]],
+  cheeks: [[300, 420, 600, 760], [604, 724, 600, 760]],
+  scattered: [[300, 420, 600, 760], [604, 724, 600, 760], [430, 594, 820, 890], [400, 624, 330, 410], [470, 554, 560, 600]],
+}
+
 export class TreatmentSession {
   readonly def: TreatmentDef
   readonly tier: number
   readonly seed: number
-  readonly grime: number
+  readonly disaster: boolean
   readonly wish: number | null
+  readonly profile: Profile
   step = 0
   layers: Record<string, Float32Array> = {}
   targets: Target[] = []
@@ -140,9 +160,10 @@ export class TreatmentSession {
     this.def = TREATMENTS[options.treatment]
     this.tier = clamp(Math.round(options.tier ?? 1), 1, 3)
     this.seed = options.seed
-    this.grime = clamp(options.grime ?? 1, 0.5, 2.2)
+    this.disaster = !!options.disaster
     this.wish = options.wish ?? null
     this.rng = makeRng(options.seed)
+    this.profile = profileFor(this.def.bodyPart, options.seed, this.disaster)
     this.status = this.def.steps.map(() => 'todo')
     for (const layer of this.def.layers) this.layers[layer.id] = this.seedLayer(layer.seed, layer.region)
     this.layers[WET] = new Float32Array(GRID * GRID)
@@ -150,11 +171,15 @@ export class TreatmentSession {
     const start = clamp(options.startStep ?? 0, 0, this.def.steps.length)
     // Resume: earlier steps count as done and their layers settle as if finished.
     if (start === 0) this.beginStep()
-    else while (this.step < start) this.apply({ k: 'advance', s: this.step })
+    else {
+      while (this.step < start && !this.finished) this.apply({ k: 'advance', s: this.step })
+    }
     this.events.length = 0
   }
 
   get current(): StepDef | undefined { return this.def.steps[this.step] }
+  get face(): FaceProfile | null { return this.profile.kind === 'face' ? this.profile : null }
+  get hand(): HandProfile | null { return this.profile.kind === 'hand' ? this.profile : null }
 
   /** Take the events since the last call. */
   drain(): SessionEvent[] {
@@ -177,30 +202,51 @@ export class TreatmentSession {
         stamp(grid, x, y, r.range(rMin, rMax), r.range(aMin, aMax), region)
       }
     }
-    const g = this.grime
-    if (seed === 'full') for (let i = 0; i < grid.length; i++) grid[i] = region[i]
-    else if (seed === 'grime') {
-      // Grime gathers around the nose, the chin, the forehead and the hairline.
-      const spots: [number, number][] = [[512, 620], [512, 860], [512, 360], [340, 700], [684, 700], [300, 460], [724, 460]]
-      blobs(Math.round(16 * g), () => { const s = r.pick(spots); return [s[0] + r.range(-120, 120), s[1] + r.range(-80, 80)] }, 38, 95, 0.45 * g, 0.9 * g)
-      blobs(Math.round(10 * g), () => [r.range(260, 764), r.range(320, 900)], 20, 50, 0.4, 0.8 * g)
-    } else if (seed === 'oil') {
-      blobs(Math.round(8 * g), () => [512 + r.range(-190, 190), r.pick([380, 620, 850]) + r.range(-40, 40)], 40, 90, 0.5, 1)
-    } else if (seed === 'redness') {
-      blobs(Math.round(7 * g), () => [r.chance(0.5) ? r.range(320, 420) : r.range(604, 704), r.range(590, 720)], 50, 100, 0.35, 0.7)
-      blobs(3, () => [512 + r.range(-60, 60), r.range(820, 880)], 30, 60, 0.3, 0.55)
-    } else if (seed === 'polishChips') {
-      for (let i = 0; i < grid.length; i++) grid[i] = region[i]
-      // Chipped old polish: bites out of the free edges and a few scratches.
-      for (const f of HAND.fingers) {
-        const n = nailOf(f)
-        for (let c = 0; c < 3; c++) {
-          const t = r.range(0.62, 1.05)
-          const side = r.range(-0.9, 0.9) * n.halfWidth
-          const x = n.base.x + (n.tip.x - n.base.x) * t - n.dir.y * side
-          const y = n.base.y + (n.tip.y - n.base.y) * t + n.dir.x * side
-          stamp(grid, x, y, r.range(10, 22), -1, region)
+    const f = this.face, h = this.hand
+    switch (seed) {
+      case 'full': for (let i = 0; i < grid.length; i++) grid[i] = region[i]; break
+      case 'grime': {
+        const g = f?.grime ?? 0
+        if (g <= 0) break
+        // Grime gathers around the nose, the chin, the forehead and the hairline.
+        const spots: [number, number][] = [[512, 620], [512, 860], [512, 360], [340, 700], [684, 700], [300, 460], [724, 460]]
+        blobs(Math.round(14 * g), () => { const s = r.pick(spots); return [s[0] + r.range(-120, 120), s[1] + r.range(-80, 80)] }, 38, 95, 0.4 * Math.min(1.4, g), 0.9)
+        blobs(Math.round(9 * g), () => [r.range(260, 764), r.range(320, 900)], 20, 50, 0.35, 0.8)
+        break
+      }
+      case 'grime2':
+        if (this.disaster) blobs(18, () => [r.range(280, 744), r.range(340, 900)], 40, 100, 0.6, 1)
+        break
+      case 'oil': blobs(Math.round(8 * (f?.oil ?? 0)), () => [512 + r.range(-190, 190), r.pick([380, 620, 850]) + r.range(-40, 40)], 40, 90, 0.5, 1); break
+      case 'redness': {
+        const k = f?.redness ?? 0
+        blobs(Math.round(7 * k), () => [r.chance(0.5) ? r.range(320, 420) : r.range(604, 704), r.range(590, 720)], 50, 100, 0.35, 0.7)
+        blobs(Math.round(3 * k), () => [512 + r.range(-60, 60), r.range(820, 880)], 30, 60, 0.3, 0.55)
+        break
+      }
+      case 'flakes': blobs(Math.round(10 * (f?.flakes ?? 0)), () => [r.pick([360, 664, 512]) + r.range(-70, 70), r.pick([640, 400, 860]) + r.range(-50, 50)], 30, 70, 0.5, 1); break
+      case 'polish': {
+        const p = h?.polish
+        if (!p) break
+        for (let i = 0; i < grid.length; i++) grid[i] = region[i]
+        // Chipped old polish: bites out of the free edges.
+        for (const finger of HAND.fingers) {
+          const n = nailOf(finger)
+          for (let c = 0; c < Math.round(1 + p.chips * 4); c++) {
+            const t = r.range(0.6, 1.05)
+            const side = r.range(-0.9, 0.9) * n.halfWidth
+            stamp(grid, n.base.x + (n.tip.x - n.base.x) * t - n.dir.y * side, n.base.y + (n.tip.y - n.base.y) * t + n.dir.x * side, r.range(8, 20), -1, region)
+          }
         }
+        break
+      }
+      case 'dirt': if ((h?.dirt ?? 0) > 0) for (let i = 0; i < grid.length; i++) grid[i] = region[i] * h!.dirt; break
+      case 'cuticle': for (let i = 0; i < grid.length; i++) grid[i] = region[i] * (h?.cuticle ?? 1); break
+      case 'dry': {
+        const d = h?.dry ?? 0
+        if (d > 0) blobs(Math.round(12 * d), () => { const fg = r.pick(HAND.fingers); return [fg.base.x + r.range(-30, 30), fg.base.y + r.range(0, 60)] }, 26, 60, 0.5, 1)
+        if (d > 0) blobs(Math.round(4 * d), () => [r.range(420, 640), r.range(700, 900)], 40, 80, 0.4, 0.8)
+        break
       }
     }
     return grid
@@ -208,44 +254,52 @@ export class TreatmentSession {
 
   private makeTargets() {
     const r = this.rng
-    const add = (kind: TargetKind, x: number, y: number, size: number, n?: number) =>
-      this.targets.push({ id: this.nextTarget++, kind, x, y, size, progress: 0, done: false, n })
+    const add = (kind: TargetKind, x: number, y: number, size: number, n?: number, extra: Partial<Target> = {}) =>
+      this.targets.push({ id: this.nextTarget++, kind, x, y, size, progress: 0, done: false, n, ...extra })
     const inSkin = (x: number, y: number) => inRegion(REGIONS.skin, x, y)
     const spaced = (list: { x: number; y: number }[], x: number, y: number, gap: number) => list.every(p => dist(p.x, p.y, x, y) >= gap)
-    if (this.def.bodyPart === 'face') {
-      const whiteheads: { x: number; y: number }[] = []
-      const count = Math.round((this.grime > 1.3 ? 10 : 6) + r.range(-1, 1.4))
-      const zones: [number, number, number, number][] = [[300, 420, 600, 760], [604, 724, 600, 760], [430, 594, 820, 890], [400, 624, 330, 410], [470, 554, 560, 600]]
-      for (let tries = 0; whiteheads.length < count && tries < 400; tries++) {
-        const z = r.pick(zones)
-        const x = r.range(z[0], z[1]), y = r.range(z[2], z[3])
-        if (!inSkin(x, y) || !spaced(whiteheads, x, y, 70)) continue
-        whiteheads.push({ x, y })
-        add('whitehead', x, y, r.range(0.55, 1.3))
+    const f = this.face, h = this.hand
+    if (f) {
+      const placed: { x: number; y: number }[] = []
+      const place = (count: number, zones: [number, number, number, number][], gap: number, make: (x: number, y: number) => void) => {
+        let made = 0
+        for (let tries = 0; made < count && tries < 600; tries++) {
+          const z = r.pick(zones)
+          const x = r.range(z[0], z[1]), y = r.range(z[2], z[3])
+          if (!inSkin(x, y) || !spaced(placed, x, y, gap)) continue
+          placed.push({ x, y })
+          make(x, y)
+          made++
+        }
       }
+      // Most whiteheads gather in this customer's cluster; a few stray elsewhere.
+      const inCluster = Math.round(f.whiteheads * 0.7)
+      place(inCluster, ZONES[f.cluster], 46, (x, y) => add('whitehead', x, y, r.range(0.5, 1.2)))
+      place(f.whiteheads - inCluster, ZONES.scattered, 56, (x, y) => add('whitehead', x, y, r.range(0.5, 1.25)))
+      // Deep ones: bigger, red, under the skin; two squeezes.
+      place(f.deep, ZONES.scattered, 70, (x, y) => add('whitehead', x, y, r.range(1.15, 1.5), undefined, { stage: 2 }))
       const blackheads: { x: number; y: number }[] = []
-      const bCount = Math.round((this.grime > 1.3 ? 18 : 12) + r.range(-1, 2))
-      for (let tries = 0; blackheads.length < bCount && tries < 600; tries++) {
+      for (let tries = 0; blackheads.length < f.blackheads && tries < 800; tries++) {
         const x = FACE.nose.x + r.range(-66, 66), y = FACE.nose.y + r.range(-40, 48)
-        if (!inRegion(REGIONS.nose, x, y) || !spaced(blackheads, x, y, 17)) continue
+        if (!inRegion(REGIONS.nose, x, y) || !spaced(blackheads, x, y, 16)) continue
         blackheads.push({ x, y })
         add('blackhead', x, y, r.range(0.5, 1.1))
       }
       for (const [x, y] of [[512, 368], [372, 650], [652, 650], [512, 862], [512, 582]]) add('drop', x, y, 1)
-    } else {
-      HAND.fingers.forEach((f, i) => {
-        const grown = r.range(24, 44)
-        const e = freeEdgeOf(f, grown)
-        add('tip', e.x, e.y, grown / 34, i)
+    } else if (h) {
+      HAND.fingers.forEach((finger, i) => {
+        if (h.grown[i] <= 0) return
+        const e = freeEdgeOf(finger, h.grown[i])
+        add('tip', e.x, e.y, h.grown[i] / 34, i)
       })
-      const fingers = [0, 1, 2, 3, 4].sort(() => r() - 0.5).slice(0, r.int(2, 3))
+      const fingers = [0, 1, 2, 3, 4].sort(() => r() - 0.5).slice(0, h.hangnails)
       for (const i of fingers) {
         const n = nailOf(HAND.fingers[i])
         const side = r.chance(0.5) ? 1 : -1
         add('hangnail', n.base.x - n.dir.y * side * (n.halfWidth + 6) + n.dir.x * 12, n.base.y + n.dir.x * side * (n.halfWidth + 6) + n.dir.y * 12, 1, i)
       }
-      HAND.fingers.forEach((f, i) => {
-        const n = nailOf(f)
+      HAND.fingers.forEach((finger, i) => {
+        const n = nailOf(finger)
         add('gem', n.base.x + (n.tip.x - n.base.x) * 0.42, n.base.y + (n.tip.y - n.base.y) * 0.42, 1, i)
       })
     }
@@ -253,9 +307,27 @@ export class TreatmentSession {
 
   // ------------------------------------------------------------------ steps
 
+  /** Does a step apply to this customer right now? */
+  private applies(step: StepDef): boolean {
+    if (step.need === 'disaster') return this.disaster
+    if (step.need === 'targets') {
+      if (step.targets === 'patch') return this.targets.some(t => t.kind === 'whitehead' && t.done)
+      return this.targets.some(t => t.kind === step.targets && !t.done)
+    }
+    if (step.need === 'layer' && step.layer) return sumIn(this.layers[step.layer], regionMask(step.region)) > 1.5
+    return true
+  }
+
   private beginStep() {
+    // Steps with nothing to do for this customer drop out without a penalty.
+    while (this.current && !this.applies(this.current)) {
+      const from = this.step
+      this.status[from] = 'na'
+      this.step++
+      this.emit({ e: 'advance', from, to: this.step, skipped: false, na: true })
+    }
     const step = this.current
-    if (!step) return
+    if (!step) { this.finished = true; this.emit({ e: 'done' }); return }
     this.hold = 0
     this.ready = false
     if (step.targets === 'patch') this.makePatches()
@@ -294,7 +366,9 @@ export class TreatmentSession {
         const list = this.stepTargets()
         // Optional target steps (gems) are "done" once one is placed; the player finishes them.
         if (step.optional) return list.length === 0 ? 1 : list.some(t => t.done) ? 1 : 0
-        return list.length === 0 ? 1 : list.filter(t => t.done).length / list.length
+        if (list.length === 0) return 1
+        // Deep pimples count half when their first squeeze is done.
+        return list.reduce((a, t) => a + (t.done ? 1 : t.stage === 1 ? 0.5 : 0), 0) / list.length
       }
     }
   }
@@ -400,7 +474,7 @@ export class TreatmentSession {
   }
 
   private holdAt(step: StepDef, x: number, y: number, dt: number) {
-    dt = clamp(dt, 0, 0.25)
+    dt = clamp(dt, 0, 0.5)
     if (step.gesture === 'hold') {
       this.hold = clamp(this.hold + (dt * this.speed()) / (step.holdSeconds ?? 3))
       this.emit({ e: 'hold', progress: this.hold })
@@ -412,23 +486,37 @@ export class TreatmentSession {
     if (!t) return
     const time = holdTime(t)
     if (time <= 0) return
+    // The second squeeze of a deep pimple needs a fresh press.
+    if (t.stage === 1 && !t.gripped) return
     const lamp = this.lamp && dist(this.lamp.x, this.lamp.y, t.x, t.y) < 170 ? 1.6 : 1
     t.progress = clamp(t.progress + (dt * this.speed() * lamp) / time)
     this.emit({ e: 'target', id: t.id, progress: t.progress })
-    if (t.progress >= 1) this.finishTarget(t, lamp > 1)
+    if (t.progress < 1) return
+    if (t.stage === 2) {
+      // First squeeze: it comes to a head. Let go and squeeze again.
+      t.stage = 1
+      t.progress = 0
+      t.gripped = false
+      t.size = Math.max(0.8, t.size * 0.85)
+      this.emit({ e: 'targetStage', id: t.id, x: t.x, y: t.y, size: t.size })
+      return
+    }
+    this.finishTarget(t, lamp > 1)
   }
 
   private tap(step: StepDef, x: number, y: number) {
     if (step.gesture !== 'targets') return
     const t = this.nearest(x, y)
     if (!t) { this.emit({ e: 'miss', x, y }); return }
-    if (holdTime(t) > 0) return
+    // A press on a pimple is a grip (the second squeeze of a deep one); taps finish tap targets.
+    if (holdTime(t) > 0) { t.gripped = true; return }
     t.progress = 1
     this.finishTarget(t, false)
   }
 
   private finishTarget(t: Target, lamp: boolean) {
     t.done = true
+    t.progress = 1
     if (lamp) this.lampAssists++
     if (t.kind === 'whitehead') { this.popped++; this.stampLayer('marks', t.x, t.y, 22 + 16 * t.size, 0.9, 'skin') }
     if (t.kind === 'blackhead') { this.extracted++; this.stampLayer('marks', t.x, t.y, 12 + 6 * t.size, 0.35, 'skin') }
@@ -439,7 +527,7 @@ export class TreatmentSession {
 
   private peelTo(step: StepDef, v: number, dt: number) {
     if (step.gesture !== 'peel' || this.peel.released) return
-    dt = clamp(dt, 0, 0.25)
+    dt = clamp(dt, 0, 0.5)
     const target = clamp(v)
     const p = this.peel
     const tension = Math.max(0, target - p.progress)
@@ -459,7 +547,7 @@ export class TreatmentSession {
   private clearMaskBelow(lineY: number) {
     const mask = this.layers[this.current?.layer ?? 'mask']
     if (!mask) return
-    const row = Math.max(0, Math.min(GRID, Math.floor(lineY / CELL)))
+    const row = Math.max(0, Math.min(GRID, Math.floor(lineY / (1024 / GRID))))
     for (let gy = row; gy < GRID; gy++) mask.fill(0, gy * GRID, gy * GRID + GRID)
   }
 
@@ -467,20 +555,20 @@ export class TreatmentSession {
   private advance(skip: boolean) {
     const step = this.current
     if (!step) return
-    this.status[this.step] = skip && !step.optional ? 'skipped' : skip ? 'todo' : 'done'
-    if (step.optional && !skip) this.status[this.step] = this.stepTargets().some(t => t.done) || !step.targets ? 'done' : 'todo'
+    if (step.optional) this.status[this.step] = !skip && this.stepTargets().some(t => t.done) ? 'done' : 'todo'
+    else this.status[this.step] = skip ? 'skipped' : 'done'
     // The last few percent settle by themselves, so nobody hunts for pixels.
     if (step.layer && step.gesture !== 'targets') {
       const to = step.gesture === 'erase' || step.gesture === 'peel' ? 0 : 1
       this.resolveLayer(step.layer, to, step.gesture === 'erase' || step.gesture === 'peel' ? 'everywhere' : step.region)
     }
-    for (const id of CLEARS[step.id] ?? []) this.resolveLayer(id, 0, 'everywhere')
+    for (const id of step.clears ?? []) this.resolveLayer(id, 0, 'everywhere')
     if (step.targets && !step.optional) for (const t of this.stepTargets()) if (!t.done) { t.done = true; t.progress = 1 }
     if (step.gesture === 'peel') { this.peel.progress = 1; this.peel.released = true }
     const from = this.step
     this.step++
-    this.emit({ e: 'advance', from, to: this.step, skipped: skip })
-    if (this.step >= this.def.steps.length) { this.finished = true; this.emit({ e: 'done' }) } else this.beginStep()
+    this.emit({ e: 'advance', from, to: this.step, skipped: skip, na: false })
+    this.beginStep()
   }
 
   private resolveLayer(id: string, to: 0 | 1, regionId: RegionId) {
@@ -494,17 +582,21 @@ export class TreatmentSession {
   /** Add real seconds to the treatment's clock (the lead player's session only). */
   time(dt: number) { if (!this.finished) this.elapsed += clamp(dt, 0, 0.5) }
 
+  /** The steps this customer actually gets (not-applicable ones left out). */
+  activeSteps(): number[] { return this.def.steps.map((_, i) => i).filter(i => this.status[i] !== 'na') }
+
   result(): TreatmentResult {
     const steps = this.def.steps
-    const required = steps.filter(s => !s.optional).length
+    const counted = (i: number) => this.status[i] !== 'na'
+    const required = steps.filter((s, i) => !s.optional && counted(i)).length
     const done = steps.filter((s, i) => !s.optional && this.status[i] === 'done').length
     const skipped = steps.filter((s, i) => !s.optional && this.status[i] === 'skipped').length
     const optionalDone = steps.filter((s, i) => s.optional && this.status[i] === 'done').length
     const colorStep = steps.findIndex(s => s.choice === 'polish')
     const wishMatched = this.wish === null || colorStep < 0 || this.choices[colorStep] === undefined ? null : this.choices[colorStep] === this.wish
     const fourHands = this.lampAssists >= 3
-    const thoroughness = clamp((done / required) * 0.9 + 0.06 * optionalDone + (fourHands ? 0.04 : 0) + (wishMatched ? 0.05 : 0))
-    return { treatment: this.def.id, seconds: Math.round(this.elapsed), par: this.def.parSeconds, required, done, skipped, optionalDone, popped: this.popped, extracted: this.extracted, fourHands, wishMatched, thoroughness }
+    const thoroughness = clamp((done / Math.max(1, required)) * 0.9 + 0.06 * optionalDone + (fourHands ? 0.04 : 0) + (wishMatched ? 0.05 : 0))
+    return { treatment: this.def.id, seconds: Math.round(this.elapsed), par: this.def.parSeconds, required, done, skipped, optionalDone, popped: this.popped, extracted: this.extracted, fourHands, wishMatched, disaster: this.disaster, thoroughness }
   }
 
   // ------------------------------------------------------------------ co-op sync
@@ -546,11 +638,4 @@ export type SessionSnapshot = {
   extracted: number
   startSum: number
   ready: boolean
-}
-
-/** Layers a step clears away when it finishes, besides its own. */
-const CLEARS: Record<string, string[]> = {
-  rinse: ['grime', 'oil'],
-  moisturize: ['cream', 'serum'],
-  wipe: ['scrub'],
 }

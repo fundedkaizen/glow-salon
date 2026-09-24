@@ -6,7 +6,7 @@ import { planDay } from '../src/core/customers.ts'
 import { blockedGrid, findPath, SLOTS, SOFA_SEATS, DOOR_INSIDE } from '../src/core/floor.ts'
 import type { TreatmentResult } from '../src/core/treatments/session.ts'
 
-const goodResult = (treatment: 'facial' | 'nails' = 'facial'): TreatmentResult => ({ treatment, seconds: 150, par: 170, required: 12, done: 12, skipped: 0, optionalDone: 1, popped: 6, extracted: 12, fourHands: false, wishMatched: null, thoroughness: 0.96 })
+const goodResult = (treatment: 'facial' | 'nails' = 'facial'): TreatmentResult => ({ treatment, seconds: 150, par: 170, required: 12, done: 12, skipped: 0, optionalDone: 1, popped: 6, extracted: 12, fourHands: false, wishMatched: null, disaster: false, thoroughness: 0.96 })
 
 /** Run the host's clock until a condition or a time limit. */
 function runUntil(state: SalonState, done: () => boolean, seconds = 600) {
