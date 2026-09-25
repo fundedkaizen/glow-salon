@@ -1,6 +1,7 @@
 import { ITEM_BY_ID } from './economy.ts'
 import { SLOTS } from './floor.ts'
 import type { SaveData } from './salon.ts'
+import { validateExt } from './salon-ext.ts'
 
 /**
  * Saves: plain JSON in localStorage, and a save code to copy between browsers. The code is
@@ -66,6 +67,7 @@ export function validate(data: unknown): SaveData | null {
     met: Array.isArray(d.met) ? d.met.filter(m => typeof m === 'string') : [],
     seed: Math.floor(num(d.seed, 0, 2 ** 31, 1)),
     totals: { served: num(d.totals?.served, 0, 1e9, 0), earned: num(d.totals?.earned, 0, 1e12, 0) },
+    ext: validateExt(d.ext),
   }
 }
 

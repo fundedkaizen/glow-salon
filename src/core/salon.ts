@@ -1,7 +1,8 @@
 import { planDay, type CustomerPlan } from './customers.ts'
 import { ambienceStars, canBuy, customersPerDay, ITEM_BY_ID, needsConfirm, payFor, START_MONEY, tipFor, treatmentsUnlocked, type StationKind } from './economy.ts'
 import { blockedGrid, DOOR, DOOR_INSIDE, findPath, SLOTS, SOFA_SEATS, STANDING, stationSeat, walk, type Pt } from './floor.ts'
-import { addReview, average, starsFor, writeReview, type Rating, type Review } from './reviews.ts'
+import { addReview, average, starsFor, type Rating, type Review } from './reviews.ts'
+import { ext, extOnClose, extOnStartDay, extraCustomers, extReview, extTick, reduceExt, saveExt, type ExtAction, type SalonExt } from './salon-ext.ts'
 import { TREATMENTS } from './treatments/registry.ts'
 import type { TreatmentResult } from './treatments/session.ts'
 import type { TreatmentId } from './treatments/types.ts'
@@ -76,6 +77,8 @@ export type SaveData = {
   met: string[]
   seed: number
   totals: { served: number; earned: number }
+  /** Staff, campaigns, friendships, decor placement and names (salon-ext.ts). Older saves have none. */
+  ext?: SalonExt
 }
 
 export type SalonState = SaveData & {
@@ -107,6 +110,7 @@ export type Action =
   | { a: 'vote'; id: number; yes: boolean }
   | { a: 'swap'; station: string; slot: number }
   | { a: 'next' }
+  | ExtAction
 
 export const WALK_SPEED = 170
 export const MOOD_DRAIN_WAITING = 0.006
@@ -154,13 +158,14 @@ export function startDay(save: SaveData, players: Player[] = []): SalonState {
     stats: emptyStats(save, players), pending: null, nextId: 1, events: [], seq: 0,
   }
   state.slots = state.stations.map(s => s.slot)
-  state.schedule = planDay({ day: state.day, seed: state.seed, count: customersPerDay(state.owned), treatments: bookable(state), met: state.met })
+  state.schedule = planDay({ day: state.day, seed: state.seed, count: customersPerDay(state.owned) + extraCustomers(state), treatments: bookable(state), met: state.met })
+  extOnStartDay(state)
   for (const p of players) { p.station = null }
   return state
 }
 
 export function toSave(state: SalonState): SaveData {
-  return { v: 1, day: state.day, money: state.money, owned: [...state.owned], slots: state.stations.map(s => s.slot), rating: { ...state.rating }, reviews: state.reviews.slice(-40), met: [...state.met], seed: state.seed, totals: { ...state.totals } }
+  return { v: 1, day: state.day, money: state.money, owned: [...state.owned], slots: state.stations.map(s => s.slot), rating: { ...state.rating }, reviews: state.reviews.slice(-40), met: [...state.met], seed: state.seed, totals: { ...state.totals }, ext: saveExt(ext(state)) }
 }
 
 function event(state: SalonState, e: Omit<GameEvent, 'seq'>) {
@@ -283,6 +288,7 @@ export function reduce(state: SalonState, by: number, action: Action): boolean {
       event(state, { kind: 'phase', text: `Day ${state.day}` })
       return true
     }
+    default: return reduceExt(state, by, action)
   }
 }
 
@@ -351,7 +357,7 @@ function finish(state: SalonState, by: number, stationId: string, result: Treatm
   state.stats.served++
   state.totals.served++
   state.totals.earned += price + tip
-  const review = writeReview({ id: `d${state.day}c${c.id}`, day: state.day, name: c.plan.name, stars, result, mood: c.mood, regular: !!c.plan.regular && state.met.includes(c.plan.regular), disaster: c.plan.disaster, ambience: amb, seed: c.plan.seed })
+  const review = extReview(state, c, by, stars, result, price, amb)
   state.stats.reviews.push(review)
   state.reviews.push(review)
   if (state.reviews.length > 40) state.reviews.splice(0, state.reviews.length - 40)
@@ -421,8 +427,10 @@ export function tick(state: SalonState, dt: number) {
   }
   // Paid customers leave by the door.
   state.customers = state.customers.filter(c => !(c.state === 'leaving' && !c.path.length))
+  extTick(state, dt)
   if (state.phase === 'closing' && state.customers.length === 0) {
     state.phase = 'receipt'
+    extOnClose(state)
     event(state, { kind: 'phase', text: 'Closing time' })
   }
 }
@@ -473,12 +481,14 @@ export function awards(stats: DayStats): { title: string; name: string; value: s
 /** Everything the receipt shows. */
 export function receipt(state: SalonState) {
   const s = state.stats
+  const wages = state.ext?.today.wages ?? 0
   return {
     day: state.day,
     revenue: s.revenue,
     tips: s.tips,
     costs: s.costs,
-    net: s.revenue + s.tips - s.costs,
+    wages,
+    net: s.revenue + s.tips - s.costs - wages,
     served: s.served,
     ratingBefore: s.ratingBefore,
     ratingAfter: average(state.rating),
