@@ -50,8 +50,8 @@ export function buildGarden(): Garden {
   group.add(road)
   piece('ground', () => {
     for (let z = -24; z < 30; z += 3) kit.add(G.box(0.14, 0.01, 1.4, 0.004), 0xf5f1e8, 'matte', tf(STREET.paveOut - 3.2, -0.07, z))
-    // The salon's plinth.
-    kit.add(G.box(W + 2 * T + 0.3, 0.1, D + 2 * T + 0.3, 0.03), 0xe9dcd6, 'matte', tf(0, -0.05, D / 2))
+    // The salon's plinth: its top 2 cm under the floor, never level with it (the two fought in flickering stripes).
+    kit.add(G.box(W + 2 * T + 0.3, 0.1, D + 2 * T + 0.3, 0.03), 0xe9dcd6, 'matte', tf(0, -0.07, D / 2))
   })
 
   // ---- the pieces

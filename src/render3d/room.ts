@@ -61,7 +61,7 @@ function buildShell(): RoomParts {
   // The shade layer, multiplied over the floor.
   const shadeCanvas = document.createElement('canvas')
   const shadeTex = new CanvasTexture(shadeCanvas)
-  const shade = new Mesh(new PlaneGeometry(W, D), new MeshBasicMaterial({ map: shadeTex, blending: MultiplyBlending, premultipliedAlpha: true, transparent: true, depthWrite: false, toneMapped: false }))
+  const shade = new Mesh(new PlaneGeometry(W, D), new MeshBasicMaterial({ map: shadeTex, blending: MultiplyBlending, premultipliedAlpha: true, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }))
   shade.rotation.x = -Math.PI / 2
   shade.position.set(0, 0.004, D / 2)
   shade.renderOrder = 1

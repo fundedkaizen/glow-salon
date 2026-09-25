@@ -61,7 +61,9 @@ export class CameraRig {
 
   private place(target: Vector3, d: number) {
     const cp = Math.cos(this.pitch)
-    const far = 60
+    // Close enough that the depth range stays short: phones may have a 16-bit depth buffer, and a long range there
+    // lets the floor's shade layer fight the floor in flickering stripes.
+    const far = 40
     this.camera.position.set(target.x + Math.sin(this.yaw) * cp * far, target.y + Math.sin(this.pitch) * far, target.z + Math.cos(this.yaw) * cp * far)
     this.camera.lookAt(target)
     const halfH = SPAN * d
@@ -69,8 +71,8 @@ export class CameraRig {
     this.camera.bottom = -halfH
     this.camera.left = -halfH * this.aspect
     this.camera.right = halfH * this.aspect
-    this.camera.near = 1
-    this.camera.far = far * 2 + 40
+    this.camera.near = far - 25
+    this.camera.far = far + 70
     this.camera.updateProjectionMatrix()
     this.camera.updateMatrixWorld(true)
   }
