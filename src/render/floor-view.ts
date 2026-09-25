@@ -766,6 +766,7 @@ export class FloorView {
       p.pose = moving ? 'walk' : atStation || onSofa ? 'sit' : 'stand'
       // At a pedicure chair the feet hang down into the foot basin.
       p.feetDown = atStation && c.plan.treatment === 'feet'
+      p.seat = onSofa ? 'sofa' : c.plan.treatment === 'nails' ? 'stool' : 'chair'
       if (atStation) p.facing = -1
       else if (onSofa) p.facing = c.seat! % 2 ? -1 : 1
       // Faces follow the mood; a treatment is bliss; paid customers beam.
@@ -792,7 +793,7 @@ export class FloorView {
       const next = cur + (target - cur) * Math.min(1, dt * 9)
       v.bubble.scale.set(target ? easeOutBack(Math.min(1, next)) * 0.9 + next * 0.1 : next)
       v.bubble.visible = next > 0.02
-      const sitDrop = p.pose === 'sit' ? 9 : 0
+      const sitDrop = p.pose === 'sit' ? p.seatDrop - 3 : 0
       v.bubble.position.set(v.x + 2, v.y - HEAD_TOP + sitDrop - 6 + Math.sin(this.t * 2.4 + c.id) * 2.5)
       if (v.bubble.visible) {
         const mood = c.mood

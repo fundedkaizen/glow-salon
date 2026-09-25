@@ -1,6 +1,6 @@
 import { Container, Sprite } from 'pixi.js'
 import type { Look } from '../core/customers.ts'
-import { ANCHOR, P, handToolTexture, personTextures, shadowTexture, type Expr, type HandTool, type PersonTextures, type Role } from '../art/salon/people.ts'
+import { ANCHOR, P, SEATS, handToolTexture, personTextures, shadowTexture, type Expr, type HandTool, type PersonTextures, type Role, type SeatKind } from '../art/salon/people.ts'
 
 /**
  * One person on the salon floor, built from its painted parts: it walks with a bob, a sway and swinging limbs,
@@ -42,6 +42,10 @@ export class Person {
   facing: 1 | -1 = 1
   /** Sitting with the legs hanging down (the feet in a pedicure chair's basin). */
   feetDown = false
+  /** What they sit on, which sets how low they sink and how the legs lie. */
+  seat: SeatKind = 'sofa'
+  /** How far the body sits below standing, in floor units (for what floats over the head). */
+  seatDrop = 0
   expr: Expr = 'smile'
   /** 0 to 1: how much of the walk cycle to show (eases in and out). */
   private stride = 0
@@ -54,6 +58,7 @@ export class Person {
     if (this.tex.hairBack) {
       this.hairBack = new Sprite(this.tex.hairBack)
       this.hairBack.anchor.set(ANCHOR.hairBack.x / ANCHOR.hairBack.w, ANCHOR.hairBack.y / ANCHOR.hairBack.h)
+      this.hairBack.scale.set(P.headScale)
     }
     this.legL = this.part(this.tex.leg, ANCHOR.leg)
     this.legR = this.part(this.tex.leg, ANCHOR.leg)
@@ -61,6 +66,7 @@ export class Person {
     this.armR = this.part(this.tex.arm, ANCHOR.arm)
     this.torso = this.part(this.tex.body, ANCHOR.body)
     this.head = this.part(this.tex.head('smile'), ANCHOR.head)
+    this.head.scale.set(P.headScale)
     if (this.hairBack) this.body.addChild(this.hairBack)
     this.toolSprite.anchor.set(0.5, 4 / 22)
     this.toolSprite.position.set(0, ANCHOR.arm.h - ANCHOR.arm.y - 8)
@@ -118,7 +124,9 @@ export class Person {
     const bob = -Math.abs(Math.sin(cycle)) * 3 * s
     const breathe = Math.sin(this.t * 2.2) * 0.7 * (1 - s)
     const hopY = -Math.sin(this.hop * Math.PI) * 14
-    const sitDrop = sit ? 10 : 0
+    const seatLeg = sit && !this.feetDown
+    const sitDrop = !sit ? 0 : seatLeg ? SEATS[this.seat].hip - P.hipY : 10
+    this.seatDrop = sitDrop * PERSON_SCALE
     this.body.y = bob + hopY + sitDrop
     this.body.scale.x = this.facing
     // A little side-to-side sway in the walk.
@@ -130,10 +138,11 @@ export class Person {
     this.shadow.alpha = 1 - Math.min(0.4, -hopY / 30)
     // Legs: a stride with a lift, swinging from the hip.
     const legSwing = Math.sin(cycle) * s
-    this.legL.texture = sit && !this.feetDown ? this.tex.legSit : this.tex.leg
+    this.legL.texture = seatLeg ? this.tex.legSeat(this.seat) : this.tex.leg
     this.legR.texture = this.legL.texture
-    this.legL.position.set(-P.legX, P.hipY - sitDrop * 0.2 - Math.max(0, Math.sin(cycle)) * 2.2 * s)
-    this.legR.position.set(P.legX, P.hipY - sitDrop * 0.2 - Math.max(0, -Math.sin(cycle)) * 2.2 * s)
+    const legY = P.hipY - (seatLeg ? 1 : sit ? 2 : 0)
+    this.legL.position.set(-P.legX, legY - Math.max(0, Math.sin(cycle)) * 2.2 * s)
+    this.legR.position.set(P.legX, legY - Math.max(0, -Math.sin(cycle)) * 2.2 * s)
     this.legL.rotation = legSwing * 0.32
     this.legR.rotation = -legSwing * 0.32
     this.legL.visible = this.legR.visible = true
@@ -155,7 +164,8 @@ export class Person {
       this.handR.rotation = -0.88 + Math.sin(this.t * 9) * 0.28
       this.armL.rotation = -0.5 + Math.sin(this.t * 7 + 1) * 0.2
     }
-    if (sit) { this.armL.rotation = 0.4; this.handR.rotation = -0.4 }
+    // Seated: hands on the chair's arm rests, or resting on the seat beside the lap.
+    if (sit) { const a = this.seat === 'chair' || this.feetDown ? 0.5 : 0.16; this.armL.rotation = a; this.handR.rotation = -a }
     if (this.wave > 0) this.handR.rotation = -2.5 + Math.sin(this.t * 14) * 0.4
     // At work, the tool for the job in the working hand.
     const tool = work ? this.tool : null

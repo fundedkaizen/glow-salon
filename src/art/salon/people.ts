@@ -10,8 +10,8 @@ import { IRIS as CLOSEUP_IRIS, irisForSeed } from '../face.ts'
 import { faceProfile } from '../../core/treatments/profile.ts'
 
 /**
- * The people on the salon floor, painted from a Look in our own cute style: a round head about a third of the
- * figure's height on a short neck, big glossy eyes, and a small body in soft light from the top left. Hair
+ * The people on the salon floor, painted from a Look in our own cute style: a round head a little under a third of
+ * the figure's height on a neck you can see, big glossy eyes, and a small body in soft light from the top left. Hair
  * follows the close-up's seven styles (long, bob, bun, curly, crop, ponytail, braids) with volume, strands and
  * a sheen band. Clothes say who they are: players wear an apron in their colour over a tee, staff a mint smock
  * with a name badge, and customers dress for their archetype (a suit for the businessman, a hoodie for the
@@ -21,13 +21,27 @@ import { faceProfile } from '../../core/treatments/profile.ts'
 export type Expr = 'smile' | 'happy' | 'neutral' | 'meh' | 'sleepy' | 'blink' | 'wow'
 export type Role = 'customer' | 'player' | 'staff'
 
-export type PersonTextures = { hairBack: Texture | null; body: Texture; arm: Texture; leg: Texture; legSit: Texture; head: (e: Expr) => Texture }
+export type PersonTextures = { hairBack: Texture | null; body: Texture; arm: Texture; leg: Texture; legSeat: (k: SeatKind) => Texture; head: (e: Expr) => Texture }
 
-/** Character geometry in world units, feet at (0, 0): the head (with its hair) is about a third of the height. */
+/**
+ * Where a seated person's hips, knees and feet land (the person's own units, from the feet anchor), per seat: sunk
+ * into the sofa with the feet on the floor, perched on the nail stool, or reclined in the facial chair with the legs
+ * along the leg rest and the shoes toes-up at its end.
+ */
+export type SeatKind = 'sofa' | 'chair' | 'stool'
+export const SEATS: Record<SeatKind, { hip: number; knee: number; foot: number; recline: boolean }> = {
+  sofa: { hip: -15.5, knee: -4, foot: 11, recline: false },
+  chair: { hip: -3, knee: 7, foot: 13, recline: true },
+  stool: { hip: -6.5, knee: 3.5, foot: 15, recline: false },
+}
+
+/** Character geometry in world units, feet at (0, 0): the head (with its hair) is a little under a third of the height. */
 export const P = {
-  /** The middle of the face (the chin sits a short neck above the shoulders). */
-  headY: -80,
+  /** The middle of the face (the chin sits a clear neck above the shoulders). */
+  headY: -76.4,
   headR: 15,
+  /** The head and its hair are painted at headR and drawn smaller on the floor, so the body carries the figure. */
+  headScale: 0.86,
   shoulderY: -57,
   shoulderX: 10.5,
   hipY: -30,
@@ -39,7 +53,7 @@ export const P = {
 export const ANCHOR = {
   head: { w: 58, h: 62, x: 29, y: 36 },
   hairBack: { w: 62, h: 86, x: 31, y: 36 },
-  body: { w: 46, h: 52, x: 23, y: 9 },
+  body: { w: 46, h: 57, x: 23, y: 14 },
   arm: { w: 12, h: 30, x: 6, y: 3 },
   leg: { w: 13, h: 35, x: 6.5, y: 2 },
 }
@@ -141,8 +155,8 @@ export function personTextures(look0: Look, role: Role = 'customer', tint = 0xe7
     hairBack: tex(`hb|${key}`, ANCHOR.hairBack.w, ANCHOR.hairBack.h, ctx => paintHairBack(ctx, look, hair, ANCHOR.hairBack.x, ANCHOR.hairBack.y)),
     body: tex(`b|${key}`, ANCHOR.body.w, ANCHOR.body.h, ctx => paintBody(ctx, outfit, skin, fig, role)),
     arm: tex(`a|${key}`, ANCHOR.arm.w, ANCHOR.arm.h, ctx => paintArm(ctx, sleeve, skin, outfit.sleeve === null)),
-    leg: tex(`l|${key}`, ANCHOR.leg.w, ANCHOR.leg.h, ctx => paintLeg(ctx, outfit, skin, fig, false)),
-    legSit: tex(`ls|${key}`, ANCHOR.leg.w, ANCHOR.leg.h, ctx => paintLeg(ctx, outfit, skin, fig, true)),
+    leg: tex(`l|${key}`, ANCHOR.leg.w, ANCHOR.leg.h, ctx => paintLeg(ctx, outfit, skin, fig)),
+    legSeat: (k: SeatKind) => tex(`ls|${key}|${k}`, ANCHOR.leg.w, ANCHOR.leg.h, ctx => paintSeatLeg(ctx, outfit, skin, fig, k)),
     head: (e: Expr) => tex(`h|${key}|${e}`, ANCHOR.head.w, ANCHOR.head.h, ctx => paintHead(ctx, look, skin, hair, e, fig, ANCHOR.head.x, ANCHOR.head.y, face)),
   }
 }
@@ -525,11 +539,15 @@ function clothFill(ctx: Ctx, col: RGB, cx: number, sy: number) {
 
 function paintBody(ctx: Ctx, o: Outfit, skin: SkinT, fig: Figure, role: Role) {
   const cx = ANCHOR.body.x, sy = ANCHOR.body.y
-  // The neck: short, shaded under the chin.
-  const ng = ctx.createLinearGradient(0, sy - 8, 0, sy + 1)
-  ng.addColorStop(0, rgba(mixRGB(skin.base, skin.shadow, 0.75))); ng.addColorStop(1, rgba(mixRGB(skin.base, skin.shadow, 0.3)))
+  // The neck: slim, in the chin's shade at the top and lit lower down, widening a touch into the shoulders.
+  const ng = ctx.createLinearGradient(0, sy - 13, 0, sy + 1)
+  ng.addColorStop(0, rgba(mixRGB(skin.base, skin.shadow, 0.8))); ng.addColorStop(0.45, rgba(mixRGB(skin.base, skin.shadow, 0.35))); ng.addColorStop(1, rgba(mixRGB(skin.base, skin.shadow, 0.2)))
   ctx.fillStyle = ng
-  ctx.beginPath(); ctx.roundRect(cx - 3.2, sy - 8, 6.4, 10, 2.5); ctx.fill()
+  ctx.beginPath()
+  ctx.moveTo(cx - 3.5, sy - 13); ctx.lineTo(cx + 3.5, sy - 13); ctx.lineTo(cx + 3.7, sy - 2.5); ctx.quadraticCurveTo(cx + 4.2, sy + 0.5, cx + 6.5, sy + 1.5)
+  ctx.lineTo(cx - 6.5, sy + 1.5); ctx.quadraticCurveTo(cx - 4.2, sy + 0.5, cx - 3.7, sy - 2.5); ctx.closePath(); ctx.fill()
+  ctx.strokeStyle = rgba(skin.shadow, 0.35); ctx.lineWidth = 0.5
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(cx + s * 3.5, sy - 12); ctx.lineTo(cx + s * 3.7, sy - 2.5); ctx.stroke() }
   const flare = o.skirt ? (o.kind === 'dress' ? 6.5 : 4.5) : o.kind === 'chef' || o.kind === 'jacket' || o.kind === 'suit' ? 1 : 0
   const main = o.main
   torsoPath(ctx, cx, sy, fig, flare)
@@ -680,9 +698,9 @@ function paintArm(ctx: Ctx, sleeve: RGB, skin: SkinT, short: boolean) {
   blob(ctx, cx - 1, 23, 1.2, 0.8, skin.light, 0.7)
 }
 
-function paintLeg(ctx: Ctx, o: Outfit, skin: SkinT, fig: Figure, sitting: boolean) {
+function paintLeg(ctx: Ctx, o: Outfit, skin: SkinT, fig: Figure) {
   const cx = ANCHOR.leg.x
-  const len = sitting ? 17 : 26
+  const len = 26
   // A skirt or a dress: bare legs (a soft tight on the older ladies); otherwise trousers or shorts.
   const bare = o.skirt
   const shorts = o.kind === 'sporty'
@@ -706,6 +724,53 @@ function paintLeg(ctx: Ctx, o: Outfit, skin: SkinT, fig: Figure, sitting: boolea
   ctx.strokeStyle = rgba(shade(o.shoes, -0.4), 0.55); ctx.lineWidth = 0.6; ctx.stroke()
   ctx.fillStyle = rgba(shade(o.shoes, -0.25)); ctx.fillRect(cx - 3.6, sy + 2, 8, 0.9)
   ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(cx - 2, sy - 1.6, 2.4, 0.9)
+}
+
+/**
+ * A seated leg, seen from the front and a little above: the thigh comes toward us as a short lap, lit on top, with
+ * a round knee; then the shin drops to the floor in the knee's shade (or, reclined, runs on along the leg rest and
+ * widens as it nears us), and the shoe. A skirt drapes over the lap; shorts cover it and leave the shin bare.
+ */
+function paintSeatLeg(ctx: Ctx, o: Outfit, skin: SkinT, fig: Figure, k: SeatKind) {
+  const cx = ANCHOR.leg.x
+  const s = SEATS[k]
+  const top = 1, knee = top + s.knee - s.hip, foot = top + s.foot - s.hip
+  const bareSkin = fig.age >= SENIOR_AGE && o.skirt ? mixRGB(skin.base, [120, 100, 110], 0.35) : skin.base
+  const lapCol = o.skirt ? o.main : o.pants
+  const shinCol = o.skirt || o.kind === 'sporty' ? bareSkin : o.pants
+  // The shin, under the knee.
+  const w0 = 6.2, w1 = s.recline ? 7.2 : 6.2
+  const sg = ctx.createLinearGradient(cx - 3.6, 0, cx + 3.6, 0)
+  sg.addColorStop(0, rgba(shade(shinCol, 0.06))); sg.addColorStop(1, rgba(shade(shinCol, -0.22)))
+  ctx.fillStyle = sg
+  ctx.beginPath()
+  ctx.moveTo(cx - w0 / 2, knee - 1); ctx.lineTo(cx + w0 / 2, knee - 1); ctx.lineTo(cx + w1 / 2, foot); ctx.lineTo(cx - w1 / 2, foot); ctx.closePath(); ctx.fill()
+  ctx.strokeStyle = rgba(shade(shinCol, -0.4), 0.45); ctx.lineWidth = 0.6; ctx.stroke()
+  // The knee's shade falling on the top of the shin.
+  blurred(ctx, 0.8, () => { ctx.fillStyle = rgba(shade(shinCol, -0.45), 0.35); ctx.beginPath(); ctx.ellipse(cx, knee + 1, 3, 1.2, 0, 0, Math.PI * 2); ctx.fill() })
+  if (!o.skirt && o.kind !== 'sporty') { ctx.fillStyle = rgba(shade(shinCol, -0.12)); ctx.fillRect(cx - w1 / 2, foot - 1.4, w1, 1.4) }
+  // The lap: the thigh foreshortened toward us, lit on top, ending in a round knee.
+  const lw = 7.6
+  const lg = ctx.createLinearGradient(0, top, 0, knee + 1.5)
+  lg.addColorStop(0, rgba(shade(lapCol, 0.24))); lg.addColorStop(0.6, rgba(shade(lapCol, 0.04))); lg.addColorStop(1, rgba(shade(lapCol, -0.14)))
+  ctx.fillStyle = lg
+  ctx.beginPath(); ctx.roundRect(cx - lw / 2, top, lw, knee + 1.5 - top, [2, 2, 3.8, 3.8]); ctx.fill()
+  ctx.strokeStyle = rgba(shade(lapCol, -0.42), 0.5); ctx.lineWidth = 0.6; ctx.stroke()
+  blob(ctx, cx - 0.9, knee - 0.6, 2.1, 1.2, shade(lapCol, 0.5), 0.55)
+  if (o.skirt) { ctx.fillStyle = rgba(shade(lapCol, -0.12)); ctx.beginPath(); ctx.roundRect(cx - lw / 2, knee, lw, 1.5, [0, 0, 3, 3]); ctx.fill() }
+  // The shoe: a toe cap from above on the floor; toes-up with the sole showing at the end of the leg rest.
+  if (s.recline) {
+    ctx.fillStyle = rgba(o.shoes); ctx.beginPath(); ctx.ellipse(cx, foot + 1.6, 4.2, 3.2, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = rgba(shade(o.shoes, -0.4), 0.55); ctx.lineWidth = 0.6; ctx.stroke()
+    ctx.strokeStyle = rgba(shade(o.shoes, -0.3)); ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(cx, foot + 1.9, 3.6, 2.6, 0, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(cx - 1.4, foot + 0.4, 1.3, 0.7, -0.3, 0, Math.PI * 2); ctx.fill()
+  } else {
+    const fy = foot + 1
+    ctx.fillStyle = rgba(o.shoes); ctx.beginPath(); ctx.roundRect(cx - 3.8, fy - 2.5, 8, 5, 2.5); ctx.fill()
+    ctx.strokeStyle = rgba(shade(o.shoes, -0.4), 0.55); ctx.lineWidth = 0.6; ctx.stroke()
+    ctx.fillStyle = rgba(shade(o.shoes, -0.25)); ctx.fillRect(cx - 3.6, fy + 1.6, 7.6, 0.9)
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(cx - 2, fy - 1.6, 2.4, 0.9)
+  }
 }
 
 /** A round portrait for review cards and staff cards (a DOM image): head and shoulders. */
