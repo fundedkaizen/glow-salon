@@ -190,7 +190,7 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   ctx.fill()
   ctx.clip()
   // Key light and its falloff across the face.
-  blob(ctx, 420, 400, 460, 420, skin.light, 0.75)
+  blob(ctx, 420, 400, 460, 420, skin.light, 0.5)
   blob(ctx, 760, 760, 420, 380, skin.shadow, 0.42)
   blurred(ctx, 36, () => { ctx.strokeStyle = rgba(skin.shadow, 0.7); ctx.lineWidth = 96; ctx.beginPath(); smoothPath(ctx, FACE.outline); ctx.stroke() })
   blob(ctx, 300, 470, 120, 200, skin.light, 0.35)
@@ -272,7 +272,7 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   blob(ctx, 500, 852, 50, 28, skin.light, 0.55)
   blob(ctx, 512, 902, 150, 24, skin.shadow, 0.35)
   // Forehead: a broad soft highlight.
-  blob(ctx, 480, 392, 170, 64, skin.light, 0.45)
+  blob(ctx, 480, 392, 170, 64, skin.light, 0.3)
   blob(ctx, 512, 322, 260, 40, skin.shadow, 0.28)
   if (look.freckles) {
     for (let i = 0; i < 70; i++) {
@@ -363,6 +363,29 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   ctx.restore()
 
   paintHeadband(ctx, band, seed)
+  // Hair falls over the ends of the band, where it goes around the back of the head.
+  for (const side of [-1, 1]) {
+    const x = 512 + side * 318
+    ctx.save()
+    const g = ctx.createLinearGradient(x, 330, x, 560)
+    g.addColorStop(0, rgba(hair.base)); g.addColorStop(1, rgba(hair.dark))
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.moveTo(x - side * 30, 330)
+    ctx.bezierCurveTo(x + side * 30, 360, x + side * 50, 470, x + side * 44, 560)
+    ctx.lineTo(x + side * 90, 560)
+    ctx.bezierCurveTo(x + side * 96, 460, x + side * 70, 350, x + side * 20, 318)
+    ctx.closePath()
+    ctx.fill()
+    const r2 = makeRng(seed + 70 + side)
+    for (let k = 0; k < 18; k++) {
+      ctx.strokeStyle = rgba(r2() < 0.4 ? hair.light : hair.dark, r2.range(0.2, 0.45))
+      ctx.lineWidth = r2.range(1, 2.2)
+      const o = r2.range(0, 60)
+      ctx.beginPath(); ctx.moveTo(x - side * 20 + side * o * 0.5, 326); ctx.bezierCurveTo(x + side * (30 + o * 0.3), 370, x + side * (50 + o * 0.5), 470, x + side * (44 + o * 0.7), 558); ctx.stroke()
+    }
+    ctx.restore()
+  }
   return c
 }
 
@@ -465,8 +488,8 @@ function paintHeadband(ctx: Ctx, band: RGB, seed: number) {
   const r = makeRng(seed + 61)
   const light = shade(band, 0.45), mid = shade(band, 0.15), dark = shade(band, -0.18)
   // The band wraps around the head: it follows the hairline and tucks behind the ears at the sides.
-  const top = (t: number) => ({ x: 170 + 684 * t, y: (1 - t) ** 2 * 392 + 2 * (1 - t) * t * 196 + t * t * 392 })
-  const bot = (t: number) => ({ x: 182 + 660 * t, y: (1 - t) ** 2 * 454 + 2 * (1 - t) * t * 270 + t * t * 454 })
+  const top = (t: number) => ({ x: 176 + 672 * t, y: (1 - t) ** 2 * 446 + 2 * (1 - t) * t * 196 + t * t * 446 })
+  const bot = (t: number) => ({ x: 186 + 652 * t, y: (1 - t) ** 2 * 474 + 2 * (1 - t) * t * 270 + t * t * 474 })
   const path = () => {
     ctx.beginPath()
     for (let k = 0; k <= 40; k++) { const p = top(k / 40); if (k === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y) }

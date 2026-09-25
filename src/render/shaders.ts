@@ -44,7 +44,7 @@ void main() {
   float wrap = clamp((ndl + 0.5) / 1.5, 0.0, 1.0);
   // Light that has travelled under the skin comes out warm, strongest where the light turns away.
   float scatter = smoothstep(0.05, 0.55, wrap) * (1.0 - smoothstep(0.45, 1.0, wrap));
-  vec3 col = base * (0.8 + 0.3 * wrap) + uSss * scatter * 0.2;
+  vec3 col = base * (0.78 + 0.26 * wrap) + uSss * scatter * 0.2;
   vec2 muv = vec2(vUV.x, mix(vUV.y, 1.0 - vUV.y, uFlipMask));
   float wet = clamp(texture(uWet, muv).a * 1.25 + uSkin.y, 0.0, 1.0);
   vec3 V = vec3(0.0, 0.0, 1.0);
