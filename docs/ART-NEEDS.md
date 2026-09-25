@@ -30,7 +30,7 @@ Wiring, in `treatment-view.ts` / `surface.ts`:
 
 | Step id | What | Stand-in | Needs |
 |---|---|---|---|
-| `brows` (region `brows`, layer `glow`) | Brow tidy | gloved fingers, a sheen on the brows | tool art `browBrush` (a spoolie); brows brushed up (maybe a tidier brow texture) |
+| `brows` (region `brows`, layer `glow`) | Brow tidy | gloved fingers, a sheen on the brows | Done (round 4): the brows crossfade to groomed crops (`browsGroomed` in face.ts) as the step goes |
 | `lips` (region `lips`, layer `cream`) | Lip scrub | the sugar scrub tub, white cream on the lips | a pink sugar-scrub texture on the lips |
 | `eyePatches` (targets `patch`, `tag: 'eye'`) | Under-eye patches | the round pimple patch, bigger | a crescent gel patch (pink or gold), placed under each eye |
 | `jade` (layer `serum`) | Jade roller | gloved fingers | tool art `jadeRoller` (a green stone roller on a gold frame) |
@@ -51,11 +51,14 @@ id is all it takes.
 
 ## Floor
 
+- Done (round 4): every regular's gift has its own piece in `art/salon/gift-art.ts` (see `/?view=people&gifts`);
+  `GIFT_ART` in floor-view.ts remains only as a fallback.
 - Regulars' gifts are real items now (`gift:<regular>` in `owned`). They stand in the gift spots
   (`GIFT_SLOTS` in `core/decor.ts`) using the closest existing piece (`GIFT_ART` in `render/floor-view.ts`) with a
   little bow. Each needs its own small painted piece (about 56 px): lemon tree, rose gold polish, ring light,
   painting, espresso machine, orchid, arcade cabinet, honey mask jar, plushie, vintage sign, record player,
   chandelier, bookshelf, royal portrait, and the rest in `content/regulars.ts`.
+- Done (round 4): a proper runner rug (`paintRunnerRug`), and staff and players at work hold the tool for the job.
 - Front of the salon: a runner rug (the base rug scaled and tinted mint), a reading lamp and the magazine table
   fill the lower half. A proper runner rug piece would look better than the scaled base rug.
 - Staff at work show a small bubble with the treatment icon and foam puffs or sparkles at the customer. A proper

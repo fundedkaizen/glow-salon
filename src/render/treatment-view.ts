@@ -307,9 +307,26 @@ export class TreatmentView {
     return seed === 'full' || seed === 'polish' || seed === 'cuticle' || seed === 'dirt'
   }
 
+  /** The brows before and after the brow tidy, crossfaded by `groom` (0 to 1) as the step brushes them up. */
+  private browLayers = { plain: new Container(), groomed: new Container() }
+  private groomedBrows: Record<string, Sprite> = {}
+  private groom = 0
+
   private buildFeatures() {
     const f = this.assets.features
     if (!f) return
+    this.featuresLayer.addChild(this.browLayers.plain, this.browLayers.groomed)
+    this.browLayers.groomed.alpha = 0
+    for (const [state, crop] of Object.entries(f.browsGroomed ?? {})) {
+      const s = new Sprite(crop.texture)
+      s.position.set(crop.x, crop.y)
+      s.alpha = 0
+      this.browLayers.groomed.addChild(s)
+      this.groomedBrows[state] = s
+    }
+    // Resumed after the brow tidy: the brows are already groomed.
+    const bi = this.session.def.steps.findIndex(st => st.id === 'brows')
+    if (bi >= 0 && this.session.status[bi] === 'done') this.setGroom(1)
     const live = this.assets.liveMouth
     if (live) {
       const s = new Sprite(live.texture)
@@ -323,7 +340,7 @@ export class TreatmentView {
         const s = new Sprite(crop.texture)
         s.position.set(crop.x, crop.y)
         s.alpha = 0
-        this.featuresLayer.addChild(s)
+        ;(part === 'brows' ? this.browLayers.plain : this.featuresLayer).addChild(s)
         this.features[part][state] = s
       }
     }
@@ -1061,7 +1078,7 @@ export class TreatmentView {
     this.burstSparkles(e.x, e.y, 7, 200)
     this.fx.spawn({ texture: bits.glow(), x: e.x, y: e.y, life: 0.5, scale: 0.4, scaleEnd: 2, alpha: 0.6, alphaEnd: 0, blend: 'add', tint: 0xfff0e8 })
     // A breath out: the relief shows a moment after the sting.
-    setTimeout(() => { if (!this.destroyed) this.flashExpr('content', 1) }, 600)
+    setTimeout(() => { if (!this.destroyed) { this.flashExpr('content', 1); this.sayAt = -10; this.say(['Much better!', 'Oh, what a relief.', 'Thank you!']) } }, 700)
   }
 
   /** A deep pimple's first squeeze: it comes to a head (and a little clear fluid). Let go and squeeze again. */
@@ -1138,6 +1155,7 @@ export class TreatmentView {
       for (let i = 0; i < 16; i++) this.fx.spawn({ texture: bits.steam(), x: 280 + Math.random() * 460, y: 400 + Math.random() * 420, vx: (Math.random() - 0.5) * 60, vy: -140 - Math.random() * 120, life: 1.6, scale: 1, scaleEnd: 3, alpha: 0.55, alphaEnd: 0 })
     }
     if (prev?.id === 'dry') this.setMaskDry()
+    if (prev?.id === 'brows') this.setGroom(1)
     if (prev?.gesture === 'peel' && this.flap.visible) this.releaseFlap()
     this.flap.clear(); this.flap.visible = false
     if (prev?.id === 'cure' && this.uvLamp) { const l = this.uvLamp, g = this.uvGlow!; this.animate(0.5, t => { l.alpha = 1 - t; g.alpha = 0; l.y = 170 - t * 200 }) }
@@ -1448,6 +1466,16 @@ export class TreatmentView {
       const want = EXPRESSIONS[e][part === 'eyes' ? 0 : part === 'brows' ? 1 : 2]
       for (const [k, s] of Object.entries(this.features[part])) s.alpha = k === want ? 1 : 0
     }
+    if (instant) this.mirrorBrows()
+  }
+
+  /** The groomed brows follow the plain ones' expression. */
+  private mirrorBrows() { for (const [k, s] of Object.entries(this.features.brows)) { const g = this.groomedBrows[k]; if (g) g.alpha = s.alpha } }
+
+  private setGroom(g: number) {
+    this.groom = Math.max(this.groom, Math.min(1, g))
+    this.browLayers.groomed.alpha = this.groom
+    this.browLayers.plain.alpha = 1 - this.groom
   }
 
   private get personality() { return this.session.profile.personality }
@@ -1457,13 +1485,41 @@ export class TreatmentView {
     const p = this.personality
     if (p === 'calm' && Math.random() < 0.5) { this.flashExpr('worry', 0.3); return }
     const k = p === 'sensitive' ? 1.6 : 1
+    if (this.feet) this.say(p === 'sensitive' ? ['Ow, ow, ow!', 'Eek!', 'Ouch!'] : ['Ouch!', 'Eek!', 'Ooh!'])
     this.flashExpr('flinch', 0.45 * k)
     this.cam.shake += 4 * strength * k
     if (p === 'sensitive') sfx.flinch()
   }
 
+  /**
+   * Feet: the face is off screen, so the customer's reactions come as a little speech bubble under their name
+   * (a sting, a giggle, the warm water). One at a time, never more than every couple of seconds.
+   */
+  private bubble: HTMLDivElement | null = null
+  private sayAt = -10
+  private said = new Set<string>()
+  private say(lines: string[], once = '') {
+    if (!this.feet || this.revealT >= 0 || this.time - this.sayAt < 2.2) return
+    if (once) { if (this.said.has(once)) return; this.said.add(once) }
+    this.sayAt = this.time
+    if (!this.bubble) {
+      const b = document.createElement('div')
+      b.style.cssText = 'position:absolute;right:16px;top:108px;padding:7px 14px;border-radius:16px 4px 16px 16px;background:#fff;color:#8a4a6a;font:700 14px Nunito,sans-serif;box-shadow:0 6px 18px rgba(120,60,90,0.18);opacity:0;transform:scale(0.7);transform-origin:top right;transition:opacity .18s,transform .22s cubic-bezier(.3,1.6,.5,1);pointer-events:none;z-index:5'
+      this.opts.overlay.append(b)
+      this.bubble = b
+    }
+    const b = this.bubble
+    // Under the step header and the skip button (they stack lower on a phone).
+    b.style.top = this.view.w < 700 ? '152px' : '108px'
+    b.textContent = lines[Math.floor(Math.random() * lines.length)]
+    b.style.opacity = '1'; b.style.transform = 'scale(1)'
+    const at = this.sayAt
+    setTimeout(() => { if (this.bubble && this.sayAt === at) { this.bubble.style.opacity = '0'; this.bubble.style.transform = 'scale(0.85)' } }, 1600)
+  }
+
   private flashExpr(e: Expr, seconds: number) {
     if (this.revealT >= 0) return
+    if (this.feet && (e === 'giggle' || e === 'tickle')) this.say(['Hehe!', 'That tickles!', 'Hee hee!'])
     this.setExpr(e)
     this.exprTimer = seconds
     if (e === 'flinch') { this.artRoot.scale.set(1, 0.994); this.animate(0.2, t => this.artRoot.scale.set(1, 0.994 + 0.006 * t)); this.tilt.v += (Math.random() < 0.5 ? -1 : 1) * 0.06 }
@@ -1577,6 +1633,7 @@ export class TreatmentView {
         s.alpha += (goal - s.alpha) * (goal ? k * 1.4 : k * 0.8)
       }
     }
+    this.mirrorBrows()
   }
 
   // ------------------------------------------------------------------ frame
@@ -1652,7 +1709,10 @@ export class TreatmentView {
       if (holding && Math.random() < dt * 30) this.fx.spawn({ texture: bits.streak(), x: this.pos.x + (Math.random() - 0.5) * 200, y: this.pos.y - 150, vx: (Math.random() - 0.5) * 60, vy: 700, life: 0.4, scale: 0.6, alpha: 0.35, alphaEnd: 0, stretch: 2, tint: 0xffffff })
     }
     if (step.id === 'moisturize') skinU[3] = Math.min(0.9, this.session.progress())
+    // The brow tidy brushes the brows up as it goes.
+    if (step.id === 'brows') this.setGroom(this.session.progress() / Math.max(0.01, this.session.threshold()))
     if (this.feet && (step.id === 'cream' || step.id === 'creamSole' || step.id === 'massage')) skinU[3] = Math.max(skinU[3], Math.min(0.7, this.session.progress() * 0.8))
+    if (this.feet && step.id === 'massage' && holding && this.session.progress() > 0.3) this.say(['Mmm...', 'Right there.', 'Heavenly.'], 'massage')
     if (this.feet && step.id === 'bath') this.bathVisuals(dt, holding)
     if (step.id === 'cure' && this.uvLamp && this.uvGlow) {
       this.uvLamp.alpha += (0.92 - this.uvLamp.alpha) * Math.min(1, dt * 6)
@@ -1686,6 +1746,7 @@ export class TreatmentView {
       this.fx.spawn({ texture: bits.bubble(), x, y, vx: (Math.random() - 0.5) * 30, vy: -50 - Math.random() * 80, life: 0.9 + Math.random() * 0.9, scale: 0.08 + Math.random() * 0.2, scaleEnd: 0.14 + Math.random() * 0.2, alpha: 0.8 * f.water, alphaEnd: 0, fadeIn: 0.15, onDeath: p => { if (Math.random() < 0.3) this.fx.spawn({ texture: bits.sparkle(), x: p.x, y: p.y, life: 0.25, scale: 0.05, scaleEnd: 0.18, alpha: 0.7, alphaEnd: 0, blend: 'add' }) } })
     }
     if (holding && Math.random() < dt * 5) sfx.bubbles(this.pan(300 + Math.random() * 420))
+    if (holding && this.session.hold > 0.25) this.say(['Ahh, so warm...', 'Oh, that is lovely.', 'Bliss...'], 'bath')
     this.surface.skin.uniforms.uniforms.uSkin[0] = Math.max(this.surface.skin.uniforms.uniforms.uSkin[0], this.session.hold * 0.8)
   }
 
@@ -1813,9 +1874,12 @@ export class TreatmentView {
       before.mask = mask
       const divider = new Graphics()
       const labels = new Container()
+      // Just inside the top of what the reveal camera shows (a pedicure's view starts lower than a face's).
+      const viewTop = this.camGoal.y - ((this.view.h - this.view.top - this.view.bottom) / 2) / (this.fit * this.camGoal.zoom)
+      const labelY = Math.max(90, viewTop + 34)
       const label = (text: string, x: number) => {
         const tx = new Text({ text, style: { fontFamily: 'Fredoka, Nunito, sans-serif', fontSize: 34, fontWeight: '600', fill: 0xffffff, dropShadow: { color: 0x9a4a6a, blur: 6, distance: 0, alpha: 0.8 } } })
-        tx.anchor.set(0.5); tx.position.set(x, 90); labels.addChild(tx)
+        tx.anchor.set(0.5); tx.position.set(x, labelY); labels.addChild(tx)
       }
       label('Before', 256); label('After', 768)
       labels.alpha = 0
@@ -1902,6 +1966,7 @@ export class TreatmentView {
     window.removeEventListener('pointercancel', this.onPointer)
     window.removeEventListener('keydown', this.onKey)
     this.hud.destroy()
+    this.bubble?.remove()
     for (const sf of this.surfaces) sf.destroy()
     this.beforeRT?.destroy(true)
     this.lensRT?.destroy(true)

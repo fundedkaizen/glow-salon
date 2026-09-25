@@ -27,6 +27,8 @@ export type FaceArt = {
   maskDry: () => HTMLCanvasElement
   eyes: Record<EyeState, Crop>
   brows: Record<BrowState, Crop>
+  /** The same brows after the brow tidy: every hair brushed up and out, set with a clear gel sheen. */
+  browsGroomed: Record<BrowState, Crop>
   mouth: Record<MouthState, Crop>
   /** The mouth that blends between shapes (the close-up draws this one; the crops above are its key shapes). */
   liveMouth: LiveMouth
@@ -138,9 +140,10 @@ export function paintFace(look: Look, seed: number, profile: FaceProfile, maskKi
   const eye = (st: EyeState) => eyeCrop(st, tone.lash, skin, feat)
   const eyes = { open: eye('open'), wide: eye('wide'), half: eye('half'), closed: eye('closed'), squeeze: eye('squeeze'), happy: eye('happy') }
   const brows = { relaxed: browCrop('relaxed', tone, seed, feat), worried: browCrop('worried', tone, seed, feat), happy: browCrop('happy', tone, seed, feat) }
+  const browsGroomed = { relaxed: browCrop('relaxed', tone, seed, feat, true), worried: browCrop('worried', tone, seed, feat, true), happy: browCrop('happy', tone, seed, feat, true) }
   const m = (st: MouthState) => mouthCrop(st, skin, feat)
   const mouth = { neutral: m('neutral'), smile: m('smile'), wince: m('wince'), beam: m('beam'), o: m('o'), pout: m('pout') }
-  return { base, height, layers, maskDry, eyes, brows, mouth, liveMouth: liveMouth(skin, feat), skin }
+  return { base, height, layers, maskDry, eyes, brows, browsGroomed, mouth, liveMouth: liveMouth(skin, feat), skin }
 }
 
 // ------------------------------------------------------------------ base
@@ -1308,9 +1311,9 @@ function drawOpenEye(ctx: Ctx, ex: number, ey: number, side: number, wide: boole
 
 type BrowTone = { color: RGB; dark: RGB; lash: RGB; sheen: number }
 
-function browCrop(state: BrowState, tone: BrowTone, seed: number, feat: Feat): Crop {
+function browCrop(state: BrowState, tone: BrowTone, seed: number, feat: Feat, groomed = false): Crop {
   return crop(BROW_CROP, ctx => {
-    for (const [i, b] of FACE.brows.entries()) drawBrow(ctx, b.x, b.y, i === 0 ? -1 : 1, state, tone, seed + i, feat)
+    for (const [i, b] of FACE.brows.entries()) drawBrow(ctx, b.x, b.y, i === 0 ? -1 : 1, state, tone, seed + i, feat, groomed)
   })
 }
 
@@ -1319,7 +1322,7 @@ function browCrop(state: BrowState, tone: BrowTone, seed: number, feat: Feat): C
  * the lower hairs sweep up and out while the upper ones lie flatter and point out and a little down (a
  * herringbone that meets along the middle), and at the tail they all run out and down and thin away.
  */
-function drawBrow(ctx: Ctx, bx: number, by: number, side: number, state: BrowState, tone: BrowTone, seed: number, feat: Feat) {
+function drawBrow(ctx: Ctx, bx: number, by: number, side: number, state: BrowState, tone: BrowTone, seed: number, feat: Feat, groomed = false) {
   const r = makeRng(seed)
   const weight = 0.58 + feat.brow * 0.4
   const innerY = state === 'worried' ? by - 8 : state === 'happy' ? by + 0 : by + 10
@@ -1358,10 +1361,11 @@ function drawBrow(ctx: Ctx, bx: number, by: number, side: number, state: BrowSta
     const head = clamp01(1 - t / 0.16)
     const body = off < 0 ? 0.55 - t * 0.5 : -0.18 - t * 0.12
     const tail = clamp01((t - 0.7) / 0.3)
-    const ang = head * 1.25 + (1 - head) * (body * (1 - tail) + -0.28 * tail)
+    // Groomed: every hair brushed the same way, up and out, lying neatly in the brow's shape.
+    const ang = groomed ? head * 1.15 + (1 - head) * ((0.62 - t * 0.38) * (1 - tail) + 0.12 * tail) : head * 1.25 + (1 - head) * (body * (1 - tail) + -0.28 * tail)
     const hx = dx * Math.cos(ang) + ux * Math.sin(ang), hy = dy * Math.cos(ang) + uy * Math.sin(ang)
-    const len = r.range(9, 16) * (1 - tail * 0.35) * (0.85 + weight * 0.25)
-    const bend = r.range(0.1, 0.3)
+    const len = r.range(9, 16) * (1 - tail * 0.35) * (0.85 + weight * 0.25) * (groomed ? 1.08 : 1)
+    const bend = groomed ? r.range(0.02, 0.1) : r.range(0.1, 0.3)
     hairs.push({
       x: sx, y: sy, ex: sx + hx * len, ey: sy + hy * len,
       cx: sx + hx * len * 0.55 + dx * len * bend, cy: sy + hy * len * 0.55 + dy * len * bend,
@@ -1372,6 +1376,16 @@ function drawBrow(ctx: Ctx, bx: number, by: number, side: number, state: BrowSta
   // Lighter under-hairs first, darker ones on top.
   hairs.sort((a, b) => (a.c > b.c ? 1 : -1))
   for (const h of hairs) taper(ctx, h.x, h.y, h.cx, h.cy, h.ex, h.ey, h.w, 0.25, h.c)
+  if (groomed) {
+    // Clear brow gel: a soft sheen along the brushed hairs, and no strays.
+    blurred(ctx, 2, () => {
+      ctx.strokeStyle = 'rgba(255,255,255,0.32)'; ctx.lineWidth = 3; ctx.lineCap = 'round'
+      ctx.beginPath()
+      for (let i = 0; i <= 20; i++) { const t = 0.1 + (i / 20) * 0.75, p = at(t); if (i === 0) ctx.moveTo(p.x, p.y - thick(t) * 0.4); else ctx.lineTo(p.x, p.y - thick(t) * 0.4) }
+      ctx.stroke()
+    })
+    return
+  }
   // A few fine, pale strays catch the light along the top.
   for (let i = 0; i < 6 + Math.round(tone.sheen * 14); i++) {
     const t = r.range(0.2, 0.8), p = at(t)

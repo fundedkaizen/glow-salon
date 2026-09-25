@@ -29,7 +29,7 @@ export type PartAssets = {
   surface: SurfaceArt
   backdrop: Texture
   /** Face only: expression overlays by feature and state. */
-  features?: { eyes: Record<string, CropTex>; brows: Record<string, CropTex>; mouth: Record<string, CropTex> }
+  features?: { eyes: Record<string, CropTex>; brows: Record<string, CropTex>; browsGroomed?: Record<string, CropTex>; mouth: Record<string, CropTex> }
   /** Facial only: the mouth drawn live from blended shape parameters (see face.ts MOUTH_PARAMS). */
   liveMouth?: { texture: Texture; x: number; y: number; draw: (p: MouthParams, scrub?: number) => void }
   /** A layer's other look during a step (step id to layer and texture): the hand's golden cuticle oil. */
@@ -200,7 +200,7 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
     return {
       surface: { base: tex(art.base), height: tex(art.height), bump: 2.4, sss: [0.95, 0.32, 0.26], layers, order },
       backdrop: facialBackdrop(),
-      features: { eyes: toTex(art.eyes), brows: toTex(art.brows), mouth: toTex(art.mouth) },
+      features: { eyes: toTex(art.eyes), brows: toTex(art.brows), browsGroomed: toTex(art.browsGroomed), mouth: toTex(art.mouth) },
       liveMouth: (() => { const m = art.liveMouth, texture = tex(m.canvas); return { texture, x: m.x, y: m.y, draw: (p: MouthParams, scrub?: number) => { m.draw(p, scrub); texture.source.update() } } })(),
       towel: lazyTex(() => paintSteamTowel(seed)),
       robe: { texture: tex(paintRobe(hex(OUTFIT[look.outfit % OUTFIT.length]), art.skin, seed)), x: ROBE.x, y: ROBE.y },

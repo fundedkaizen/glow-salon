@@ -58,6 +58,7 @@ export function peoplePreview(app: Application, params: URLSearchParams) {
     p.root.scale.set(zoom)
     p.pose = pose ?? (['stand', 'walk', 'stand', 'work', 'sit'] as Pose[])[i % 5]
     p.facing = i % 4 === 3 ? -1 : 1
+    p.tool = (['brush', 'file', 'footBrush'] as const)[i % 3]
     root.addChild(p.root)
     const label = new Text({ text: c.label, style: { fontFamily: 'Nunito, sans-serif', fontSize: 11, fontWeight: '700', fill: 0x8a6a80 } })
     label.anchor.set(0.5, 0)

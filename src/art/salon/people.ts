@@ -732,6 +732,29 @@ export function portrait(look0: Look, size = 96, bg = '#fbe0e8', role: Role = 'c
   return c.toDataURL()
 }
 
+/** What a worker holds while they work: a facial brush, a nail file or a foot brush. */
+export type HandTool = 'brush' | 'file' | 'footBrush'
+
+/** A small tool held in the hand, its grip at (6, 4) of a 12 x 22 texture, pointing down along the arm. */
+export function handToolTexture(kind: HandTool): Texture {
+  return tex(`tool|${kind}`, 12, 22, ctx => {
+    ctx.lineCap = 'round'
+    if (kind === 'file') {
+      ctx.strokeStyle = '#f4b6c8'; ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(6, 3); ctx.lineTo(6, 20); ctx.stroke()
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(5.2, 6); ctx.lineTo(5.2, 18); ctx.stroke()
+    } else if (kind === 'footBrush') {
+      ctx.fillStyle = '#f07aa0'; ctx.beginPath(); ctx.roundRect(2, 8, 8, 12, 3); ctx.fill()
+      ctx.strokeStyle = '#f6e7c8'; ctx.lineWidth = 0.9; for (let x = 3; x <= 9; x += 1.5) { ctx.beginPath(); ctx.moveTo(x, 20); ctx.lineTo(x, 22); ctx.stroke() }
+      ctx.fillStyle = '#e8c06a'; ctx.fillRect(5, 3, 2, 6)
+    } else {
+      ctx.strokeStyle = '#b79ce6'; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(6, 3); ctx.lineTo(6, 14); ctx.stroke()
+      ctx.fillStyle = '#e8c06a'; ctx.fillRect(4.8, 13, 2.4, 2.5)
+      ctx.fillStyle = '#fff4f7'; ctx.beginPath(); ctx.ellipse(6, 18.5, 2.6, 3.8, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = 'rgba(200,170,190,0.8)'; ctx.lineWidth = 0.6; ctx.stroke()
+    }
+  })
+}
+
 /** A soft shadow texture under a character. */
 export function shadowTexture(): Texture {
   return tex('shadow', 50, 16, ctx => {

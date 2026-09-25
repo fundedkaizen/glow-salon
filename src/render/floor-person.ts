@@ -1,6 +1,6 @@
 import { Container, Sprite } from 'pixi.js'
 import type { Look } from '../core/customers.ts'
-import { ANCHOR, P, personTextures, shadowTexture, type Expr, type PersonTextures, type Role } from '../art/salon/people.ts'
+import { ANCHOR, P, handToolTexture, personTextures, shadowTexture, type Expr, type HandTool, type PersonTextures, type Role } from '../art/salon/people.ts'
 
 /**
  * One person on the salon floor, built from its painted parts: it walks with a bob, a sway and swinging limbs,
@@ -21,6 +21,12 @@ export class Person {
   private head: Sprite
   private armL: Sprite
   private armR: Sprite
+  /** The working arm with whatever it holds (the tool moves with the arm). */
+  private handR = new Container()
+  private toolSprite = new Sprite()
+  /** A tool in the working hand while working (null: bare hands). */
+  tool: HandTool | null = null
+  private toolShown: HandTool | null = null
   private legL: Sprite
   private legR: Sprite
   private tex: PersonTextures
@@ -56,7 +62,11 @@ export class Person {
     this.torso = this.part(this.tex.body, ANCHOR.body)
     this.head = this.part(this.tex.head('smile'), ANCHOR.head)
     if (this.hairBack) this.body.addChild(this.hairBack)
-    this.body.addChild(this.armL, this.legL, this.legR, this.torso, this.armR, this.head)
+    this.toolSprite.anchor.set(0.5, 4 / 22)
+    this.toolSprite.position.set(0, ANCHOR.arm.h - ANCHOR.arm.y - 8)
+    this.toolSprite.visible = false
+    this.handR.addChild(this.armR, this.toolSprite)
+    this.body.addChild(this.armL, this.legL, this.legR, this.torso, this.handR, this.head)
     this.layout(0)
   }
 
@@ -138,15 +148,18 @@ export class Person {
     // Arms: swing when walking, busy when working, a wave when greeting.
     const armSwing = Math.sin(cycle) * 0.5 * s
     this.armL.position.set(-P.shoulderX, P.shoulderY + 2 + breathe * 0.3)
-    this.armR.position.set(P.shoulderX, P.shoulderY + 2 + breathe * 0.3)
+    this.handR.position.set(P.shoulderX, P.shoulderY + 2 + breathe * 0.3)
     this.armL.rotation = 0.14 + armSwing
-    this.armR.rotation = -0.14 - armSwing
+    this.handR.rotation = -0.14 - armSwing
     if (work) {
-      this.armR.rotation = -1.15 + Math.sin(this.t * 9) * 0.3
+      this.handR.rotation = -0.88 + Math.sin(this.t * 9) * 0.28
       this.armL.rotation = -0.5 + Math.sin(this.t * 7 + 1) * 0.2
     }
-    if (sit) { this.armL.rotation = 0.4; this.armR.rotation = -0.4 }
-    if (this.wave > 0) this.armR.rotation = -2.5 + Math.sin(this.t * 14) * 0.4
+    if (sit) { this.armL.rotation = 0.4; this.handR.rotation = -0.4 }
+    if (this.wave > 0) this.handR.rotation = -2.5 + Math.sin(this.t * 14) * 0.4
+    // At work, the tool for the job in the working hand.
+    const tool = work ? this.tool : null
+    if (tool !== this.toolShown) { this.toolShown = tool; this.toolSprite.visible = !!tool; if (tool) this.toolSprite.texture = handToolTexture(tool) }
   }
 
   destroy() { this.root.destroy({ children: true }) }
