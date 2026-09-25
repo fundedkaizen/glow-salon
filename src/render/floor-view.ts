@@ -764,6 +764,8 @@ export class FloorView {
       const atStation = (c.state === 'seated' || c.state === 'treating') && !moving
       const onSofa = c.state === 'waiting' && !moving && c.seat !== null && c.seat < SOFA_SEATS.length
       p.pose = moving ? 'walk' : atStation || onSofa ? 'sit' : 'stand'
+      // At a pedicure chair the feet hang down into the foot basin.
+      p.feetDown = atStation && c.plan.treatment === 'feet'
       if (atStation) p.facing = -1
       else if (onSofa) p.facing = c.seat! % 2 ? -1 : 1
       // Faces follow the mood; a treatment is bliss; paid customers beam.

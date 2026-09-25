@@ -498,7 +498,9 @@ export class TreatmentView {
   private placeCamera(dt: number) {
     const c = this.cam, g = this.camGoal
     const k = 1 - Math.exp(-dt * 3.2)
-    c.x += (g.x - c.x) * k; c.y += (g.y - c.y) * k; c.zoom += (g.zoom - c.zoom) * k
+    // A foot on a narrow (phone) screen: never zoom so close that the toes spill off the sides.
+    const goalZoom = this.feet ? Math.min(g.zoom, Math.max(0.9, this.view.w / (this.fit * 720))) : g.zoom
+    c.x += (g.x - c.x) * k; c.y += (g.y - c.y) * k; c.zoom += (goalZoom - c.zoom) * k
     c.punch *= Math.exp(-dt * 7)
     c.shake *= Math.exp(-dt * 12)
     c.shakeX = (Math.random() - 0.5) * c.shake; c.shakeY = (Math.random() - 0.5) * c.shake

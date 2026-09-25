@@ -34,6 +34,8 @@ export class Person {
   private lookIn = 1 + Math.random() * 3
   pose: Pose = 'stand'
   facing: 1 | -1 = 1
+  /** Sitting with the legs hanging down (the feet in a pedicure chair's basin). */
+  feetDown = false
   expr: Expr = 'smile'
   /** 0 to 1: how much of the walk cycle to show (eases in and out). */
   private stride = 0
@@ -118,7 +120,7 @@ export class Person {
     this.shadow.alpha = 1 - Math.min(0.4, -hopY / 30)
     // Legs: a stride with a lift, swinging from the hip.
     const legSwing = Math.sin(cycle) * s
-    this.legL.texture = sit ? this.tex.legSit : this.tex.leg
+    this.legL.texture = sit && !this.feetDown ? this.tex.legSit : this.tex.leg
     this.legR.texture = this.legL.texture
     this.legL.position.set(-P.legX, P.hipY - sitDrop * 0.2 - Math.max(0, Math.sin(cycle)) * 2.2 * s)
     this.legR.position.set(P.legX, P.hipY - sitDrop * 0.2 - Math.max(0, -Math.sin(cycle)) * 2.2 * s)
