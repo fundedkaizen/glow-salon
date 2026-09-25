@@ -32,6 +32,14 @@ export type Target = {
   /** Deep pimples: squeezes still needed (2, then 1). A new press is needed for the second. */
   stage?: number
   gripped?: boolean
+  /**
+   * Four hands: who gets the credit (the lowest-numbered player who pressed it), whether a press on it came while
+   * the partner squeezed close by, and whether a press finished it. Every press is recorded, even one that arrives
+   * after the spot was done, so both screens end up agreeing whatever order the presses reached them in.
+   */
+  by?: number
+  assist?: boolean
+  worked?: boolean
   /** Which step's targets these are, when two steps share a kind (under-eye patches are 'eye'). */
   tag?: string
   /** Feet: which side of the foot it is on (splinters are on the sole). */
@@ -40,21 +48,30 @@ export type Target = {
   angle?: number
 }
 
+/**
+ * `p` is the player who sent a stroke, hold, tap or lift (0 when absent: solo). Two players work at once (four
+ * hands), each with their own grip. What depends on timing is decided once, where the op is made, and carried in
+ * the op so every mirror applies it alike: `t` the target a tap landed on (0: a miss), `a` the four-hands boost
+ * (1: another player was squeezing a spot close by; a hold squeezes faster, a tap marks the spot). `pts` carries a
+ * stroke on through more points (x, y pairs): the per-frame strokes merged into one op for the network, applied
+ * segment by segment.
+ */
 export type Op =
-  | { k: 'stroke'; s: number; x0: number; y0: number; x1: number; y1: number }
-  | { k: 'hold'; s: number; x: number; y: number; dt: number }
-  | { k: 'tap'; s: number; x: number; y: number }
+  | { k: 'stroke'; s: number; x0: number; y0: number; x1: number; y1: number; pts?: number[]; p?: number }
+  | { k: 'hold'; s: number; x: number; y: number; dt: number; p?: number; a?: number }
+  | { k: 'tap'; s: number; x: number; y: number; p?: number; t?: number; a?: number }
+  | { k: 'lift'; s: number; p?: number }
   | { k: 'peel'; s: number; v: number; dt: number }
   | { k: 'choose'; s: number; i: number }
   | { k: 'tick'; s: number; dt: number }
-  | { k: 'lamp'; x: number; y: number; on: boolean }
   | { k: 'advance'; s: number; skip?: boolean }
 
 export type SessionEvent =
   | { e: 'stamp'; layer: string; x: number; y: number; r: number; amount: number; changed: number }
   | { e: 'target'; id: number; progress: number }
   | { e: 'targetStage'; id: number; x: number; y: number; size: number }
-  | { e: 'targetDone'; id: number; kind: TargetKind; x: number; y: number; size: number; n?: number }
+  /** `by`: the player credited with it (Target.by; -1 for a sweep). */
+  | { e: 'targetDone'; id: number; kind: TargetKind; x: number; y: number; size: number; n?: number; by: number }
   | { e: 'miss'; x: number; y: number }
   | { e: 'ready'; step: number }
   /** A part of the step's region is finished (one nail, one area of the face): a small cue. */
@@ -106,6 +123,9 @@ export type TreatmentResult = {
 
 export const TIER_RATE = [1, 1.5, 2.1, 2.6]
 export const TIER_RADIUS = [1, 1.16, 1.32, 1.42]
+/** Four hands: another player squeezing a spot this close (art px) speeds both squeezes up by ASSIST_RATE. */
+export const ASSIST_RANGE = 170
+export const ASSIST_RATE = 1.6
 /** Pseudo-layer the renderer uses for the wet, glossy look. Not measured. */
 export const WET = '$wet'
 /** The peel line runs from the chin (progress 0) to the hairline (1). */
@@ -247,15 +267,16 @@ export class TreatmentSession {
   hold = 0
   peel = { progress: 0, unstuck: false, released: false }
   choices: Record<number, number> = {}
-  lamp: { x: number; y: number } | null = null
-  /** The target the current press is on (hold targets): each spot takes its own press, and sliding off lets go. */
-  grip: number | null = null
+  /**
+   * Each player's grip: the target their current press is on (hold targets). Each spot takes its own press,
+   * sliding off or lifting lets go, and one player's press never takes another's spot away.
+   */
+  grips: Record<number, number | null> = {}
   elapsed = 0
   ready = false
   finished = false
   popped = 0
   extracted = 0
-  lampAssists = 0
   /** Feet: the customer's own foot (regions and toes), for both views. */
   readonly anatomy: FootAnatomy | null = null
   /** Coverage of the step's layer inside its region when the step began (erase steps). */
@@ -292,6 +313,30 @@ export class TreatmentSession {
   }
 
   get current(): StepDef | undefined { return this.def.steps[this.step] }
+  /** Spots finished side by side with the partner (four hands). */
+  get lampAssists(): number { return this.targets.filter(t => t.worked && t.assist).length }
+  /** Spots each player finished (pops, plugs, drops, gems...). */
+  get doneBy(): Record<number, number> {
+    const out: Record<number, number> = {}
+    for (const t of this.targets) if (t.worked && t.by !== undefined) out[t.by] = (out[t.by] ?? 0) + 1
+    return out
+  }
+  /** Player 0's grip (solo play). */
+  get grip(): number | null { return this.grips[0] ?? null }
+  /** The target a player is gripping, while it is still to do. */
+  gripOf(p: number): Target | null {
+    const id = this.grips[p]
+    return id === undefined || id === null ? null : this.targets.find(t => t.id === id && !t.done) ?? null
+  }
+  /** Is another player (not `p`) squeezing a spot within reach of this one? */
+  assisted(t: { x: number; y: number }, p: number): boolean {
+    for (const [q, id] of Object.entries(this.grips)) {
+      if (Number(q) === p || id === null) continue
+      const o = this.targets.find(x => x.id === id && !x.done)
+      if (o && dist(o.x, o.y, t.x, t.y) < ASSIST_RANGE) return true
+    }
+    return false
+  }
   get face(): FaceProfile | null { return this.profile.kind === 'face' ? this.profile : null }
   get hand(): HandProfile | null { return this.profile.kind === 'hand' ? this.profile : null }
   get foot(): FootProfile | null { return this.profile.kind === 'foot' ? this.profile : null }
@@ -555,7 +600,7 @@ export class TreatmentSession {
     const step = this.current
     if (!step) { this.finished = true; this.emit({ e: 'done' }); return }
     this.hold = 0
-    this.grip = null
+    this.grips = {}
     this.ready = false
     if (step.targets === 'patch' && !step.targetTag) this.makePatches()
     if (step.targetTag === 'eye') this.makeEyePatches()
@@ -678,17 +723,22 @@ export class TreatmentSession {
   /** Apply one op. Ops for a step that is no longer current are ignored (a late co-op message). */
   apply(op: Op) {
     if (this.finished) return
-    if (op.k === 'lamp') { this.lamp = op.on ? { x: op.x, y: op.y } : null; return }
     if (op.s !== this.step) return
     const step = this.current
     if (!step) return
     switch (op.k) {
-      case 'stroke': this.stroke(step, op.x0, op.y0, op.x1, op.y1); break
-      case 'hold': this.holdAt(step, op.x, op.y, op.dt); break
+      case 'stroke': {
+        this.stroke(step, op.x0, op.y0, op.x1, op.y1)
+        const pts = Array.isArray(op.pts) ? op.pts : []
+        for (let i = 0, x = op.x1, y = op.y1; i + 1 < pts.length; i += 2) { this.stroke(step, x, y, pts[i], pts[i + 1]); x = pts[i]; y = pts[i + 1] }
+        break
+      }
+      case 'hold': this.holdAt(step, op); break
+      case 'lift': this.grips[op.p ?? 0] = null; break
       case 'tick':
         if (step.gesture === 'hold' && step.passive) { this.hold = clamp(this.hold + op.dt * step.passive * this.speed() / (step.holdSeconds ?? 3)); this.emit({ e: 'hold', progress: this.hold }) }
         break
-      case 'tap': this.tap(step, op.x, op.y); break
+      case 'tap': this.tap(step, op); break
       case 'peel': this.peelTo(step, op.v, op.dt); break
       case 'choose':
         if (step.choice) { this.choices[this.step] = op.i; this.emit({ e: 'choose', index: op.i }) }
@@ -725,25 +775,31 @@ export class TreatmentSession {
       if (t.done) continue
       const d = dist(x, y, t.x, t.y)
       if (d > radius * 0.6 + hitRadius(t) * 0.4) continue
-      const lamp = this.lamp && dist(this.lamp.x, this.lamp.y, t.x, t.y) < 170 ? 2 : 1
-      t.progress = clamp(t.progress + (rate * lamp) / (0.6 + 0.6 * t.size))
+      t.progress = clamp(t.progress + rate / (0.6 + 0.6 * t.size))
       this.emit({ e: 'target', id: t.id, progress: t.progress })
-      if (t.progress >= 1) this.finishTarget(t, lamp > 1)
+      if (t.progress >= 1) this.finishTarget(t)
     }
   }
 
-  private nearest(x: number, y: number): Target | null {
+  /** The spot a press by player `p` lands on: the closest within reach, a spot nobody else holds first. */
+  private nearest(x: number, y: number, p: number): Target | null {
+    const held = new Set<number>()
+    for (const [q, id] of Object.entries(this.grips)) if (Number(q) !== p && id !== null) held.add(id)
     let best: Target | null = null, bestD = Infinity
     for (const t of this.stepTargets()) {
       if (t.done) continue
       const d = dist(x, y, t.x, t.y)
-      if (d <= hitRadius(t) && d < bestD) { best = t; bestD = d }
+      if (d > hitRadius(t)) continue
+      const rank = d + (held.has(t.id) ? 1e6 : 0)
+      if (rank < bestD) { best = t; bestD = rank }
     }
     return best
   }
 
-  private holdAt(step: StepDef, x: number, y: number, dt: number) {
-    dt = clamp(dt, 0, 0.5)
+  private holdAt(step: StepDef, op: Extract<Op, { k: 'hold' }>) {
+    const { x, y } = op
+    const dt = clamp(op.dt, 0, 0.5)
+    const p = op.p ?? 0
     if (step.gesture === 'hold') {
       const before = this.hold
       this.hold = clamp(this.hold + (dt * this.speed()) / (step.holdSeconds ?? 3))
@@ -755,16 +811,18 @@ export class TreatmentSession {
     }
     if (step.gesture !== 'targets') return
     // Only the spot this press landed on: a finger dragged across the face works nothing it slides onto.
-    const t = this.grip === null ? null : this.targets.find(o => o.id === this.grip && !o.done) ?? null
+    const t = this.gripOf(p)
     if (!t) return
     const time = holdTime(t)
     if (time <= 0) return
     // Sliding off the spot lets go; the next squeeze takes a fresh press.
-    if (dist(x, y, t.x, t.y) > hitRadius(t) * 1.4) { this.grip = null; t.gripped = false; return }
+    if (dist(x, y, t.x, t.y) > hitRadius(t) * 1.4) { this.grips[p] = null; t.gripped = false; return }
     // The second squeeze of a deep pimple needs a fresh press.
     if (t.stage === 1 && !t.gripped) return
-    const lamp = this.lamp && dist(this.lamp.x, this.lamp.y, t.x, t.y) < 170 ? 1.6 : 1
-    t.progress = clamp(t.progress + (dt * this.speed() * lamp) / time)
+    // Four hands: decided where the op was made (see Op), so every mirror squeezes alike.
+    if (op.a === undefined) op.a = this.assisted(t, p) ? 1 : 0
+    const boost = op.a ? ASSIST_RATE : 1
+    t.progress = clamp(t.progress + (dt * this.speed() * boost) / time)
     this.emit({ e: 'target', id: t.id, progress: t.progress })
     if (t.progress < 1) return
     if (t.stage === 2) {
@@ -772,37 +830,54 @@ export class TreatmentSession {
       t.stage = 1
       t.progress = 0
       t.gripped = false
-      this.grip = null
+      this.release(t.id)
       t.size = Math.max(0.8, t.size * 0.85)
       this.emit({ e: 'targetStage', id: t.id, x: t.x, y: t.y, size: t.size })
       return
     }
-    this.finishTarget(t, lamp > 1)
+    this.finishTarget(t)
   }
 
-  private tap(step: StepDef, x: number, y: number) {
+  /** Everyone gripping this spot lets go of it. */
+  private release(id: number) {
+    for (const q of Object.keys(this.grips)) if (this.grips[Number(q)] === id) this.grips[Number(q)] = null
+  }
+
+  private tap(step: StepDef, op: Extract<Op, { k: 'tap' }>) {
     if (step.gesture !== 'targets') return
-    const t = this.nearest(x, y)
-    if (!t) { this.grip = null; this.emit({ e: 'miss', x, y }); return }
+    const { x, y } = op
+    const p = op.p ?? 0
+    // The spot is chosen once, where the press was made. A mirror takes that same spot even if it was finished
+    // there meanwhile (the press then does nothing), so every screen agrees on every grip.
+    if (op.t === undefined) {
+      const near = this.nearest(x, y, p)
+      op.t = near?.id ?? 0
+      op.a = near && this.assisted(near, p) ? 1 : 0
+    }
+    const t = op.t ? this.stepTargets().find(o => o.id === op.t && dist(x, y, o.x, o.y) <= hitRadius(o) + 1) : undefined
+    if (!t) { this.grips[p] = null; this.emit({ e: 'miss', x, y }); return }
+    t.by = t.by === undefined ? p : Math.min(t.by, p)
+    if (op.a) t.assist = true
     // A press on a pimple or a blackhead grips that one spot (and is the fresh grip a deep one's second
     // squeeze needs); taps finish tap targets.
-    if (holdTime(t) > 0) { t.gripped = true; this.grip = t.id; return }
+    if (holdTime(t) > 0) { this.grips[p] = t.done ? null : t.id; if (!t.done) t.gripped = true; return }
+    if (t.done) return
     t.progress = 1
-    this.finishTarget(t, false)
+    this.finishTarget(t)
   }
 
-  private finishTarget(t: Target, lamp: boolean) {
+  private finishTarget(t: Target) {
     t.done = true
     t.progress = 1
-    if (this.grip === t.id) this.grip = null
-    if (lamp) this.lampAssists++
+    t.worked = true
+    this.release(t.id)
     if (t.kind === 'whitehead') { this.popped++; this.stampLayer('marks', t.x, t.y, 12 + 9 * t.size, 0.85, 'skin') }
     if (t.kind === 'blackhead') { this.extracted++; this.stampLayer('marks', t.x, t.y, 8 + 4 * t.size, 0.3, 'skin') }
     if (t.kind === 'drop') { this.stampLayer('serum', t.x, t.y, 96, 1, 'skin'); this.stampLayer(WET, t.x, t.y, 100, 0.9, 'everywhere') }
     if (t.kind === 'gem') t.n = this.targets.filter(o => o.kind === 'gem' && o.done).length
     // The ingrown edge eased out of the skin: the swollen fold calms down.
     if (t.kind === 'ingrown') this.resolveLayer('top.swelling', 0, 'everywhere')
-    this.emit({ e: 'targetDone', id: t.id, kind: t.kind, x: t.x, y: t.y, size: t.size, n: t.n })
+    this.emit({ e: 'targetDone', id: t.id, kind: t.kind, x: t.x, y: t.y, size: t.size, n: t.n, by: t.by ?? -1 })
   }
 
   private peelTo(step: StepDef, v: number, dt: number) {
@@ -900,7 +975,8 @@ export class TreatmentSession {
     const optionalDone = steps.filter((s, i) => s.optional && this.status[i] === 'done').length
     const colorStep = steps.findIndex(s => s.choice === 'polish')
     const wishMatched = this.wish === null || colorStep < 0 || this.choices[colorStep] === undefined ? null : this.choices[colorStep] === this.wish
-    const fourHands = this.lampAssists >= 3
+    // Four hands: squeezing side by side a few times, or two players each doing a real share of the spots.
+    const fourHands = this.lampAssists >= 3 || Object.values(this.doneBy).filter(n => n >= 2).length >= 2
     const thoroughness = clamp((done / Math.max(1, required)) * 0.9 + 0.06 * optionalDone + (fourHands ? 0.04 : 0) + (wishMatched ? 0.05 : 0))
     return { treatment: this.def.id, seconds: Math.round(this.elapsed), par: this.def.parSeconds, required, done, skipped, optionalDone, popped: this.popped, extracted: this.extracted, fourHands, wishMatched, disaster: this.disaster, thoroughness }
   }
@@ -911,7 +987,7 @@ export class TreatmentSession {
   snapshot(): SessionSnapshot {
     const layers: Record<string, string> = {}
     for (const [id, grid] of Object.entries(this.layers)) layers[id] = encodeGrid(grid)
-    return { step: this.step, layers, targets: this.targets.map(t => ({ ...t })), status: [...this.status], hold: this.hold, peel: { ...this.peel }, choices: { ...this.choices }, popped: this.popped, extracted: this.extracted, startSum: this.startSum, ready: this.ready, elapsed: this.elapsed, grip: this.grip }
+    return { step: this.step, layers, targets: this.targets.map(t => ({ ...t })), status: [...this.status], hold: this.hold, peel: { ...this.peel }, choices: { ...this.choices }, popped: this.popped, extracted: this.extracted, startSum: this.startSum, ready: this.ready, elapsed: this.elapsed, grips: { ...this.grips } }
   }
 
   restore(snap: SessionSnapshot) {
@@ -928,7 +1004,7 @@ export class TreatmentSession {
     this.startSum = snap.startSum
     this.ready = snap.ready
     this.elapsed = snap.elapsed ?? this.elapsed
-    this.grip = snap.grip ?? null
+    this.grips = snap.grips ? { ...snap.grips } : snap.grip !== undefined && snap.grip !== null ? { 0: snap.grip } : {}
     this.finished = this.step >= this.def.steps.length
     this.events.length = 0
   }
@@ -948,6 +1024,8 @@ export type SessionSnapshot = {
   ready: boolean
   /** Seconds the treatment has run (a helper who takes over keeps counting from here). */
   elapsed?: number
-  /** The spot the current press is squeezing, if any. */
+  /** Each player's grip (the spot their press is squeezing). */
+  grips?: Record<number, number | null>
+  /** Older snapshots: the one grip. */
   grip?: number | null
 }

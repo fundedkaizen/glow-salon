@@ -39,6 +39,8 @@ export type TreatmentViewOptions = {
   role: 'lead' | 'helper'
   leadName: string
   playerId: number
+  /** Co-op: the players' names by number, for "+1 Mira" and the pop counts. */
+  names?: Record<number, string>
   mood: number
   ambience: number
   onOps: (ops: Op[]) => void
@@ -49,8 +51,12 @@ export type TreatmentViewOptions = {
 
 type TargetView = { t: Target; root: Container; parts: Sprite[]; flash: number; gone: boolean }
 
-/** The magnifier lens: radius in art units, magnification, texture size. */
-const LENS_R = 136, LENS_ZOOM = 1.8, LENS_PX = 384
+/** Co-op ops go out at most this often (seconds): about 12 messages a second, the per-frame ops merged. */
+const SEND_EVERY = 1 / 12
+/** Both players worked within this many seconds of each other: "Four hands!". */
+const TOGETHER = 0.8
+const FINGERS = ['thumb', 'index finger', 'middle finger', 'ring finger', 'little finger']
+const TOES = ['big toe', 'second toe', 'middle toe', 'fourth toe', 'little toe']
 const LOOP_FOR: Record<string, LoopName> = { foam: 'foam', water: 'water', steam: 'steam', fan: 'fan', uv: 'hum', rasp: 'rasp', push: 'scrape', loop: 'scrape', brush: 'brushWet', bath: 'soak' }
 type Side = 'top' | 'sole'
 /** A clipped toenail or a shard of one: it falls, lands on the towel below the toes and lies there a while. */
@@ -80,8 +86,19 @@ export class TreatmentView {
   private foam: FoamField
   private hud: TreatmentHud
   private tool = new Sprite()
-  private partner = new Graphics()
-  private lampSprite = new Container()
+  /** The partner's hand: their tool, with a ring in their colour. */
+  private partner = new Container()
+  private partnerRing = new Graphics()
+  private partnerTool = new Sprite()
+  private partnerPos = { x: 512, y: 540, gx: 512, gy: 540, id: -1, seen: -99 }
+  /** A ring in this player's colour round their own tool (co-op only). */
+  private myRing = new Graphics()
+  private assistRing = new Container()
+  /** Someone else is at this station (a helper, or ops from a partner seen). */
+  private coop = false
+  private workedAt = -99
+  private fourShown = false
+  private helpTimer = 0
   private towel: Sprite | null = null
   private uvLamp: Sprite | null = null
   private uvGlow: Sprite | null = null
@@ -128,8 +145,6 @@ export class TreatmentView {
   private peelShown = 0
   private peelGrip: { x: number; y: number } | null = null
   private peelTension = 0
-  private lampTimer = 0
-  private myLamp: { x: number; y: number } | null = null
   private beforeRT: RenderTexture | null = null
   private afterRT: RenderTexture | null = null
   private captureIn = 2
@@ -234,12 +249,19 @@ export class TreatmentView {
     this.root.addChild(this.world)
     this.hint.anchor.set(0.5)
     this.hint.visible = false
-    this.toolLayer.addChild(this.hint, this.partner, this.lampSprite, this.tool)
+    // The colour rings sit over the tools' tips, so a big brush never hides whose hand it is.
+    this.partner.addChild(this.partnerTool, this.partnerRing)
+    this.partner.alpha = 0
+    const mine = PLAYER_COLORS[opts.playerId] ?? 0xffffff
+    this.myRing.circle(0, 0, 30).stroke({ width: 6, color: mine, alpha: 0.9 }).circle(0, 0, 30).stroke({ width: 14, color: mine, alpha: 0.25 })
+    this.myRing.visible = false
+    this.coop = opts.role === 'helper'
+    this.toolLayer.addChild(this.hint, this.assistRing, this.partner, this.tool, this.myRing)
     this.aim.circle(0, 0, 13).stroke({ width: 2.5, color: 0xffffff, alpha: 0.95 }).circle(0, 0, 13).stroke({ width: 5, color: 0xe7799c, alpha: 0.35 }).circle(0, 0, 2).fill({ color: 0xffffff })
     this.aim.visible = false
     this.toolLayer.addChild(this.aim)
     this.tool.visible = false
-    this.buildLamp()
+    this.buildAssist()
     this.buildFeatures()
     this.buildTargets()
     for (const [id, grid] of Object.entries(this.session.layers)) this.initLayer(id, grid)
@@ -475,37 +497,16 @@ export class TreatmentView {
   }
 
   /**
-   * The magnifier lamp: a real 1.8x view of the face through a round lens (the photo layer rendered again,
-   * magnified, into a texture each frame it shows), warm light spilling around it, a pastel rim with a
-   * bright inner edge, and a curved glint across the glass.
+   * Four hands: a soft warm glow ring round the two spots when both players squeeze close together (both go
+   * faster). Just a light extra; it never stops anyone doing their own work.
    */
-  private buildLamp() {
+  private buildAssist() {
     const glow = new Sprite(bits.glow())
-    glow.anchor.set(0.5); glow.scale.set(5.2); glow.tint = 0xfff1c8; glow.alpha = 0.45; glow.blendMode = 'add'
-    this.lensRT = RenderTexture.create({ width: LENS_PX, height: LENS_PX })
-    const view = new Sprite(this.lensRT)
-    view.anchor.set(0.5)
-    view.scale.set((LENS_R * 2 + 8) / LENS_PX)
-    const mask = new Graphics().circle(0, 0, LENS_R).fill(0xffffff)
-    view.mask = mask
-    const shade = new Graphics().circle(0, 0, LENS_R).stroke({ width: 22, color: 0x6a3a4a, alpha: 0.18 })
-    const ring = new Graphics().circle(0, 0, 150).stroke({ width: 18, color: 0xf7c6d4 }).circle(0, 0, 141).stroke({ width: 3, color: 0xffffff, alpha: 0.95 }).circle(0, 0, 159).stroke({ width: 2, color: 0xb8859a, alpha: 0.6 })
-    const glint = new Graphics().arc(0, 0, 118, Math.PI * 1.08, Math.PI * 1.42).stroke({ width: 10, color: 0xffffff, alpha: 0.5, cap: 'round' }).circle(-44, -96, 6).fill({ color: 0xffffff, alpha: 0.7 })
-    this.lampSprite.addChild(glow, view, mask, shade, ring, glint)
-    this.lampSprite.visible = false
-  }
-  private lensRT: RenderTexture | null = null
-
-  /** Render the magnified face into the lens (only while the lamp shows). */
-  private drawLens() {
-    if (!this.lampSprite.visible || !this.lensRT) return
-    const lx = this.lampSprite.x, ly = this.lampSprite.y
-    const k = LENS_PX / (LENS_R * 2 + 8) * LENS_ZOOM
-    const parent = this.photoRoot.parent
-    const index = parent ? parent.getChildIndex(this.photoRoot) : 0
-    this.photoRoot.removeFromParent()
-    this.opts.app.renderer.render({ container: this.photoRoot, target: this.lensRT, clear: true, transform: new Matrix().translate(-lx, -ly).scale(k, k).translate(LENS_PX / 2, LENS_PX / 2) })
-    parent?.addChildAt(this.photoRoot, index)
+    glow.anchor.set(0.5); glow.scale.set(4.2); glow.tint = 0xfff1c8; glow.alpha = 0.4; glow.blendMode = 'add'
+    const ring = new Graphics().circle(0, 0, 100).stroke({ width: 10, color: 0xffe3a8, alpha: 0.55 }).circle(0, 0, 100).stroke({ width: 3, color: 0xffffff, alpha: 0.8 })
+    this.assistRing.addChild(glow, ring)
+    this.assistRing.visible = false
+    this.assistRing.alpha = 0
   }
 
   // ------------------------------------------------------------------ layout & camera
@@ -543,7 +544,8 @@ export class TreatmentView {
   // ------------------------------------------------------------------ steps
 
   private get step(): StepDef | undefined { return this.session.current }
-  private get lampRole() { return this.opts.role === 'helper' && !!this.step?.lamp }
+  private get me() { return this.opts.playerId }
+  private nameOf(p: number) { return this.opts.names?.[p] ?? (p === this.me ? 'You' : this.opts.role === 'helper' ? this.opts.leadName : 'Partner') }
 
   private enterStep(first = false) {
     const step = this.step
@@ -569,6 +571,10 @@ export class TreatmentView {
     this.tool.texture = art.texture
     this.tool.anchor.set(art.tip[0] / art.size, art.tip[1] / art.size)
     this.tool.scale.set(step.tool === 'towel' ? 1 : 0.9)
+    this.partnerTool.texture = art.texture
+    this.partnerTool.anchor.copyFrom(this.tool.anchor)
+    this.partnerTool.scale.set(this.tool.scale.x)
+    this.helpTimer = 0
     const loopName = LOOP_FOR[step.sound] ?? (step.id === 'soak' ? 'soak' : undefined)
     if (loopName) this.loop = sfx.loop(step.id === 'soak' ? 'soak' : loopName)
     if (!first) { sfx.toolUp(step.tool); sfx.whoosh() }
@@ -602,11 +608,22 @@ export class TreatmentView {
 
   /** Apply a local op and queue it for the partner. */
   private local(op: Op) {
+    // Every press carries who made it, so each player keeps their own grip on every screen.
+    if (op.k === 'stroke' || op.k === 'hold' || op.k === 'tap' || op.k === 'lift') op.p = this.me
+    // The session settles what depends on timing (the spot a tap takes, a squeeze's four-hands boost) into the op.
     this.session.apply(op)
+    if (op.k === 'stroke' || op.k === 'hold' || op.k === 'tap') this.workedAt = this.time
     const last = this.outbox[this.outbox.length - 1]
     // Merge the per-frame ops so the network sees a few messages a second.
-    if (last && last.k === op.k && (op.k === 'hold' || op.k === 'tick' || op.k === 'peel') && (last as { s: number }).s === (op as { s: number }).s) {
-      if (op.k === 'hold' && last.k === 'hold' && Math.hypot(last.x - op.x, last.y - op.y) < 20) { last.dt += op.dt; return }
+    if (last && last.k === op.k && (op.k === 'hold' || op.k === 'tick' || op.k === 'peel' || op.k === 'stroke') && (last as { s: number }).s === (op as { s: number }).s) {
+      if (op.k === 'stroke' && last.k === 'stroke') {
+        // A stroke that carries on from the last one's end: one op through all the points (the same segments).
+        const pts = last.pts ??= []
+        const endX = pts.length ? pts[pts.length - 2] : last.x1, endY = pts.length ? pts[pts.length - 1] : last.y1
+        if (endX === op.x0 && endY === op.y0 && pts.length < 240) { pts.push(op.x1, op.y1); return }
+        if (!pts.length) delete last.pts
+      }
+      if (op.k === 'hold' && last.k === 'hold' && last.a === op.a && last.dt + op.dt <= 0.5 && Math.hypot(last.x - op.x, last.y - op.y) < 20) { last.dt += op.dt; return }
       if (op.k === 'tick' && last.k === 'tick') { last.dt += op.dt; return }
       if (op.k === 'peel' && last.k === 'peel') { last.dt += op.dt; last.v = op.v; return }
     }
@@ -615,10 +632,14 @@ export class TreatmentView {
 
   /** Ops from the co-op partner at this station. */
   applyRemote(ops: Op[], by: number) {
+    this.coop = true
     for (const op of ops) {
+      if (!op || typeof op !== 'object') continue
+      // The sender is whoever the link says sent it (the op's own `p` only when the link cannot tell).
+      if (op.k === 'stroke' || op.k === 'hold' || op.k === 'tap' || op.k === 'lift') op.p = by !== this.me ? by : op.p ?? by
       this.session.apply(op)
-      if (op.k === 'lamp') this.partnerLamp(op.on ? op : null)
-      if (op.k === 'stroke' || op.k === 'hold' || op.k === 'tap') this.partnerAt(op.k === 'stroke' ? op.x1 : op.x, op.k === 'stroke' ? op.y1 : op.y, by)
+      if (op.k === 'stroke') { const pts = op.pts ?? []; this.partnerAt(pts.length > 1 ? pts[pts.length - 2] : op.x1, pts.length > 1 ? pts[pts.length - 1] : op.y1, op.p ?? by) }
+      if (op.k === 'hold' || op.k === 'tap') this.partnerAt(op.x, op.y, op.p ?? by)
     }
   }
 
@@ -672,15 +693,104 @@ export class TreatmentView {
     this.enterStep(true)
   }
 
+  /** The partner's hand moved (their ops arrive about 12 times a second; the tool glides between them). */
   private partnerAt(x: number, y: number, by: number) {
-    this.partner.clear().circle(0, 0, 34).stroke({ width: 6, color: PLAYER_COLORS[by] ?? 0xffffff, alpha: 0.9 }).circle(0, 0, 8).fill({ color: PLAYER_COLORS[by] ?? 0xffffff, alpha: 0.9 })
-    this.partner.position.set(x, y)
-    this.partner.alpha = 1
+    const pp = this.partnerPos
+    if (pp.id !== by) {
+      const c = PLAYER_COLORS[by] ?? 0xffffff
+      this.partnerRing.clear().circle(0, 0, 30).stroke({ width: 6, color: c, alpha: 0.9 }).circle(0, 0, 30).stroke({ width: 14, color: c, alpha: 0.25 })
+      pp.id = by
+    }
+    if (this.time - pp.seen > 0.6) { pp.x = x; pp.y = y }
+    pp.gx = x; pp.gy = y
+    pp.seen = this.time
   }
 
-  private partnerLamp(p: { x: number; y: number } | null) {
-    this.lampSprite.visible = !!p
-    if (p) this.lampSprite.position.set(p.x, p.y)
+  /** The partner's tool and colour ring, the glow ring when both squeeze close together, the "Four hands!" badge. */
+  private updateCoop(dt: number) {
+    const pp = this.partnerPos
+    const live = this.time - pp.seen
+    const k = 1 - Math.exp(-dt * 14)
+    pp.x += (pp.gx - pp.x) * k; pp.y += (pp.gy - pp.y) * k
+    this.partner.position.set(pp.x, pp.y)
+    const hideTool = this.step?.gesture === 'hold' && (this.step.tool === 'towel' || this.step.tool === 'uvLamp' || this.step.tool === 'bath')
+    this.partnerTool.visible = !hideTool
+    this.partner.alpha += ((live < 0.5 && !this.reveal ? 0.9 : 0) - this.partner.alpha) * Math.min(1, dt * 8)
+    // Four hands: both players' squeezes close together (the session's boost), a soft warm ring round both.
+    const mine = this.down ? this.session.gripOf(this.me) : null
+    const theirs = pp.id >= 0 ? this.session.gripOf(pp.id) : null
+    const near = !!mine && !!theirs && live < 0.5 && this.session.assisted(mine, this.me)
+    if (near) this.assistRing.position.set((mine!.x + theirs!.x) / 2, (mine!.y + theirs!.y) / 2)
+    const ra = this.assistRing
+    ra.alpha += ((near ? 1 : 0) - ra.alpha) * Math.min(1, dt * 6)
+    ra.visible = ra.alpha > 0.02
+    // Just round the two spots (the ring's radius is 100).
+    if (ra.visible) ra.scale.set((near ? Math.max(0.6, (Math.hypot(mine!.x - theirs!.x, mine!.y - theirs!.y) / 2 + 45) / 100) : ra.scale.x) * (1 + Math.sin(this.time * 4) * 0.03))
+    // The badge: both working at once.
+    const together = this.coop && !this.reveal && live < TOGETHER && this.time - this.workedAt < TOGETHER
+    if (together !== this.fourShown) { this.fourShown = together; this.hud.fourHands(together) }
+    // The helper's step card says what they can do, following the lead around.
+    if (this.opts.role === 'helper' && (this.helpTimer -= dt) <= 0) { this.helpTimer = 1; this.hud.setHint(this.helpHint()) }
+  }
+
+  /** What the helper can do on this step, e.g. "Help: pop the ones near the chin". */
+  private helpHint(): string {
+    const step = this.step
+    if (!step) return ''
+    const pp = this.partnerPos
+    const lead = this.time - pp.seen < 5 ? { x: pp.gx, y: pp.gy } : { x: step.camera.x, y: step.camera.y }
+    const side = lead.x < 512 ? 'right' : 'left'
+    switch (step.gesture) {
+      case 'targets': case 'sweep': {
+        const open = this.session.stepTargets().filter(t => !t.done)
+        if (!open.length) return 'Help: all done here, nice teamwork'
+        // The spot farthest from where the lead works, so the two of you never reach for the same one.
+        const t = open.reduce((a, b) => (Math.hypot(b.x - lead.x, b.y - lead.y) > Math.hypot(a.x - lead.x, a.y - lead.y) ? b : a))
+        const where = this.placeOf(t)
+        const verb: Partial<Record<Target['kind'], string>> = { whitehead: 'pop the ones', blackhead: 'lift the ones', drop: 'drop the serum', patch: 'stick the patches', tip: 'clip the nails', gem: 'add gems', hangnail: 'snip the hangnails', corn: 'ease out the corns', splinter: 'pull the splinters', ingrown: 'ease the nail edge' }
+        return `Help: ${verb[t.kind] ?? 'work the ones'} ${where}`
+      }
+      case 'hold': return 'Help: hold too, two hands go twice as fast'
+      case 'peel': return 'Help: grab the edge and peel it up too'
+      default:
+        if (step.choice && this.session.choices[this.session.step] === undefined) return 'Your partner picks the colour, then paint with them'
+        return `Help: work the ${side} side, your strokes count too`
+    }
+  }
+
+  /** A target's place, in words: "near the chin", "on the left of the nose", "on the ring finger". */
+  private placeOf(t: Target): string {
+    if (this.feet) {
+      if (t.view === 'sole') return t.y > 640 ? 'near the heel' : 'near the toes'
+      return t.n !== undefined && TOES[t.n] ? `on the ${TOES[t.n]}` : 'on the toes'
+    }
+    if (this.opts.treatment === 'nails') return t.n !== undefined && FINGERS[t.n] ? `on the ${FINGERS[t.n]}` : 'on the nails'
+    if (t.kind === 'blackhead') return Math.abs(t.x - FACE.nose.x) < 20 ? 'on the tip of the nose' : `on the ${t.x < FACE.nose.x ? 'left' : 'right'} of the nose`
+    if (t.y < 480) return 'on the forehead'
+    if (t.y > 790) return 'near the chin'
+    if (Math.abs(t.x - 512) < 70) return 'on the nose'
+    return `on the ${t.x < 512 ? 'left' : 'right'} cheek`
+  }
+
+  /** "+1 Mira" in the player's colour over a spot they finished. */
+  private credit(x: number, y: number, by: number) {
+    const tx = new Text({ text: `+1 ${this.nameOf(by)}`, style: { fontFamily: 'Fredoka, Nunito, sans-serif', fontSize: 30, fontWeight: '700', fill: PLAYER_COLORS[by] ?? 0xffffff, stroke: { color: 0xffffff, width: 6 } } })
+    tx.anchor.set(0.5)
+    tx.position.set(x, y - 40)
+    this.toolLayer.addChild(tx)
+    this.animate(1.1, k => {
+      tx.y = y - 40 - k * 70
+      tx.alpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3
+      tx.scale.set(0.8 + Math.min(1, k * 5) * 0.25)
+      if (k >= 1) tx.destroy()
+    })
+  }
+
+  private updateScores() {
+    if (!this.coop) return
+    const ids = new Set([this.me, ...Object.keys(this.session.doneBy).map(Number)])
+    if (this.partnerPos.id >= 0) ids.add(this.partnerPos.id)
+    this.hud.setScores([...ids].sort((a, b) => a - b).map(p => ({ name: this.nameOf(p), color: PLAYER_COLORS[p] ?? 0xffffff, n: this.session.doneBy[p] ?? 0 })))
   }
 
   // ------------------------------------------------------------------ input
@@ -718,7 +828,8 @@ export class TreatmentView {
         this.down = false
         this.grabbing = false
         if (this.reveal) this.reveal.dragging = false
-        if (this.myLamp) { this.myLamp = null; this.local({ k: 'lamp', x: 0, y: 0, on: false }); this.lampSprite.visible = false }
+        // Letting go of a spot: it is free for the partner, and their squeeze no longer counts as side by side.
+        if (this.step?.gesture === 'targets' && this.session.grips[this.me] != null) this.local({ k: 'lift', s: this.session.step })
       }
     }
   }
@@ -735,7 +846,6 @@ export class TreatmentView {
   private onPress() {
     const step = this.step
     if (!step || this.session.finished) return
-    if (this.lampRole) return
     // A press on a target: taps finish tap targets; on a pimple it is a fresh grip (deep ones need two).
     if (step.gesture === 'targets') this.local({ k: 'tap', s: this.session.step, x: this.pos.x, y: this.pos.y })
     if (step.gesture === 'peel') {
@@ -748,8 +858,7 @@ export class TreatmentView {
 
   /** The spot the current press is squeezing. */
   private gripped(): Target | null {
-    const id = this.session.grip
-    return id === null ? null : this.session.targets.find(t => t.id === id && !t.done) ?? null
+    return this.session.gripOf(this.me)
   }
 
   /** Per-frame input: strokes, holds, the peel, the lamp. */
@@ -764,13 +873,7 @@ export class TreatmentView {
     let level = 0
     if (step && !this.session.finished && !this.reveal && this.down) {
       this.idle = 0
-      if (this.lampRole) {
-        this.myLamp = { ...this.pos }
-        this.lampSprite.visible = true
-        this.lampSprite.position.set(this.pos.x, this.pos.y)
-        this.lampTimer -= dt
-        if (this.lampTimer <= 0) { this.lampTimer = 0.08; this.local({ k: 'lamp', x: this.pos.x, y: this.pos.y, on: true }) }
-      } else switch (step.gesture) {
+      switch (step.gesture) {
         case 'erase': case 'paint': case 'rub': case 'sweep': {
           const moved = Math.hypot(this.pos.x - this.last.x, this.pos.y - this.last.y)
           const water = step.sound === 'water'
@@ -815,7 +918,11 @@ export class TreatmentView {
       switch (e.e) {
         case 'stamp': this.onStamp(e); break
         case 'target': this.onTargetProgress(e.id, e.progress); break
-        case 'targetDone': this.onTargetDone(e); break
+        case 'targetDone':
+          this.onTargetDone(e)
+          // Co-op: who did it, in their colour, and the running count for each player.
+          if (this.coop && e.by >= 0) { this.credit(e.x, e.y, e.by); this.updateScores() }
+          break
         case 'targetStage': this.onTargetStage(e.id); break
         case 'miss': sfx.miss(this.pan(e.x)); break
         case 'ready': this.onReady(); break
@@ -1661,7 +1768,7 @@ export class TreatmentView {
     this.handleEvents(this.session.drain())
     // Network: send the batched ops a few times a second.
     this.sendTimer -= dt
-    if (this.outbox.length && (this.sendTimer <= 0 || this.outbox.length > 30)) { this.opts.onOps(this.outbox); this.outbox = []; this.sendTimer = 0.06 }
+    if (this.outbox.length && (this.sendTimer <= 0 || this.outbox.length > 30)) { this.opts.onOps(this.outbox); this.outbox = []; this.sendTimer = SEND_EVERY }
     this.progressTimer -= dt
     if (this.progressTimer <= 0 && this.opts.role === 'lead' && !this.session.finished) { this.progressTimer = 0.5; this.opts.onProgress(this.session.step, this.session.def.steps.length, this.session.progress()) }
     this.hud.setProgress(this.session.progress() / Math.max(0.01, this.session.threshold()))
@@ -1679,7 +1786,7 @@ export class TreatmentView {
       f.g.x += f.vx * dt; f.g.y += f.vy * dt; f.g.rotation += f.spin * dt; f.g.alpha = Math.max(0, 1 - f.t * 1.2)
       if (f.t > 1.2) { f.g.destroy({ children: true }); this.flying.splice(i, 1) }
     }
-    this.partner.alpha *= Math.exp(-dt * 1.5)
+    this.updateCoop(dt)
     this.foam.update(dt, this.time)
     this.fx.update(dt)
     for (const sf of this.surfaces) sf.update(dt)
@@ -1688,7 +1795,6 @@ export class TreatmentView {
     const warming = this.frames > 3 && (this.surface.warmOne() || this.surfaces.some(sf => sf !== this.surface && sf.warmOne()))
     if (this.frames > 3 && !warming && this.towel && this.assets.towel && !this.assets.towel.made) this.towel.texture = this.assets.towel.get()
     this.placeCamera(dt)
-    this.drawLens()
     if (this.captureIn > 0 && --this.captureIn === 0) this.beforeRT = this.capture()
   }
 
@@ -1698,7 +1804,7 @@ export class TreatmentView {
     // Warmth from the steam fades slowly; the dewy sheen stays after the moisturiser.
     skinU[0] = Math.max(0, skinU[0] - dt * 0.03)
     if (!step) return
-    const holding = this.down && !this.lampRole
+    const holding = this.down
     if (this.isTowel(step) && this.towel) {
       // The towel drops onto the face while held (a little settle), steam curls up from it.
       const on = holding || this.session.hold > 0.02
@@ -1768,14 +1874,17 @@ export class TreatmentView {
   }
 
   private updateTargets(dt: number) {
-    const pressing = this.down && this.step?.gesture === 'targets' && !this.lampRole ? this.gripped() : null
+    const pressing = this.down && this.step?.gesture === 'targets' ? this.gripped() : null
+    // Spots the partner is squeezing (their grip holds until they lift): they swell on this screen too.
+    const theirs = new Set<number>()
+    for (const [q, id] of Object.entries(this.session.grips)) if (Number(q) !== this.me && id !== null) theirs.add(id)
     for (const tv of this.targets.values()) {
       if (tv.gone) continue
       const t = tv.t
       tv.flash = Math.max(0, tv.flash - dt * 3)
       if (t.kind === 'whitehead') {
         const p = t.progress
-        const pressed = pressing?.id === t.id
+        const pressed = pressing?.id === t.id || theirs.has(t.id)
         const deep = t.stage === 2
         const jig = pressed ? Math.sin(this.time * 55) * 0.05 * p : 0
         const [halo, dome, blanch, head] = tv.parts
@@ -1804,8 +1913,10 @@ export class TreatmentView {
   private updateTool(dt: number) {
     const step = this.step
     const hideFor = step?.gesture === 'hold' && (step.tool === 'towel' || step.tool === 'uvLamp' || step.tool === 'bath')
-    const show = !!step && !this.reveal && !this.session.finished && !hideFor && !this.lampRole && (this.down || this.hovering)
+    const show = !!step && !this.reveal && !this.session.finished && !hideFor && (this.down || this.hovering)
     this.tool.visible = show
+    // Co-op: this player's own tool wears their colour, so both hands are easy to tell apart.
+    this.myRing.visible = show && this.coop
     this.hud.toolAt(show ? this.world.y + (this.toolPos.y + 140) * this.world.scale.x : null)
     if (!show) return
     const k = 1 - Math.exp(-dt * 30)
@@ -1820,6 +1931,7 @@ export class TreatmentView {
     const base = step?.tool === 'towel' ? 1 : 0.9
     const pinch = step?.gesture === 'targets' && this.down ? 0.08 : 0
     this.tool.position.set(this.toolPos.x, this.toolPos.y)
+    this.myRing.position.set(this.pos.x, this.pos.y)
     // Peeling: the fingers pinch the rolled lip of the sheet instead of floating at the pointer.
     if (step?.gesture === 'peel' && this.grabbing && this.peelGrip) { this.tool.position.set(this.peelGrip.x, this.peelGrip.y); rot = -0.2 }
     this.tool.rotation = rot
@@ -1848,7 +1960,9 @@ export class TreatmentView {
     this.loop?.stop(); this.loop = null
     this.hud.hideControls()
     this.tool.visible = false
-    this.lampSprite.visible = false
+    this.assistRing.visible = false
+    this.partner.visible = false
+    this.myRing.visible = false
     this.foam.clear()
     this.result = this.session.result()
     // The after photo shows the top of the foot: the painted toenails.
@@ -1982,7 +2096,6 @@ export class TreatmentView {
     this.bubble?.remove()
     for (const sf of this.surfaces) sf.destroy()
     this.beforeRT?.destroy(true)
-    this.lensRT?.destroy(true)
     this.afterRT?.destroy(true)
     this.root.destroy({ children: true })
     if (this.feet) { destroyFootAssets(this.feet.assets.top); destroyFootAssets(this.feet.assets.sole) }

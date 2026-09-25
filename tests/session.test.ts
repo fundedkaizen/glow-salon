@@ -282,13 +282,14 @@ export function run() {
   }
   check('nails: wish matched', n.result().wishMatched === true)
   check('nails: one tip per long nail', n.targets.filter(t => t.kind === 'tip').length === handProfile(21, false).grown.filter(x => x > 0).length)
-  // Lamp (four hands) doubles the loop's speed.
+  // The lamp bonus (four hands) is no longer a magnifier the helper must hold: a second player squeezing a
+  // blackhead close by speeds the loop up (both go faster), while doing their own work.
   const lampSeed = seedWhere(seed => faceProfile(seed, false).blackheads >= 6)
   const extract = planTreatment('facial', lampSeed, false).def.steps.findIndex(x => x.id === 'extract')
   const solo = new TreatmentSession({ treatment: 'facial', seed: lampSeed, startStep: extract })
   const duo = new TreatmentSession({ treatment: 'facial', seed: lampSeed, startStep: extract })
-  const bh = solo.stepTargets()[0]
-  duo.apply({ k: 'lamp', x: bh.x, y: bh.y, on: true })
+  const [bh, bh2] = solo.stepTargets()
+  duo.apply({ k: 'tap', s: extract, x: bh2.x, y: bh2.y, p: 1 })
   for (const s of [solo, duo]) { s.apply({ k: 'tap', s: extract, x: bh.x, y: bh.y }); s.apply({ k: 'hold', s: extract, x: bh.x, y: bh.y, dt: 0.1 }) }
-  check('lamp speeds extraction', duo.stepTargets()[0].progress > solo.stepTargets()[0].progress)
+  check('lamp bonus: a partner squeezing close by speeds extraction', duo.stepTargets()[0].progress > solo.stepTargets()[0].progress)
 }
