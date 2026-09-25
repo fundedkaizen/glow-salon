@@ -56,8 +56,11 @@ export type ModelEntry = {
  *   lighter main). Keep `vertexColors` on (the hair's soft occlusion is in COLOR_0).
  * - Hair: `hair[look.hairStyle]`. Accessories by Look.accessory: 1 bow, 2 glasses, 3 flower clip; `<hair>` is the
  *   hair style's name (each bow and flower sits on its own hair style's surface).
- * - Faces are Quaternius' sculpted faces (in the Skin texture on head_<kind>), with bigger, opened eyes. A customer's
- *   face differs by skin tone, eye colour (the Eyes material) and brow colour.
+ * - Faces are painted: head_<kind>'s `Face` material (its front) takes a 256 px texture in the 2D painter's own frame
+ *   (`faces.frame`, people.ts head units around the head centre, R = 15: x -12..12, y -10.5 at the image top to 13.5).
+ *   Paint each customer with people.ts paintFace (their skin, iris, brows, freckles, expression) into a canvas with
+ *   that frame and the skin base as background, and set it as the Face map (CanvasTexture, flipY = false, sRGB); swap
+ *   the canvas to blink or emote. `faces.files` are ready-made defaults (skin tone 1, brown eyes) for every expression.
  * - Clips: `animations`. The seated ones (`seatedClips`) put the hips (pelvis joint) exactly on the model's origin,
  *   facing +Z: put the character's origin on a station's `seat` node with the node's rotation. For a seat with no
  *   node, `hipsAboveFeet` says how high the hips sit above the floor the feet rest on.
@@ -97,7 +100,7 @@ export const PEOPLE = {
     "ball_r",
   ],
   height: {
-    fem: 1.673,
+    fem: 1.676,
     masc: 1.708,
   },
   walkSpeed: {
@@ -187,7 +190,18 @@ export const PEOPLE = {
       Shoes: "shoes",
     },
   },
-  always: ["head_<kind>", "eyes", "brows"],
+  always: ["head_<kind>"],
+  faces: {
+    expressions: ["smile", "happy", "blink", "sleepy", "wow"],
+    files: "people/faces/<kind>_<expression>.png",
+    frame: {
+      x0: -12,
+      x1: 12,
+      y0: -10.5,
+      y1: 13.5,
+      size: 256,
+    },
+  },
   hair: ["long", "bob", "bun", "curly", "crop", "ponytail", "braids"],
   accessories: {
     "1": "bow_<hair>",
@@ -195,12 +209,11 @@ export const PEOPLE = {
     "3": "flower_<hair>",
   },
   tints: {
-    Skin: "SKIN[look.skin].base (multiplies the face and body texture)",
+    Skin: "SKIN[look.skin].base (multiplies the body texture)",
     Hair: "HAIR[look.hair].base (multiplies the strand texture)",
-    Brows: "HAIR[look.hair].dark",
-    Eyes: "the iris colour (people.ts irisForSeed or IRIS); EyeWhite stays",
+    Face: "a per-customer painted texture (see faces)",
     Accessory: "OUTFIT[(look.outfit + 5) % 8]",
-    fixed: ["EyeWhite", "EyeShine", "Lashes", "Sole", "Glasses", "Lens", "FlowerCentre"],
+    fixed: ["Sole", "Glasses", "Lens", "FlowerCentre"],
   },
   animations: [
     "cheer",
@@ -235,24 +248,22 @@ export const PEOPLE = {
   seatedClips: ["sit_chair", "sit_sofa", "sit_stool", "sit_pedicure", "sleepy"],
   tris: {
     fem: {
-      outfit_dress: 7075,
-      outfit_jumper: 6437,
-      outfit_dungarees: 6537,
-      outfit_suit: 6171,
-      outfit_hoodie: 7245,
-      outfit_sporty: 6515,
-      outfit_cardigan: 7449,
-      outfit_jacket: 6373,
-      outfit_scrubs: 5999,
-      outfit_chef: 7017,
-      outfit_player: 6885,
-      head_fem: 3002,
-      eyes: 960,
-      brows: 652,
+      outfit_dress: 7139,
+      outfit_jumper: 6501,
+      outfit_dungarees: 6601,
+      outfit_suit: 6235,
+      outfit_hoodie: 7309,
+      outfit_sporty: 6579,
+      outfit_cardigan: 7523,
+      outfit_jacket: 6447,
+      outfit_scrubs: 6063,
+      outfit_chef: 7077,
+      outfit_player: 6949,
+      head_fem: 2104,
       hair_long: 3736,
       bow_long: 352,
       flower_long: 368,
-      hair_bob: 3110,
+      hair_bob: 3028,
       bow_bob: 352,
       flower_bob: 368,
       hair_bun: 4114,
@@ -270,32 +281,30 @@ export const PEOPLE = {
       hair_braids: 2266,
       bow_braids: 352,
       flower_braids: 368,
-      glasses: 908,
+      glasses: 976,
     },
     masc: {
-      outfit_jumper: 6577,
-      outfit_dungarees: 6641,
-      outfit_suit: 6299,
-      outfit_hoodie: 7385,
-      outfit_sporty: 6621,
-      outfit_cardigan: 6507,
-      outfit_jacket: 6475,
-      outfit_scrubs: 6101,
-      outfit_chef: 7135,
-      outfit_player: 7029,
-      head_masc: 2872,
-      eyes: 960,
-      brows: 500,
+      outfit_jumper: 6663,
+      outfit_dungarees: 6727,
+      outfit_suit: 6385,
+      outfit_hoodie: 7471,
+      outfit_sporty: 6707,
+      outfit_cardigan: 6609,
+      outfit_jacket: 6577,
+      outfit_scrubs: 6187,
+      outfit_chef: 7231,
+      outfit_player: 7115,
+      head_masc: 2104,
       hair_long: 3736,
       bow_long: 352,
       flower_long: 368,
-      hair_bob: 2646,
+      hair_bob: 2592,
       bow_bob: 352,
       flower_bob: 368,
       hair_bun: 4114,
       bow_bun: 352,
       flower_bun: 368,
-      hair_curly: 1299,
+      hair_curly: 1298,
       bow_curly: 352,
       flower_curly: 368,
       hair_crop: 2131,
@@ -307,7 +316,7 @@ export const PEOPLE = {
       hair_braids: 2266,
       bow_braids: 352,
       flower_braids: 368,
-      glasses: 908,
+      glasses: 976,
     },
   },
   hipsAboveFeet: {

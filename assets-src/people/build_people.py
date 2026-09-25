@@ -26,6 +26,7 @@ import bpy  # noqa: E402
 from mathutils import Vector  # noqa: E402
 
 import anims  # noqa: E402
+import cartoon_head  # noqa: E402
 import gs  # noqa: E402
 import hair  # noqa: E402
 import outfits  # noqa: E402
@@ -48,6 +49,9 @@ def materials(kind):
     for n, (c, r) in PREVIEW.items():
         gs.mat(n, c, rough=r, sheen=SHEEN.get(n, 0.0))
     gs.mat('Lens', 0xffffff, rough=0.03, alpha=0.08)
+    img = bpy.data.images.load(os.path.join(gs.MODELS, 'people', 'faces', f'{kind}_smile.png'))
+    img.name = f'face_{kind}.png'
+    gs.mat('Face', 0xffffff, rough=0.5, image=img, sheen=0.3)
     gs.mat('Sole', 0xf4efe9, rough=0.6)
 
 
@@ -132,31 +136,23 @@ def build(kind):
     ubc.smooth_muscles(body, ubc.PROFILE[kind]['smooth'])
     for o in (body, eyes, brows):
         unskin(o)
-    ubc.enlarge_eyes(body, eyes, brows, 1.7, open_lids=1.5)
-    ubc.cartoonify(body, eyes, brows, smile=0.0)
-    ubc.soften_brows(brows)
     rig.load_mocap(arm)
     J = rig.joints(arm)
     for o in (body, eyes, brows, *pieces.values()):
         unskin(o)
     ubc.assign(body, 'Skin')
-    ubc.assign_eyes(eyes)
     ubc.assign(brows, 'Brows')
     for p in pieces.values():
         ubc.assign(p, 'Hair')
     # lighter: the body to ~7k triangles (the face spared), the brows to a few hundred
     decimate_protected(body, 7000, 'Head')
     gs.decimate(brows, 500)
-    head, cut_z = ubc.split_head(body, J)
-    head.name = head.data.name = f'head_{kind}'
-    ubc.lighten_sockets(head, eyes, kind)
-    shine, lash = ubc.eye_extras(eyes, lashes=kind == 'fem')
-    irises = ubc.iris_discs(eyes)
-    eyes = gs.join([eyes, *irises, *shine], 'eyes')
-    if lash:
-        brows = gs.join([brows, *lash], 'brows')
-    eyes.name = eyes.data.name = 'eyes'
-    brows.name = brows.data.name = 'brows'
+    ubc_head, cut_z = ubc.split_head(body, J)
+    # our own cartoon head on the same skull (the hair still fits), the painted face on its front
+    head, finfo = cartoon_head.build(ubc_head, kind, os.path.join(gs.MODELS, 'people', 'faces'))
+    bpy.data.objects.remove(ubc_head)
+    bpy.data.objects.remove(eyes)
+    bpy.data.objects.remove(brows)
     M = outfits.marks(J)
     meshes = []
     for name in outfits.OUTFITS:
@@ -172,7 +168,8 @@ def build(kind):
         if ex:
             o = gs.join([o, *ex], 'outfit_' + name)
         meshes.append(o)
-    meshes += [head, eyes, brows]
+    rigid(head)
+    meshes += [head]
     hairs, info = ubc_hair.build_all(kind, pieces, head)
     for style in ubc_hair.STYLES:
         hr = hairs[style]
@@ -186,11 +183,9 @@ def build(kind):
             a = fn(f'{acc}_{style}', p, n)
             rigid(a)
             meshes.append(a)
-    gl = ubc_hair.glasses(eyes, info)
+    gl = cartoon_head.glasses(head, finfo)
     rigid(gl)
     meshes.append(gl)
-    rigid(eyes)
-    rigid(brows)
     for p in pieces.values():
         bpy.data.objects.remove(p)
     bpy.data.objects.remove(body)
@@ -215,6 +210,8 @@ def build(kind):
         if a not in clips.values():
             bpy.data.actions.remove(a)
     report = {o.name: gs.tris(o) for o in meshes}
+    global FINFO
+    FINFO = finfo
     return arm, meshes, clips, info, report
 
 
@@ -246,6 +243,7 @@ def manifest(kind, arm, meshes, clips, info, report):
         'clips': {n: round((a.frame_range[1] - a.frame_range[0]) / fps, 3) for n, a in clips.items()},
         'height': round(max((o.matrix_world @ v.co).z for o in meshes if o.name.startswith('hair_') for v in o.data.vertices), 3),
         'headCenter': [round(info['C'].x, 4), round(info['C'].z, 4), round(-info['C'].y, 4)],
+        'faceFrame': {'center': [round(v, 4) for v in (FINFO['face_center'].x, FINFO['face_center'].z, -FINFO['face_center'].y)], 'unit': round(FINFO['unit'], 5)},
         'walkSpeed': arm['walk_speed'],
     }
     os.makedirs(os.path.join(gs.OUT, 'manifest'), exist_ok=True)
