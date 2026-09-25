@@ -885,18 +885,21 @@ export class FloorView {
     const spanW = FLOOR_W + OUTSIDE_W
     const fit = Math.min(w / spanW, h / FLOOR_H)
     // Small screens zoom in and follow the player, so people stay a readable size.
-    const readable = Math.min(h / FLOOR_H, 0.62)
-    const s = fit < 0.5 && !this.demo ? Math.max(fit, readable) : fit
+    const readable = Math.min((h / FLOOR_H) * 0.86, 0.8)
+    // The title backdrop covers a tall phone screen instead of sitting in a thin strip.
+    const cover = Math.max(w / spanW, h / FLOOR_H)
+    const s = this.demo ? (fit < 0.5 ? cover : fit) : fit < 0.5 ? Math.max(fit, readable) : fit
     this.scale = s
     this.world.scale.set(s)
     const worldW = spanW * s, worldH = FLOOR_H * s
     if (worldW <= w) this.world.x = (w - worldW) / 2 + OUTSIDE_W * s
     else {
-      const focus = this.me.x
+      const focus = this.demo ? 640 : this.me.x
       this.camX += (focus - this.camX) * Math.min(1, dt * 4)
       this.world.x = Math.max(w - FLOOR_W * s, Math.min(OUTSIDE_W * s, w / 2 - this.camX * s))
     }
-    this.world.y = worldH <= h ? (h - worldH) / 2 : 0
+    // Tall phone screens: the room sits low, leaving the top for the HUD.
+    this.world.y = worldH <= h ? (h > w * 1.3 && !this.demo ? Math.max((h - worldH) / 2, h - worldH - 24) : (h - worldH) / 2) : 0
   }
 
   /** Screen position of a world point (for DOM overlays). */

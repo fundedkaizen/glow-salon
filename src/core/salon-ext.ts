@@ -36,7 +36,7 @@ export type SalonExt = {
   stars: number[]
   /** The last day the day-start rules ran (so reloading a day does not run them twice). */
   lastDay: number
-  today: { wages: number; pets: number; levelUps: string[]; bias: string[]; seatedAt: Record<string, number>; friendUps: { name: string; level: number; gift: string | null }[] }
+  today: { ready: number[]; wages: number; pets: number; levelUps: string[]; bias: string[]; seatedAt: Record<string, number>; friendUps: { name: string; level: number; gift: string | null }[] }
   vote: ExtVote | null
 }
 
@@ -50,11 +50,13 @@ export type ExtAction =
   | { a: 'placeDecor'; id: string }
   | { a: 'renameSalon'; name: string }
   | { a: 'renameCat'; name: string }
+  /** Ready to open: the day starts once every player in the salon is ready. */
+  | { a: 'ready' }
 
 export const DEFAULT_SALON_NAME = 'Glow Salon'
 export const DEFAULT_CAT_NAME = 'Mochi'
 
-const emptyToday = (): SalonExt['today'] => ({ wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [] })
+const emptyToday = (): SalonExt['today'] => ({ ready: [], wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [] })
 
 export function newExt(): SalonExt {
   return { salonName: DEFAULT_SALON_NAME, catName: DEFAULT_CAT_NAME, staff: [], hired: [], week: -1, campaigns: [], loyalty: false, friends: {}, decorOrder: [], recent: [], stars: [0, 0, 0, 0, 0], lastDay: 0, today: emptyToday(), vote: null }
@@ -225,6 +227,12 @@ export function reduceExt(state: SalonState, by: number, action: ExtAction): boo
       const other = action.station ? e.staff.find(m => m !== s && m.station === action.station) : null
       if (other) { if (other.task) return false; other.station = s.station }
       s.station = action.station
+      return true
+    }
+    case 'ready': {
+      if (state.phase !== 'prep' || !player) return false
+      if (!e.today.ready.includes(by)) e.today.ready.push(by)
+      if (state.players.every(p => e.today.ready.includes(p.id))) reduce(state, by, { a: 'open' })
       return true
     }
     case 'petCat': e.today.pets++; return true

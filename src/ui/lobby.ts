@@ -117,6 +117,35 @@ export class Lobby {
     if (prefill) setTimeout(() => (panel.querySelector('input') as HTMLInputElement | null)?.focus(), 50)
   }
 
+  /** Opened from an invite link: one friendly screen, a name and a big Join button (Enter joins too). */
+  showInvite(code: string, from: string) {
+    const host = from.replace(/[<>&"]/g, '').trim().slice(0, 16)
+    const { veil, panel } = this.panel(host ? `${esc(host)} invited you!` : 'You are invited!', `<p>Come and run ${host ? `${esc(host)}’s` : 'a'} cosy salon together in Glow Salon. What should the customers call you?</p>`)
+    panel.classList.add('gs-invite')
+    const f = h('div', 'gs-field')
+    const input = h('input') as HTMLInputElement
+    input.type = 'text'; input.maxLength = 16; input.placeholder = 'Your name'
+    // One computer, two tabs: never offer the host's own name.
+    input.value = settings.name && settings.name !== host ? settings.name : ''
+    input.setAttribute('aria-label', 'Your name')
+    f.append(input)
+    const join = h('button', 'gs-btn pink big', 'Join the salon')
+    join.style.width = '100%'
+    const go = () => {
+      this.press()
+      const name = input.value.trim()
+      if (!name) { input.focus(); input.classList.add('gs-shake'); setTimeout(() => input.classList.remove('gs-shake'), 400); return }
+      saveSettings({ name })
+      veil.remove()
+      this.hooks.onJoin(code)
+    }
+    join.onclick = go
+    input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') go() })
+    panel.append(f, join)
+    panel.insertAdjacentHTML('beforeend', `<p style="text-align:center;margin:12px 0 0;font:700 12px Nunito;color:var(--gs-ink-soft)">Room ${esc(code.toUpperCase())}</p>`)
+    setTimeout(() => input.focus(), 60)
+  }
+
   /** The room: invite link and who is here. Updated as people come and go. */
   showCoop(v: CoopView) {
     if (!this.coopPanel || !this.coopPanel.isConnected) {

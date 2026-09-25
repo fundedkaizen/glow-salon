@@ -135,7 +135,7 @@ export class SalonGame {
     this.toTitle()
     const params = new URLSearchParams(location.search)
     const room = params.get('join') ?? params.get('room')
-    if (room) this.lobby.showCoopChoice(room)
+    if (room) this.lobby.showInvite(room, params.get('from') ?? '')
   }
 
   // ------------------------------------------------------------------ modes
@@ -166,7 +166,7 @@ export class SalonGame {
     })
     this.app.stage.addChildAt(this.floor.root, 0)
     this.hud = new FloorHud(this.ui, {
-      onOpen: () => { sfx.unlock(); sfx.bellDesk(); this.act({ a: 'open' }) },
+      onOpen: () => { sfx.unlock(); sfx.bellDesk(); this.act({ a: 'ready' }) },
       onNextTrack: () => { sfx.click(); music.next() },
       onToggleMusic: () => { saveSettings({ musicOn: !settings.musicOn }); if (settings.musicOn) music.start(); this.hud?.setMusicOn(settings.musicOn) },
       onSettings: () => openSettings(this.ui, { onQuit: () => this.toTitle(), onRename: name => { if (name) this.act({ a: 'rename', name }) } }),
@@ -202,6 +202,9 @@ export class SalonGame {
         const name = this.host.players.find(p => p.id === id)?.name
         reduce(this.host, id, { a: 'leave' })
         if (name) this.hud?.toast(`${name} left the salon`, '#cdbdf2')
+        // Everyone still here was ready: open without waiting for the one who left.
+        const ready = this.host.ext?.today.ready ?? []
+        if (this.host.phase === 'prep' && ready.length && this.host.players.every(p => ready.includes(p.id))) reduce(this.host, 0, { a: 'open' })
         this.showRoom('')
       },
     )
@@ -219,7 +222,8 @@ export class SalonGame {
     const link = this.hostLink
     if (!link || !this.host || !link.code || this.mode === 'title') return
     this.lobby.onCoopStart = () => {}
-    this.lobby.showCoop({ code: link.code, link: link.link, players: this.host.players.map(p => ({ id: p.id, name: p.name })), role: 'host', me: 0, status, canStart: true })
+    const invite = `${link.link}${link.link.includes('?') ? '&' : '?'}from=${encodeURIComponent(this.myName())}`
+    this.lobby.showCoop({ code: link.code, link: invite, players: this.host.players.map(p => ({ id: p.id, name: p.name })), role: 'host', me: 0, status, canStart: true })
   }
 
   private joinGame(code: string) {
@@ -424,7 +428,7 @@ export class SalonGame {
     if (this.floor) { this.floor.setState(s); this.floor.update(dt) }
     if (this.hud) {
       const pending = s.pending
-      this.hud.update({ day: s.day, phase: s.phase, money: s.money, rating: average(s.rating), reviews: s.rating.count, arrived: s.spawned, total: this.host ? this.host.schedule.length : (s as PublicState).scheduled, served: s.stats.served, players: s.players, events: s.events, pending, vote: s.ext?.vote ?? null, me: this.me }, dt)
+      this.hud.update({ day: s.day, phase: s.phase, money: s.money, rating: average(s.rating), reviews: s.rating.count, arrived: s.spawned, total: this.host ? this.host.schedule.length : (s as PublicState).scheduled, served: s.stats.served, players: s.players, events: s.events, pending, vote: s.ext?.vote ?? null, ready: s.ext?.today.ready ?? [], me: this.me }, dt)
     }
     this.computer?.update(s)
     // The close-up: keep it running; a helper's view closes when the lead finishes.

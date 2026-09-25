@@ -4,6 +4,7 @@ import type { GameEvent, Pending, Phase, Player } from '../core/salon.ts'
 import type { ExtVote } from '../core/salon-ext.ts'
 import { esc, h, money } from './dom.ts'
 import { ICON } from './salon-icons.ts'
+import { settings } from './settings.ts'
 import './salon.css'
 
 /**
@@ -25,6 +26,8 @@ export type HudView = {
   events: GameEvent[]
   pending: Pending | null
   vote: ExtVote | null
+  /** Players ready to open (co-op). */
+  ready: number[]
   me: number
 }
 
@@ -59,6 +62,8 @@ export class FloorHud {
   private shownMoney: number | null = null
   private moneyAnim = 0
   private lastKey = ''
+  private readyKey = '-'
+  private readyRow = h('div', 'gs-ready-row')
   private h: HudHandlers
 
   constructor(host: HTMLElement, handlers: HudHandlers) {
@@ -85,7 +90,8 @@ export class FloorHud {
     const bottom = h('div', 'gs-hud-bottom')
     this.openBtn = h('button', 'gs-btn pink big gs-open', 'Open the salon')
     this.openBtn.onclick = () => handlers.onOpen()
-    bottom.append(this.openBtn)
+    this.readyRow.hidden = true
+    bottom.append(this.readyRow, this.openBtn)
     this.hint = h('div', 'gs-hint', '')
     this.el.append(top, this.toasts, bottom, this.hint)
     host.append(this.el)
@@ -115,8 +121,21 @@ export class FloorHud {
     this.moneyAnim -= dt
     ;(this.moneyEl.querySelector('b') as HTMLElement).textContent = money(this.shownMoney)
     this.openBtn.hidden = v.phase !== 'prep'
-    this.hint.textContent = v.phase === 'prep' ? 'Walk with WASD, arrows or a tap. The salon computer is at the desk.' : ''
-    this.hint.style.opacity = v.phase === 'prep' ? '1' : '0'
+    // Co-op: everyone taps "Ready"; the day opens when the last one does.
+    const coop = v.players.length > 1
+    const meReady = v.ready.includes(v.me)
+    const readyKey = v.phase === 'prep' && coop ? `${v.players.map(p => `${p.id}:${p.name}:${v.ready.includes(p.id)}`).join(',')}|${v.me}` : ''
+    if (readyKey !== this.readyKey) {
+      this.readyKey = readyKey
+      if (!coop) { this.openBtn.textContent = 'Open the salon'; this.openBtn.disabled = false }
+      else if (!meReady) { this.openBtn.textContent = 'Ready to open'; this.openBtn.disabled = false }
+      else { const waiting = v.players.filter(p => !v.ready.includes(p.id)).map(p => p.name); this.openBtn.textContent = `Waiting for ${waiting.join(' and ')}`; this.openBtn.disabled = true }
+      this.readyRow.innerHTML = readyKey ? v.players.map(p => `<span class="gs-ready${v.ready.includes(p.id) ? ' on' : ''}"><i style="background:${PLAYER_CSS[p.id % 4]}"></i>${esc(p.name)}<b>${v.ready.includes(p.id) ? '&#10003;' : ''}</b></span>`).join('') : ''
+      this.readyRow.hidden = !readyKey
+    }
+    const touch = settings.control === 'touch' || matchMedia('(pointer: coarse)').matches
+    this.hint.textContent = v.phase === 'prep' ? (touch ? 'Tap the floor to walk. Tap the desk for the salon computer.' : 'Walk with WASD, arrows or a tap. The salon computer is at the desk.') : ''
+    this.hint.style.opacity = v.phase === 'prep' && v.players.length < 2 ? '1' : '0'
     // Toasts from new events.
     for (const e of v.events) {
       if (e.seq <= this.lastSeq) continue

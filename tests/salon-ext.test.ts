@@ -162,6 +162,15 @@ export function run() {
   tick(state, 0.1)
   check('a left treatment waits, seated', state.customers.find(c => c.station === 's0')?.state === 'seated')
 
+  // Co-op: the day opens when everyone is ready.
+  state = startDay(newSave(3), [])
+  reduce(state, 0, { a: 'join', name: 'A' })
+  reduce(state, 1, { a: 'join', name: 'B' })
+  reduce(state, 0, { a: 'ready' })
+  check('one ready player waits for the other', state.phase === 'prep' && ext(state).today.ready.length === 1)
+  reduce(state, 1, { a: 'ready' })
+  check('everyone ready: the salon opens', state.phase === 'open')
+
   // Co-op: big hires wait for everyone.
   state = startDay({ ...newSave(99), money: 5000, owned: ['facial-chair-2'] }, [])
   reduce(state, 0, { a: 'join', name: 'A' })
