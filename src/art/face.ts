@@ -1,5 +1,5 @@
 import type { Look } from '../core/customers.ts'
-import { FACE, SHAPES } from '../core/treatments/anatomy.ts'
+import { FACE, SHAPES, bandEdge } from '../core/treatments/anatomy.ts'
 import { makeRng } from '../core/rng.ts'
 import type { FaceProfile } from '../core/treatments/profile.ts'
 import type { Shape } from '../core/geometry.ts'
@@ -36,12 +36,22 @@ function faceClip(ctx: Ctx) {
   ctx.clip()
 }
 
+/** Clip to the face below the headband (grime lives here). */
+function faceBelowBand(ctx: Ctx) {
+  const cap = FACE.hairCap
+  ctx.beginPath()
+  smoothPath(ctx, FACE.outline)
+  if (cap.t === 'poly') { ctx.moveTo(cap.pts[0], cap.pts[1]); for (let i = 2; i < cap.pts.length; i += 2) ctx.lineTo(cap.pts[i], cap.pts[i + 1]); ctx.closePath() }
+  ctx.clip('evenodd')
+}
+
 /** Clip to the skin region: the face minus hair, eyes, brows and lips (the layers live here). */
 function skinClip(ctx: Ctx) {
   faceClip(ctx)
   ctx.beginPath()
   ctx.rect(0, 0, S, S)
   const hole = (s: Shape) => {
+    if (s.t === 'poly') { ctx.moveTo(s.pts[0], s.pts[1]); for (let i = 2; i < s.pts.length; i += 2) ctx.lineTo(s.pts[i], s.pts[i + 1]); ctx.closePath(); return }
     if (s.t !== 'ellipse') return
     ctx.moveTo(s.cx + s.rx, s.cy)
     ctx.ellipse(s.cx, s.cy, s.rx, s.ry, s.rot ?? 0, 0, Math.PI * 2, true)
@@ -94,6 +104,7 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   ctx.fill()
   ctx.clip()
   blob(ctx, 530, 800, 200, 80, skin.deep, 0.6)
+  blob(ctx, 512, 872, 150, 36, skin.shadow, 0.45)
   blob(ctx, 560, 860, 120, 60, skin.shadow, 0.4)
   ctx.restore()
 
@@ -139,6 +150,16 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
     }
     ctx.restore()
     blurred(ctx, 8, () => { ctx.strokeStyle = 'rgba(120,70,90,0.28)'; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(90, 1000); ctx.bezierCurveTo(200, 925, 330, 912, 420, 906); ctx.moveTo(604, 906); ctx.bezierCurveTo(694, 912, 824, 925, 934, 1000); ctx.stroke() })
+    // Soft folds in the robe over the shoulders.
+    blurred(ctx, 6, () => {
+      const rr = makeRng(seed + 44)
+      for (let k = 0; k < 8; k++) {
+        const side = k % 2 ? 1 : -1, x = 512 + side * rr.range(200, 400), y = rr.range(950, 1010)
+        ctx.strokeStyle = k % 3 ? rgba(shade(robe, -0.2), 0.45) : rgba(shade(robe, 0.45), 0.6)
+        ctx.lineWidth = rr.range(4, 9)
+        ctx.beginPath(); ctx.moveTo(x - side * 40, y - 30); ctx.quadraticCurveTo(x, y, x + side * 30, y + 40); ctx.stroke()
+      }
+    })
   }
 
   // Ears.
@@ -334,15 +355,35 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
     cg.addColorStop(0, rgba(hair.dark)); cg.addColorStop(0.6, rgba(hair.base)); cg.addColorStop(1, rgba(mixRGB(hair.base, hair.dark, 0.4)))
     ctx.fillStyle = cg
     ctx.beginPath(); ctx.ellipse(512, 196, 372, 132, 0, 0, Math.PI * 2); ctx.fill()
-    // Strands swept back from the hairline to the crown.
-    for (let i = 0; i < 420; i++) {
-      const x = r.range(150, 874)
-      const y0 = 196 + 132 * Math.sqrt(Math.max(0, 1 - ((x - 512) / 372) ** 2))
-      const tx = 512 + (x - 512) * r.range(0.15, 0.4), ty = r.range(40, 90)
-      const tone = r() < 0.35 ? hair.light : r() < 0.5 ? hair.dark : shade(hair.base, 0.08)
-      ctx.strokeStyle = rgba(tone, r.range(0.15, 0.45))
-      ctx.lineWidth = r.range(1, 2.6)
-      ctx.beginPath(); ctx.moveTo(x, y0); ctx.quadraticCurveTo(x + (tx - x) * 0.3, (y0 + ty) / 2 + 20, tx, ty); ctx.stroke()
+    // Clumps of hair swept back from the hairline toward the crown, each shaded like a ribbon.
+    const clumps: { x: number; len: number }[] = []
+    for (let i = 0; i < 38; i++) clumps.push({ x: r.range(160, 864), len: r.range(0.55, 1) })
+    clumps.sort((a, b) => Math.abs(b.x - 512) - Math.abs(a.x - 512))
+    for (const c of clumps) {
+      const y0 = 196 + 132 * Math.sqrt(Math.max(0, 1 - ((c.x - 512) / 372) ** 2)) + 6
+      const tx = 512 + (c.x - 512) * 0.3, ty = 60 + (1 - c.len) * 120
+      const w = r.range(22, 44)
+      const pts: [number, number][] = []
+      for (let k = 0; k <= 12; k++) {
+        const t = k / 12
+        pts.push([c.x + (tx - c.x) * t + Math.sin(t * Math.PI) * (c.x - 512) * 0.06, y0 + (ty - y0) * t - Math.sin(t * Math.PI) * 10])
+      }
+      ctx.beginPath()
+      for (let k = 0; k <= 12; k++) { const t = k / 12, ww = w * (1 - t * 0.75) / 2; ctx.lineTo(pts[k][0] - ww, pts[k][1]) }
+      for (let k = 12; k >= 0; k--) { const t = k / 12, ww = w * (1 - t * 0.75) / 2; ctx.lineTo(pts[k][0] + ww, pts[k][1]) }
+      ctx.closePath()
+      const lg = ctx.createLinearGradient(c.x - w, 0, c.x + w, 0)
+      lg.addColorStop(0, rgba(hair.dark)); lg.addColorStop(0.5, rgba(shade(hair.base, 0.06))); lg.addColorStop(1, rgba(mixRGB(hair.base, hair.dark, 0.5)))
+      ctx.fillStyle = lg
+      ctx.fill()
+      for (let k = 0; k < 6; k++) {
+        const off = r.range(-0.4, 0.4) * w
+        ctx.strokeStyle = rgba(r() < 0.45 ? hair.light : hair.dark, r.range(0.18, 0.4))
+        ctx.lineWidth = r.range(0.8, 1.8)
+        ctx.beginPath()
+        for (let j = 0; j <= 12; j++) { const t = j / 12; const x = pts[j][0] + off * (1 - t * 0.75), y = pts[j][1]; if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y) }
+        ctx.stroke()
+      }
     }
     // The sheen band across the top of the head.
     blurred(ctx, 12, () => {
@@ -365,16 +406,16 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   paintHeadband(ctx, band, seed)
   // Hair falls over the ends of the band, where it goes around the back of the head.
   for (const side of [-1, 1]) {
-    const x = 512 + side * 318
+    const x = 512 + side * 292
     ctx.save()
     const g = ctx.createLinearGradient(x, 330, x, 560)
     g.addColorStop(0, rgba(hair.base)); g.addColorStop(1, rgba(hair.dark))
     ctx.fillStyle = g
     ctx.beginPath()
-    ctx.moveTo(x - side * 30, 330)
-    ctx.bezierCurveTo(x + side * 30, 360, x + side * 50, 470, x + side * 44, 560)
-    ctx.lineTo(x + side * 90, 560)
-    ctx.bezierCurveTo(x + side * 96, 460, x + side * 70, 350, x + side * 20, 318)
+    ctx.moveTo(x - side * 34, 330)
+    ctx.bezierCurveTo(x + side * 30, 360, x + side * 44, 470, x + side * 40, 570)
+    ctx.lineTo(x + side * 110, 570)
+    ctx.bezierCurveTo(x + side * 116, 460, x + side * 84, 350, x + side * 20, 312)
     ctx.closePath()
     ctx.fill()
     const r2 = makeRng(seed + 70 + side)
@@ -488,8 +529,8 @@ function paintHeadband(ctx: Ctx, band: RGB, seed: number) {
   const r = makeRng(seed + 61)
   const light = shade(band, 0.45), mid = shade(band, 0.15), dark = shade(band, -0.18)
   // The band wraps around the head: it follows the hairline and tucks behind the ears at the sides.
-  const top = (t: number) => ({ x: 176 + 672 * t, y: (1 - t) ** 2 * 446 + 2 * (1 - t) * t * 196 + t * t * 446 })
-  const bot = (t: number) => ({ x: 186 + 652 * t, y: (1 - t) ** 2 * 474 + 2 * (1 - t) * t * 270 + t * t * 474 })
+  const top = (t: number) => bandEdge('top', t)
+  const bot = (t: number) => bandEdge('bottom', t)
   const path = () => {
     ctx.beginPath()
     for (let k = 0; k <= 40; k++) { const p = top(k / 40); if (k === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y) }
@@ -527,7 +568,7 @@ function paintHeadband(ctx: Ctx, band: RGB, seed: number) {
   for (const side of [0, 1]) {
     const x = side ? 854 : 170
     const g = ctx.createLinearGradient(x, 0, side ? x - 110 : x + 110, 0)
-    g.addColorStop(0, 'rgba(60,30,40,0.55)'); g.addColorStop(1, 'rgba(60,30,40,0)')
+    g.addColorStop(0, 'rgba(60,30,40,0.35)'); g.addColorStop(1, 'rgba(60,30,40,0)')
     ctx.fillStyle = g
     ctx.fillRect(side ? x - 110 : x, 150, 110, 340)
   }
@@ -689,13 +730,13 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
     ctx.drawImage(tintedByNoise(S, [150, 124, 92], fbm(S, 70, 4, seed + 31), 0.05, 0.38), 0, 0)
     for (let i = 0; i < 70; i++) grimeSmear(ctx, r.range(230, 790), r.range(310, 920), r.range(40, 110), [140, 112, 80], seed + 200 + i)
     for (let i = 0; i < 90; i++) grimeClump(ctx, r.range(230, 790), r.range(310, 920), r.range(8, 24), [132, 104, 72], seed + 300 + i)
-  }, faceClip)
+  }, faceBelowBand)
   // Ground-in grime (disaster cases): darker, heavier.
   layers.grime2 = clipped(S, (ctx) => {
     ctx.drawImage(tintedByNoise(S, [100, 80, 58], fbm(S, 50, 4, seed + 35), 0.2, 0.6), 0, 0)
     for (let i = 0; i < 60; i++) grimeSmear(ctx, r.range(230, 790), r.range(310, 920), r.range(60, 140), [96, 74, 52], seed + 400 + i)
     for (let i = 0; i < 90; i++) grimeClump(ctx, r.range(230, 790), r.range(310, 920), r.range(12, 30), [96, 74, 52], seed + 500 + i)
-  }, faceClip)
+  }, faceBelowBand)
   layers.flakes = clipped(S, (ctx) => {
     ctx.drawImage(tintedByNoise(S, [250, 238, 228], fbm(S, 24, 3, seed + 36), 0.05, 0.3), 0, 0)
     for (let i = 0; i < 420; i++) {
@@ -717,21 +758,29 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
     ctx.drawImage(tintedByNoise(512, [222, 92, 104], fbm(512, 12, 2, seed + 61), 0.32, 0.6), 0, 0)
   })
   layers.serum = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, [255, 214, 130], fbm(512, 40, 2, seed + 71), 0.28, 0.45), 0, 0)
+    ctx.drawImage(tintedByNoise(512, [255, 238, 196], fbm(512, 40, 2, seed + 71), 0.14, 0.26), 0, 0)
   })
   layers.glow = clipped(512, (ctx) => {
     ctx.drawImage(tintedByNoise(512, [255, 236, 236], fbm(512, 60, 2, seed + 81), 0.12, 0.26), 0, 0)
   })
   layers.cream = clipped(S, (ctx) => {
-    ctx.fillStyle = '#fffaf3'
+    // Rich white cream: smooth, with soft swirls where it was scooped and spread.
+    ctx.fillStyle = '#fffaf4'
     ctx.fillRect(0, 0, S, S)
+    ctx.globalCompositeOperation = 'multiply'
+    ctx.globalAlpha = 0.25
+    ctx.drawImage(fbm(S, 60, 3, seed + 90), 0, 0)
+    ctx.globalAlpha = 1
+    ctx.globalCompositeOperation = 'source-over'
     const rc = makeRng(seed + 91)
-    for (let i = 0; i < 500; i++) {
-      const x = rc.range(200, 830), y = rc.range(280, 940)
-      ctx.strokeStyle = rc() < 0.5 ? 'rgba(236,222,210,0.8)' : 'rgba(255,255,255,0.9)'
-      ctx.lineWidth = rc.range(2, 6)
-      ctx.beginPath(); ctx.arc(x, y, rc.range(8, 30), rc() * 6, rc() * 6 + rc.range(1, 3)); ctx.stroke()
-    }
+    blurred(ctx, 3, () => {
+      for (let i = 0; i < 70; i++) {
+        const x = rc.range(220, 810), y = rc.range(300, 920), rr = rc.range(18, 44)
+        ctx.strokeStyle = rc() < 0.5 ? 'rgba(232,220,214,0.5)' : 'rgba(255,255,255,0.8)'
+        ctx.lineWidth = rc.range(3, 7)
+        ctx.beginPath(); ctx.arc(x, y, rr, rc() * 6, rc() * 6 + rc.range(1.2, 2.4)); ctx.stroke()
+      }
+    })
   })
   layers.mask = paintClay(false, seed)
   layers.foam = clipped(S, (ctx) => {
@@ -772,8 +821,8 @@ function maskClip(ctx: Ctx) {
   // Around the lips: follows the cupid's bow.
   const l = FACE.lips
   smoothPath(ctx, [l.x - 104, l.y + 4, l.x - 60, l.y - 36, l.x, l.y - 30, l.x + 60, l.y - 36, l.x + 104, l.y + 4, l.x + 60, l.y + 50, l.x, l.y + 58, l.x - 60, l.y + 50])
-  ctx.moveTo(512 + 372, 196)
-  ctx.ellipse(512, 196, 372, 138, 0, 0, Math.PI * 2)
+  const cap = FACE.hairCap
+  if (cap.t === 'poly') { ctx.moveTo(cap.pts[0], cap.pts[1]); for (let i = 2; i < cap.pts.length; i += 2) ctx.lineTo(cap.pts[i], cap.pts[i + 1]); ctx.closePath() }
   ctx.clip('evenodd')
 }
 

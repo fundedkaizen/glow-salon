@@ -15,12 +15,26 @@ export const FACE = {
   cy: 520,
   /** The face outline: an egg with a softer jaw, 72 points. */
   outline: faceOutline(),
-  hairCap: { t: 'ellipse', cx: 512, cy: 196, rx: 372, ry: 138 } as Shape,
+  /** Hair and the spa headband: everything above the band's lower edge (see bandEdge). */
+  hairCap: { t: 'poly', pts: hairCapPoly() } as Shape,
   eyes: [{ x: 398, y: 516 }, { x: 626, y: 516 }] as Point[],
   brows: [{ x: 392, y: 446 }, { x: 632, y: 446 }] as Point[],
   nose: { x: 512, y: 636 },
   lips: { x: 512, y: 748 },
   ears: [{ x: 226, y: 548 }, { x: 798, y: 548 }] as Point[],
+}
+
+/** The headband's upper and lower edges, t from 0 (left end) to 1 (right end). */
+export function bandEdge(edge: 'top' | 'bottom', t: number): Point {
+  if (edge === 'top') return { x: 176 + 672 * t, y: (1 - t) ** 2 * 446 + 2 * (1 - t) * t * 196 + t * t * 446 }
+  return { x: 186 + 652 * t, y: (1 - t) ** 2 * 474 + 2 * (1 - t) * t * 270 + t * t * 474 }
+}
+
+function hairCapPoly(): number[] {
+  const pts = [0, 0, 1024, 0, 1024, 500]
+  for (let k = 40; k >= 0; k--) { const p = bandEdge('bottom', k / 40); pts.push(p.x, p.y + 4) }
+  pts.push(0, 500)
+  return pts
 }
 
 function faceOutline(): number[] {

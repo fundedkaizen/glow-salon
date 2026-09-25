@@ -48,6 +48,8 @@ export type SessionEvent =
   | { e: 'targetDone'; id: number; kind: TargetKind; x: number; y: number; size: number; n?: number }
   | { e: 'miss'; x: number; y: number }
   | { e: 'ready'; step: number }
+  /** A part of the step's region is finished (one nail, one area of the face): a small cue. */
+  | { e: 'zone'; x: number; y: number }
   | { e: 'resolve'; layer: string; to: 0 | 1 }
   | { e: 'peel'; progress: number; tension: number; released: boolean; unstuck: boolean }
   | { e: 'hold'; progress: number }
@@ -105,6 +107,51 @@ export function regionMask(id: RegionId) {
   return mask
 }
 
+type Zone = { cells: number[]; start: number; done: boolean }
+
+const zoneCache = new Map<RegionId, number[][]>()
+/**
+ * A region split into zones that finish one by one: separate pieces (each nail) are their own zones; a big
+ * piece (the face) is cut into blocks of about a hand's width.
+ */
+export function zonesOf(id: RegionId): number[][] {
+  const cached = zoneCache.get(id)
+  if (cached) return cached
+  const mask = regionMask(id)
+  const seen = new Uint8Array(mask.length)
+  const pieces: number[][] = []
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i] || seen[i]) continue
+    const piece: number[] = []
+    const stack = [i]
+    seen[i] = 1
+    while (stack.length) {
+      const c = stack.pop()!
+      piece.push(c)
+      const x = c % GRID, y = Math.floor(c / GRID)
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue
+        const n = ny * GRID + nx
+        if (mask[n] && !seen[n]) { seen[n] = 1; stack.push(n) }
+      }
+    }
+    pieces.push(piece)
+  }
+  const zones: number[][] = []
+  for (const piece of pieces) {
+    if (piece.length < 8) continue
+    if (piece.length <= 400) { zones.push(piece); continue }
+    // Big pieces: blocks of 24 x 24 cells, small leftovers merged into their neighbour block.
+    const blocks = new Map<number, number[]>()
+    for (const c of piece) { const k = Math.floor((c % GRID) / 24) + Math.floor(Math.floor(c / GRID) / 24) * 100; (blocks.get(k) ?? blocks.set(k, []).get(k)!).push(c) }
+    let carry: number[] = []
+    for (const cells of blocks.values()) { const all = carry.concat(cells); if (all.length < 120) { carry = all; continue } zones.push(all); carry = [] }
+    if (carry.length && zones.length) zones[zones.length - 1].push(...carry)
+  }
+  zoneCache.set(id, zones)
+  return zones
+}
+
 /** How long a whitehead or hangnail must be held, in seconds at tier 1. */
 export function holdTime(target: Target) {
   if (target.kind === 'whitehead') return 0.35 + 0.6 * target.size
@@ -123,11 +170,11 @@ export function hitRadius(target: Target) {
 
 /** Where whiteheads gather, by cluster: boxes in art space [x0, x1, y0, y1]. */
 const ZONES: Record<string, [number, number, number, number][]> = {
-  forehead: [[380, 644, 330, 410]],
-  tzone: [[420, 604, 340, 400], [470, 554, 540, 600], [440, 584, 820, 880]],
+  forehead: [[380, 644, 388, 432]],
+  tzone: [[420, 604, 390, 430], [470, 554, 540, 600], [440, 584, 820, 880]],
   chin: [[420, 604, 810, 890]],
   cheeks: [[300, 420, 600, 760], [604, 724, 600, 760]],
-  scattered: [[300, 420, 600, 760], [604, 724, 600, 760], [430, 594, 820, 890], [400, 624, 330, 410], [470, 554, 560, 600]],
+  scattered: [[300, 420, 600, 760], [604, 724, 600, 760], [430, 594, 820, 880], [400, 624, 390, 432], [470, 554, 560, 600]],
 }
 
 export class TreatmentSession {
@@ -154,6 +201,8 @@ export class TreatmentSession {
   lampAssists = 0
   /** Coverage of the step's layer inside its region when the step began (erase steps). */
   private startSum = 0
+  /** The step's region split into zones, each finishing on its own. */
+  private zones: Zone[] = []
   private events: SessionEvent[] = []
   private nextTarget = 1
   private rng: Rng
@@ -282,12 +331,16 @@ export class TreatmentSession {
       place(f.deep, ZONES.scattered, 70, (x, y) => add('whitehead', x, y, r.range(1.15, 1.5), undefined, { stage: 2 }))
       const blackheads: { x: number; y: number }[] = []
       for (let tries = 0; blackheads.length < f.blackheads && tries < 800; tries++) {
-        const x = FACE.nose.x + r.range(-66, 66), y = FACE.nose.y + r.range(-40, 48)
-        if (!inRegion(REGIONS.nose, x, y) || !spaced(blackheads, x, y, 16)) continue
+        const side = r.chance(0.5) ? -1 : 1
+        const zone = r()
+        // Mostly the sides of the nose and the creases by the wings; a few on the bridge and tip.
+        const x = zone < 0.45 ? FACE.nose.x + side * r.range(22, 56) : zone < 0.8 ? FACE.nose.x + side * r.range(44, 70) : FACE.nose.x + r.range(-20, 20)
+        const y = zone < 0.45 ? FACE.nose.y + r.range(-44, 10) : zone < 0.8 ? FACE.nose.y + r.range(8, 40) : FACE.nose.y + r.range(-30, 0)
+        if (!inRegion(REGIONS.nose, x, y) || !spaced(blackheads, x, y, 14)) continue
         blackheads.push({ x, y })
-        add('blackhead', x, y, r.range(0.5, 1.1))
+        add('blackhead', x, y, r.range(0.4, 1.25))
       }
-      for (const [x, y] of [[512, 368], [372, 650], [652, 650], [512, 862], [512, 582]]) add('drop', x, y, 1)
+      for (const [x, y] of [[512, 410], [372, 650], [652, 650], [512, 850], [512, 582]]) add('drop', x, y, 1)
     } else if (h) {
       HAND.fingers.forEach((finger, i) => {
         if (h.grown[i] <= 0) return
@@ -337,6 +390,7 @@ export class TreatmentSession {
       for (const [x, y, rr] of [[400, 660, 58], [624, 660, 58], [512, 392, 62]]) this.stampLayer('cream', x, y, rr, 1, 'skin')
     }
     if (step.gesture === 'erase' && step.layer) this.startSum = sumIn(this.layers[step.layer], regionMask(step.region))
+    this.zones = step.layer && (step.gesture === 'erase' || step.gesture === 'paint' || step.gesture === 'rub') ? zonesOf(step.region).map(cells => ({ cells, start: step.gesture === 'erase' ? cells.reduce((a, i) => a + this.layers[step.layer!][i], 0) : 0, done: false })) : []
     this.emit({ e: 'setup', step: this.step })
     this.checkReady()
   }
@@ -389,12 +443,32 @@ export class TreatmentSession {
   }
 
   private checkReady() {
+    this.checkZones()
     if (this.ready || !this.current) return
     // Optional steps wait for the player to press Finish even when something was placed.
     if (this.current.optional) return
     if (this.progress() >= this.threshold() - 1e-9) {
       this.ready = true
       this.emit({ e: 'ready', step: this.step })
+    }
+  }
+
+  private checkZones() {
+    const step = this.current
+    if (!step?.layer || !this.zones.length) return
+    const grid = this.layers[step.layer]
+    const goal = this.threshold()
+    for (const z of this.zones) {
+      if (z.done) continue
+      let p: number
+      if (step.gesture === 'erase') p = z.start < 0.5 ? 1 : 1 - z.cells.reduce((a, i) => a + grid[i], 0) / z.start
+      else p = z.cells.reduce((a, i) => a + Math.min(1, grid[i] / 0.8), 0) / z.cells.length
+      if (p < goal) continue
+      z.done = true
+      if (z.start < 0.5 && step.gesture === 'erase') continue
+      let x = 0, y = 0
+      for (const i of z.cells) { x += (i % GRID) + 0.5; y += Math.floor(i / GRID) + 0.5 }
+      this.emit({ e: 'zone', x: (x / z.cells.length) * (1024 / GRID), y: (y / z.cells.length) * (1024 / GRID) })
     }
   }
 
@@ -612,7 +686,7 @@ export class TreatmentSession {
   snapshot(): SessionSnapshot {
     const layers: Record<string, string> = {}
     for (const [id, grid] of Object.entries(this.layers)) layers[id] = encodeGrid(grid)
-    return { step: this.step, layers, targets: this.targets.map(t => ({ ...t })), status: [...this.status], hold: this.hold, peel: { ...this.peel }, choices: { ...this.choices }, popped: this.popped, extracted: this.extracted, startSum: this.startSum, ready: this.ready }
+    return { step: this.step, layers, targets: this.targets.map(t => ({ ...t })), status: [...this.status], hold: this.hold, peel: { ...this.peel }, choices: { ...this.choices }, popped: this.popped, extracted: this.extracted, startSum: this.startSum, ready: this.ready, elapsed: this.elapsed }
   }
 
   restore(snap: SessionSnapshot) {
@@ -628,6 +702,7 @@ export class TreatmentSession {
     this.extracted = snap.extracted
     this.startSum = snap.startSum
     this.ready = snap.ready
+    this.elapsed = snap.elapsed ?? this.elapsed
     this.finished = this.step >= this.def.steps.length
     this.events.length = 0
   }
@@ -645,4 +720,6 @@ export type SessionSnapshot = {
   extracted: number
   startSum: number
   ready: boolean
+  /** Seconds the treatment has run (a helper who takes over keeps counting from here). */
+  elapsed?: number
 }

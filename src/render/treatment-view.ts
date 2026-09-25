@@ -5,7 +5,7 @@ import { GRID, CELL } from '../core/treatments/grid.ts'
 import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, peelCurve, regionMask, type Op, type SessionEvent, type SessionSnapshot, type Target, type TreatmentResult } from '../core/treatments/session.ts'
 import { POLISH_COLORS, type StepDef, type TreatmentId } from '../core/treatments/types.ts'
 import { starsFor } from '../core/reviews.ts'
-import { assetsFor, type PartAssets } from '../art/assets.ts'
+import { assetsFor, destroyAssets, type PartAssets } from '../art/assets.ts'
 import { BACKDROP, BACKDROP_OFFSET } from '../art/backdrop.ts'
 import { bits } from '../art/bits.ts'
 import { toolArt } from '../art/tools.ts'
@@ -237,7 +237,7 @@ export class TreatmentView {
       const head = sprite(p?.head ?? bits.whiteheadHead(), 0.3 * t.size)
       head.visible = !deep
     }
-    else if (t.kind === 'blackhead') { sprite(bits.blackhead(), 0.32 * t.size); const plug = sprite(bits.plug(), 0.4 * t.size, 0.1); plug.visible = false }
+    else if (t.kind === 'blackhead') { sprite(bits.blackhead(), 0.44 * t.size); const plug = sprite(bits.plug(), 0.4 * t.size, 0.1); plug.visible = false }
     else if (t.kind === 'drop' || t.kind === 'patch') { const r = sprite(bits.ring(), t.kind === 'drop' ? 0.9 : 0.7); if (t.kind === 'patch') r.tint = 0xf49ac0; r.visible = false }
     else if (t.kind === 'tip') {
       const f = HAND.fingers[t.n ?? 0]
@@ -375,6 +375,11 @@ export class TreatmentView {
     this.hud.setRole('lead')
     this.hud.setStep(this.session.step, this.session.status)
     if (this.session.ready) this.advanceAt = this.time + 0.4
+    // Already at the reveal: the new lead needs the Done button, or the customer would wait forever.
+    if (this.cardShown) {
+      const stars = this.result ? starsFor(this.result, this.opts.mood, this.opts.ambience) : 5
+      this.hud.showReveal({ name: this.opts.customer.name, stars, lead: true })
+    }
   }
 
   /** For browser checks: art-space centres of grid cells the current step still needs worked. */
@@ -550,6 +555,12 @@ export class TreatmentView {
         case 'targetStage': this.onTargetStage(e.id); break
         case 'miss': sfx.miss(this.pan(e.x)); break
         case 'ready': this.onReady(); break
+        case 'zone':
+          // A nail or an area of the face is done: a little glint and a soft chime.
+          sfx.sparkle(this.pan(e.x))
+          this.burstSparkles(e.x, e.y, 6, 180)
+          this.fx.spawn({ texture: bits.glow(), x: e.x, y: e.y, life: 0.45, scale: 0.5, scaleEnd: 2.4, alpha: 0.5, alphaEnd: 0, blend: 'add', tint: 0xfff4f8 })
+          break
         case 'resolve':
           this.surface.resolve(e.layer, e.to)
           if (e.layer === 'foam' && e.to === 0) this.foam.washAll()
@@ -950,7 +961,8 @@ export class TreatmentView {
     if (this.destroyed) return
     this.time += dt
     this.handleInput(dt)
-    if (this.opts.role === 'lead') this.session.time(dt)
+    // Everyone keeps the clock, so a helper who takes over reports the real time.
+    this.session.time(dt)
     this.handleEvents(this.session.drain())
     if (this.advanceAt >= 0 && this.time >= this.advanceAt && this.session.ready) { this.advanceAt = -1; this.local({ k: 'advance', s: this.session.step }) }
     this.handleEvents(this.session.drain())
@@ -1222,6 +1234,7 @@ export class TreatmentView {
     this.beforeRT?.destroy(true)
     this.afterRT?.destroy(true)
     this.root.destroy({ children: true })
+    destroyAssets(this.assets)
     const w = window as unknown as { __treatment?: TreatmentView }
     if (w.__treatment === this) delete w.__treatment
   }
