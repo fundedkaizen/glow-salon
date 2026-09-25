@@ -75,7 +75,7 @@ export class FloorHud {
     const top = h('div', 'gs-hud-top')
     this.dayEl = h('div', 'gs-chip gs-day')
     this.moneyEl = h('div', 'gs-chip money', `<span class="gs-dot" style="background:#fff3cf">${ICON.coin}</span><div><small>Wallet</small><b>$0</b></div>`)
-    this.rateEl = h('div', 'gs-chip gs-rating-chip', `<span class="gs-dot" style="background:#fff3cf">${ICON.star}</span><div><small>Rating</small><b></b></div>`)
+    this.rateEl = h('div', 'gs-chip gs-rating-chip', `<span class="gs-dot" style="background:#fff3cf">${ICON.star}</span><div><small>Rating</small><b></b><span class="gs-rate-short"></span></div>`)
     const musicChip = h('div', 'gs-chip gs-music')
     this.eqEl = h('span', 'gs-eq', '<i></i><i></i><i></i>')
     const toggle = h('button', '', ICON.music)
@@ -93,6 +93,8 @@ export class FloorHud {
     const left = h('div', 'gs-hud-left')
     left.append(this.dayEl, this.goalEl)
     this.goalEl.hidden = true
+    this.goalEl.style.pointerEvents = 'auto'
+    this.goalEl.onclick = () => this.goalEl.classList.toggle('open')
     top.append(left, this.moneyEl, this.rateEl, h('div', 'gs-spacer'), musicChip, gear)
     const bottom = h('div', 'gs-hud-bottom')
     this.openBtn = h('button', 'gs-btn pink big gs-open', 'Open the salon')
@@ -114,7 +116,8 @@ export class FloorHud {
     if (key !== this.lastKey) {
       this.lastKey = key
       const pct = v.total ? Math.round((v.served / v.total) * 100) : 0
-      this.dayEl.innerHTML = `<div class="gs-day-line"><b>Day ${v.day}</b><span>${phaseText}</span></div><div class="gs-day-line"><span>${v.served} of ${v.total} customers</span></div><div class="gs-dayline-bar"><i style="width:${pct}%"></i></div>`
+      this.dayEl.innerHTML = `<div class="gs-day-line"><b>Day ${v.day}</b><span>${phaseText}</span></div><div class="gs-day-line"><span>${v.served} of ${v.total} customers</span></div><div class="gs-dayline-bar"><i style="width:${pct}%"></i></div><span class="gs-day-short">${v.served}/${v.total}</span>`
+      ;(this.rateEl.querySelector('.gs-rate-short') as HTMLElement).textContent = v.reviews ? v.rating.toFixed(1) : 'New'
       ;(this.rateEl.querySelector('b') as HTMLElement).innerHTML = v.reviews ? `${v.rating.toFixed(1)} ${stars(v.rating)}` : `<span style="font:700 13px Nunito">No reviews yet</span>`
     }
     // The wallet rolls to its new value.
