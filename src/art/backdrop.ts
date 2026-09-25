@@ -206,69 +206,112 @@ export function paintBackdrop(kind: 'facial' | 'nails' | 'feet' | 'sole', look: 
 }
 
 /**
- * The pedicure: a big, soft terry towel filling the view, folded over at the top with a rolled edge, its pile
- * catching the key light, deep soft folds and a warm shadow toward the far side. Under the top view's toes, the
- * rim of the foot bath shows at the bottom: a glazed ceramic lip and a sliver of water.
+ * The pedicure: seen from above, a padded footrest with a fluffy terry towel folded over it, standing on the
+ * salon's pastel tiles (far below, so softly out of focus, with a plant and bottles at the edges). The towel
+ * has deep soft folds, a rolled hem and a stitched stripe. Under the top view's toes, the rim of the foot
+ * bath shows at the bottom: glazed ceramic and a sliver of water.
  */
 function paintFootTowel(ctx: Ctx, look: Look, basin: boolean) {
   const r = makeRng(look.outfit * 13 + 7)
-  const towel = shade(hex([0xd9ccf5, 0xf7c6d4, 0xbfeadb, 0xcdbdf2][look.outfit % 4]), 0.08)
   const W = BACKDROP
-  const g = ctx.createLinearGradient(0, 0, W, W)
-  g.addColorStop(0, rgba(shade(towel, 0.28))); g.addColorStop(0.5, rgba(towel)); g.addColorStop(1, rgba(shade(towel, -0.14)))
+  const towel = shade(hex([0xd9ccf5, 0xf7c6d4, 0xbfeadb, 0xcdbdf2][look.outfit % 4]), 0.05)
+  // The floor, far below: pastel tiles with white grout, warm light, a plant and bottles at the edges.
+  const [room, rctx] = canvas(W)
+  const tiles = ['#cdeee4', '#d7e9f7', '#f4dbe8']
+  for (let y = -40; y < W; y += 190) for (let x = -40; x < W; x += 190) {
+    rctx.fillStyle = tiles[((x + y) / 190 + 20) % 3 | 0]
+    rctx.fillRect(x + 5, y + 5, 180, 180)
+    rctx.fillStyle = 'rgba(255,255,255,0.35)'; rctx.fillRect(x + 12, y + 12, 70, 18)
+  }
+  blob(rctx, 200, 150, 700, 500, [255, 244, 222], 0.6)
+  for (const [px, py] of [[90, 260], [1520, 1280]] as const) {
+    for (let i = 0; i < 14; i++) {
+      const a = r.range(0, Math.PI * 2), len = r.range(120, 220)
+      rctx.fillStyle = rgba(shade([120, 190, 150], r.range(-0.25, 0.15)))
+      rctx.beginPath(); rctx.ellipse(px + Math.cos(a) * len * 0.5, py + Math.sin(a) * len * 0.5, len * 0.5, len * 0.2, a, 0, Math.PI * 2); rctx.fill()
+    }
+    rctx.fillStyle = '#f3e4dc'; rctx.beginPath(); rctx.arc(px, py, 70, 0, Math.PI * 2); rctx.fill()
+  }
+  for (const [bx, by, col] of [[1500, 160, '#f7b7c9'], [1450, 300, '#ffffff'], [1540, 420, '#cdbdf2'], [70, 1420, '#fbd9a0']] as const) {
+    rctx.fillStyle = col; rctx.beginPath(); rctx.arc(bx, by, 46, 0, Math.PI * 2); rctx.fill()
+    rctx.fillStyle = 'rgba(255,255,255,0.7)'; rctx.beginPath(); rctx.arc(bx - 14, by - 14, 12, 0, Math.PI * 2); rctx.fill()
+  }
+  ctx.save(); ctx.filter = 'blur(12px)'; ctx.drawImage(room, 0, 0); ctx.restore()
+  // The footrest: a padded blush cushion with piping, its shadow on the floor.
+  const L = 150, T = 40, R = W - 150, B = W + 200
+  blurred(ctx, 30, () => { ctx.fillStyle = 'rgba(110,60,100,0.4)'; ctx.beginPath(); ctx.roundRect(L + 20, T + 34, R - L, B - T, 130); ctx.fill() })
+  ctx.save()
+  ctx.beginPath(); ctx.roundRect(L, T, R - L, B - T, 130)
+  const cg = ctx.createLinearGradient(L, 0, R, 0)
+  cg.addColorStop(0, '#f6c9d8'); cg.addColorStop(0.5, '#fbdce6'); cg.addColorStop(1, '#e3a9bf')
+  ctx.fillStyle = cg
+  ctx.fill()
+  ctx.clip()
+  blurred(ctx, 26, () => { ctx.strokeStyle = 'rgba(170,90,120,0.45)'; ctx.lineWidth = 70; ctx.beginPath(); ctx.roundRect(L, T, R - L, B - T, 130); ctx.stroke() })
+  ctx.restore()
+  blurred(ctx, 1.5, () => { ctx.strokeStyle = 'rgba(255,240,246,0.9)'; ctx.lineWidth = 5; ctx.beginPath(); ctx.roundRect(L + 20, T + 20, R - L - 40, B - T - 40, 112); ctx.stroke() })
+  // The towel folded over it: fluffy terry, lit from the top left, deep soft folds, a rolled edge on top.
+  const tL = L + 70, tT = T + 80, tR = R - 70
+  const towelPath = (c: Ctx) => {
+    c.beginPath(); c.moveTo(tL + 40, tT)
+    c.bezierCurveTo((tL + tR) / 2 - 200, tT + 16, (tL + tR) / 2 + 200, tT - 10, tR - 40, tT + 6)
+    c.quadraticCurveTo(tR + 10, tT + 10, tR + 6, tT + 60)
+    c.lineTo(tR + 26, W + 100); c.lineTo(tL - 26, W + 100); c.lineTo(tL - 6, tT + 60)
+    c.quadraticCurveTo(tL - 8, tT + 4, tL + 40, tT)
+    c.closePath()
+  }
+  blurred(ctx, 20, () => { ctx.fillStyle = 'rgba(110,60,110,0.35)'; ctx.translate(12, 20); towelPath(ctx); ctx.fill() })
+  ctx.save()
+  towelPath(ctx)
+  const g = ctx.createLinearGradient(tL, tT, tR, W)
+  g.addColorStop(0, rgba(shade(towel, 0.3))); g.addColorStop(0.5, rgba(towel)); g.addColorStop(1, rgba(shade(towel, -0.12)))
   ctx.fillStyle = g
-  ctx.fillRect(0, 0, W, W)
-  terry(ctx, 0, 0, W, W, towel, 21, 0.018)
-  // Deep soft folds running across, each a shaded valley beside a lit ridge.
-  blurred(ctx, 26, () => {
+  ctx.fill()
+  ctx.clip()
+  terry(ctx, tL - 30, tT - 10, tR - tL + 60, W - tT + 110, towel, 21, 0.02)
+  // Deep folds: each a shaded valley beside a lit ridge, running down the towel.
+  blurred(ctx, 22, () => {
     for (let i = 0; i < 7; i++) {
-      const x = r.range(0, W), y0 = r.range(-100, 300), bend = r.range(-160, 160)
-      ctx.strokeStyle = rgba(shade(towel, -0.22), 0.45); ctx.lineWidth = r.range(26, 50)
-      ctx.beginPath(); ctx.moveTo(x, y0); ctx.quadraticCurveTo(x + bend, W / 2, x + r.range(-200, 200), W + 100); ctx.stroke()
-      ctx.strokeStyle = rgba(shade(towel, 0.35), 0.5); ctx.lineWidth = r.range(18, 34)
-      ctx.beginPath(); ctx.moveTo(x - 40, y0); ctx.quadraticCurveTo(x + bend - 40, W / 2, x + r.range(-200, 200) - 40, W + 100); ctx.stroke()
+      const x = tL + 60 + i * ((tR - tL - 120) / 6) + r.range(-50, 50), bend = r.range(-120, 120)
+      ctx.strokeStyle = rgba(shade(towel, -0.24), 0.5); ctx.lineWidth = r.range(30, 52)
+      ctx.beginPath(); ctx.moveTo(x, tT + 40); ctx.quadraticCurveTo(x + bend, W / 2, x + r.range(-160, 160), W + 100); ctx.stroke()
+      ctx.strokeStyle = rgba(shade(towel, 0.4), 0.55); ctx.lineWidth = r.range(20, 34)
+      ctx.beginPath(); ctx.moveTo(x - 46, tT + 40); ctx.quadraticCurveTo(x + bend - 46, W / 2, x + r.range(-160, 160) - 46, W + 100); ctx.stroke()
     }
   })
-  // Folded over at the top: a thick rolled edge and the doubled layer above it.
-  const fy = 150
-  blurred(ctx, 18, () => { ctx.fillStyle = 'rgba(110,70,120,0.35)'; ctx.fillRect(-20, fy - 10, W + 40, 60) })
-  ctx.save()
-  ctx.beginPath(); ctx.rect(0, 0, W, fy)
-  ctx.fillStyle = rgba(shade(towel, 0.12)); ctx.fill()
-  ctx.clip()
-  terry(ctx, 0, 0, W, fy, towel, 22, 0.02)
+  // Fluff: soft light pile catching the light at the top left.
+  blob(ctx, 480, 460, 600, 500, [255, 250, 255], 0.22)
+  blob(ctx, 1300, 1300, 600, 500, [90, 50, 100], 0.12)
   ctx.restore()
-  blurred(ctx, 4, () => {
-    ctx.strokeStyle = rgba(shade(towel, 0.5), 0.9); ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(-10, fy - 12); ctx.lineTo(W + 10, fy - 8); ctx.stroke()
-    ctx.strokeStyle = rgba(shade(towel, -0.3), 0.5); ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(-10, fy + 6); ctx.lineTo(W + 10, fy + 10); ctx.stroke()
+  // The rolled top edge and a stitched stripe below it.
+  const edge = (c: Ctx, dy: number) => { c.beginPath(); c.moveTo(tL + 20, tT + 8 + dy); c.bezierCurveTo((tL + tR) / 2 - 200, tT + 22 + dy, (tL + tR) / 2 + 200, tT - 4 + dy, tR - 20, tT + 12 + dy) }
+  ctx.lineCap = 'round'
+  blurred(ctx, 3, () => {
+    ctx.strokeStyle = rgba(shade(towel, 0.5), 0.95); ctx.lineWidth = 20; edge(ctx, 4); ctx.stroke()
+    ctx.strokeStyle = rgba(shade(towel, -0.28), 0.5); ctx.lineWidth = 8; edge(ctx, 20); ctx.stroke()
   })
-  // A stitched hem stripe across the fold.
-  ctx.strokeStyle = rgba(shade(towel, -0.12), 0.6); ctx.lineWidth = 3; ctx.setLineDash([10, 8])
-  ctx.beginPath(); ctx.moveTo(0, fy - 50); ctx.lineTo(W, fy - 46); ctx.stroke(); ctx.setLineDash([])
-  // Warm light pooling top left, shade toward the far side.
-  blob(ctx, 420, 520, 700, 600, [255, 246, 236], 0.22)
-  blob(ctx, 1400, 1300, 700, 600, [90, 50, 100], 0.12)
+  ctx.strokeStyle = rgba(shade(towel, -0.12), 0.6); ctx.lineWidth = 3; ctx.setLineDash([12, 9])
+  edge(ctx, 64); ctx.stroke(); ctx.setLineDash([])
   if (!basin) return
   // The foot bath's rim at the bottom: glazed ceramic curving away, a lip of light and a sliver of water.
-  const cx = W / 2, cy = W + 620, R = 900
-  blurred(ctx, 20, () => { ctx.fillStyle = 'rgba(100,60,100,0.35)'; ctx.beginPath(); ctx.arc(cx + 10, cy - 30, R + 16, 0, Math.PI * 2); ctx.fill() })
+  const cx = W / 2, cy = W + 620, Rr = 900
+  blurred(ctx, 20, () => { ctx.fillStyle = 'rgba(100,60,100,0.35)'; ctx.beginPath(); ctx.arc(cx + 10, cy - 30, Rr + 16, 0, Math.PI * 2); ctx.fill() })
   ctx.save()
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2)
-  const rim = ctx.createRadialGradient(cx, cy, R - 70, cx, cy, R)
+  ctx.beginPath(); ctx.arc(cx, cy, Rr, 0, Math.PI * 2)
+  const rim = ctx.createRadialGradient(cx, cy, Rr - 70, cx, cy, Rr)
   rim.addColorStop(0, '#e7d9c8'); rim.addColorStop(0.5, '#fbf3ea'); rim.addColorStop(0.8, '#fffaf4'); rim.addColorStop(1, '#d9c2ae')
   ctx.fillStyle = rim
   ctx.fill()
   ctx.clip()
-  // The water inside the rim: aqua, lighter toward the near edge, with a line of light.
-  ctx.beginPath(); ctx.arc(cx, cy, R - 60, 0, Math.PI * 2)
-  const wg = ctx.createLinearGradient(0, cy - R, 0, cy - R + 200)
+  ctx.beginPath(); ctx.arc(cx, cy, Rr - 60, 0, Math.PI * 2)
+  const wg = ctx.createLinearGradient(0, cy - Rr, 0, cy - Rr + 200)
   wg.addColorStop(0, '#9fd9df'); wg.addColorStop(1, '#c4ecef')
   ctx.fillStyle = wg
   ctx.fill()
-  blurred(ctx, 3, () => { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, R - 74, Math.PI * 1.3, Math.PI * 1.7); ctx.stroke() })
-  for (let i = 0; i < 26; i++) { const a = r.range(Math.PI * 1.25, Math.PI * 1.75), d = r.range(R - 200, R - 70); blob(ctx, cx + Math.cos(a) * d, cy + Math.sin(a) * d, r.range(3, 9), r.range(3, 9), [255, 255, 255], 0.7, 0.5) }
+  blurred(ctx, 3, () => { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, Rr - 74, Math.PI * 1.3, Math.PI * 1.7); ctx.stroke() })
+  for (let i = 0; i < 26; i++) { const a = r.range(Math.PI * 1.25, Math.PI * 1.75), d = r.range(Rr - 200, Rr - 70); blob(ctx, cx + Math.cos(a) * d, cy + Math.sin(a) * d, r.range(3, 9), r.range(3, 9), [255, 255, 255], 0.7, 0.5) }
   ctx.restore()
-  blurred(ctx, 2, () => { ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(cx, cy, R - 8, Math.PI * 1.32, Math.PI * 1.62); ctx.stroke() })
+  blurred(ctx, 2, () => { ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(cx, cy, Rr - 8, Math.PI * 1.32, Math.PI * 1.62); ctx.stroke() })
 }
 
 function vignette(ctx: Ctx) {

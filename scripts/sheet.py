@@ -1,4 +1,5 @@
-"""Contact sheets: screenshot a list of close-up URLs with agent-browser and tile them, labelled.
+"""Contact sheets: screenshot a list of close-up URLs with agent-browser and tile them, labelled, and report
+how much each tile differs from the first (so a layer that does not show is caught).
 
     python scripts/sheet.py OUT.png COLS W H "label|/?view=feet&..." "label|..." ...
 
@@ -13,8 +14,21 @@ import time
 from PIL import Image, ImageDraw, ImageFont
 
 BASE = os.environ.get('BASE', 'http://127.0.0.1:5195')
-# No shell: cmd.exe would cut the URLs at '&'.
-AB = ['npx.cmd' if os.name == 'nt' else 'npx', 'agent-browser', '--session', os.environ.get('AB_SESSION', 'art1')]
+SESSION = ['--session', os.environ.get('AB_SESSION', 'art1')]
+
+
+def find_ab():
+    # npx.cmd is a batch file, and cmd.exe cuts URLs at '&': run agent-browser's own executable instead.
+    if os.name != 'nt':
+        return ['npx', 'agent-browser']
+    import glob
+    exe = glob.glob(os.path.join(os.environ.get('LOCALAPPDATA', ''), 'npm-cache', '_npx', '*', 'node_modules', 'agent-browser', 'bin', 'agent-browser-win32-x64.exe'))
+    if not exe:
+        sys.exit('agent-browser not found in the npx cache: run "npx agent-browser --help" once')
+    return [exe[0]]
+
+
+AB = find_ab() + SESSION
 
 
 def ab(*args):
@@ -47,6 +61,12 @@ def main():
         draw.text((x + 10, y + 8), label, fill=(90, 58, 82), font=font)
     sheet.save(out)
     print(out, sheet.size)
+    # Each tile must differ from the first (a layer that does not show, or a URL that did not load, would not).
+    from PIL import ImageChops, ImageStat
+    base = tiles[0][1]
+    for label, im in tiles[1:]:
+        diff = sum(ImageStat.Stat(ImageChops.difference(base, im)).mean) / 3
+        print(f'  {label}: mean diff {diff:.2f}' + ('  <-- SAME AS FIRST' if diff < 0.5 else ''))
 
 
 if __name__ == '__main__':

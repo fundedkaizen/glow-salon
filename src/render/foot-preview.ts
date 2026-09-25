@@ -41,7 +41,7 @@ export function footPreview(app: Application, look: Look, params: URLSearchParam
 
   const want = params.get('layers')?.split(',').filter(Boolean) ?? (after ? ['color', 'top'] : conditionLayers(profile, view))
   for (const id of want) surface.resolve(id, 1)
-  if (after) surface.setLayerTint('color', POLISH_COLORS[Number(params.get('polish') ?? 2) % POLISH_COLORS.length].hex)
+  if (after) surface.setLayerTint('color', POLISH_COLORS[Number(params.get('polish') ?? 0) % POLISH_COLORS.length].hex)
   if (!after && sev > 0) placeSpots(spots, assets, profile, view)
   if (params.has('pins')) world.addChild(pins(assets, view))
 
@@ -68,7 +68,7 @@ export function conditionLayers(p: FootProfile, view: FootView): string[] {
   if (view === 'sole') return [p.calluses > 0.05 && 'callus', p.dry > 0.05 && 'dry', p.cracks > 0.05 && 'cracks', p.dirt > 0.05 && 'dirt'].filter(Boolean) as string[]
   const fungal = p.fungus.some(f => f > 0)
   return [
-    (fungal || p.ingrown || p.corns.length) && 'redness', p.ingrown && 'swelling', fungal && 'fungus', p.polish && 'oldPolish',
+    (fungal || p.ingrown || p.corns.length) && 'redness', p.ingrown && 'swelling', p.calluses > 0.05 && 'callus', fungal && 'fungus', p.polish && 'oldPolish',
     p.cuticle > 0.3 && 'cuticle', p.dirt > 0.05 && 'dirt', p.hair > 0.05 && 'hair',
   ].filter(Boolean) as string[]
 }
