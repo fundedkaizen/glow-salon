@@ -1,5 +1,6 @@
 import { check } from './harness.ts'
-import { newSave, startDay, reduce, tick, receipt, toSave, type SalonState } from '../src/core/salon.ts'
+import { newSave, startDay, reduce, receipt, toSave, type SalonState } from '../src/core/salon.ts'
+import { tick } from './calls.ts'
 import { ITEM_BY_ID, ambiencePoints, canBuy } from '../src/core/economy.ts'
 import { DECOR_SETS, DECOR_SET_ITEMS, completeSets, placeDecor, SET_BONUS } from '../src/core/decor.ts'
 import { CAMPAIGNS, campaignCustomers, advanceCampaigns, canRunCampaign, MAX_EXTRA } from '../src/core/marketing.ts'

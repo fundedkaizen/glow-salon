@@ -1,5 +1,6 @@
 import { check } from './harness.ts'
-import { newSave, reduce, startDay, tick, toSave, type SalonState } from '../src/core/salon.ts'
+import { newSave, reduce, startDay, toSave, type SalonState } from '../src/core/salon.ts'
+import { tick } from './calls.ts'
 import { canBuy, ITEM_BY_ID, ITEMS, type Item } from '../src/core/economy.ts'
 import { candidates, ext, hireCheck } from '../src/core/salon-ext.ts'
 import { CAMPAIGNS, canRunCampaign } from '../src/core/marketing.ts'

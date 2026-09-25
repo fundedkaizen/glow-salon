@@ -1,7 +1,7 @@
 import { firstNameOf, planDay, type CustomerPlan } from './customers.ts'
 import { regularChance, setPayMult, setStarBonus, setTipMult, vipBoost } from './decor.ts'
 import { ambienceStars, canBuy, customersPerDay, ITEM_BY_ID, needsConfirm, payFor, START_MONEY, STATION_NAME, tipFor, treatmentsUnlocked, type StationKind } from './economy.ts'
-import { blockedGrid, DOOR, DOOR_INSIDE, findPath, SLOTS, SOFA_SEATS, spawnPoint, STANDING, stationSeat, walk, type Pt } from './floor.ts'
+import { blockedGrid, DESK_FRONT, DOOR, DOOR_INSIDE, findPath, SLOTS, SOFA_SEATS, spawnPoint, STANDING, stationFront, stationSeat, walk, type Pt } from './floor.ts'
 import { campaignBias } from './marketing.ts'
 import { goalFor } from './goals.ts'
 import { addReview, average, starsFor, type Rating, type Review } from './reviews.ts'
@@ -119,6 +119,8 @@ export type Action =
   /** Put a new station in an empty slot (or move one that has nobody in it). */
   | { a: 'place'; station: string; slot: number }
   | { a: 'next' }
+  /** Call a waiting customer to a free station of their kind (a tap on them), or the next in line to a free station (a tap on it). */
+  | { a: 'call'; customer?: number; station?: string }
   | ExtAction
 
 export const WALK_SPEED = 170
@@ -288,6 +290,7 @@ export function reduce(state: SalonState, by: number, action: Action): boolean {
       return true
     }
     case 'finish': return finish(state, by, action.station, action.result, action.foam ?? 0)
+    case 'call': return call(state, by, typeof action.customer === 'number' ? action.customer : undefined, typeof action.station === 'string' ? action.station : undefined)
     case 'buy': return buy(state, by, action.item)
     case 'vote': {
       if (!state.pending || state.pending.id !== action.id) return false
@@ -473,7 +476,8 @@ export function tick(state: SalonState, dt: number) {
     const plan = state.schedule[state.spawned++]
     const c: Customer = { id: state.nextId++, plan, x: DOOR.x, y: DOOR.y, path: [], state: 'entering', seat: null, station: null, mood: 1, paid: 0, stars: 0 }
     c.seat = takeSeat(state)
-    c.path = [DOOR_INSIDE, ...pathOnFloor(state, DOOR_INSIDE, seatPoint(c.seat))]
+    // In by the door, past the front of the desk (a hello), then to the sofa.
+    c.path = [DOOR_INSIDE, ...pathOnFloor(state, DOOR_INSIDE, DESK_FRONT), ...pathOnFloor(state, DESK_FRONT, seatPoint(c.seat))]
     state.customers.push(c)
     event(state, { kind: 'arrive', text: `${plan.name} arrived for a ${planTreatment(plan.treatment, plan.seed, plan.disaster).def.name}`, x: c.x, y: c.y })
   }
@@ -491,22 +495,12 @@ export function tick(state: SalonState, dt: number) {
       if (!s || s.lead === null) c.mood = Math.max(MOOD_FLOOR, c.mood - MOOD_DRAIN_SEATED * dt)
     }
   }
-  // Free stations call the next waiting customer who wants what they do (first come, first served). A
-  // station with a staff member ready calls first, so staff are never idle while a player's chair fills.
-  const free = state.stations.filter(s => s.customer === null && s.slot >= 0)
-  free.sort((a, b) => Number(staffAvailableAt(state, b.id)) - Number(staffAvailableAt(state, a.id)))
-  for (const s of free) {
-    const next = state.customers.find(c => (c.state === 'waiting' || c.state === 'entering') && TREATMENTS[c.plan.treatment].station === s.kind)
-    if (!next) continue
-    s.customer = next.id
-    s.step = 0
-    s.progress = 0
-    s.steps = stepCount(next.plan.treatment, next.plan.seed, next.plan.disaster)
-    next.station = s.id
-    next.seat = null
-    next.state = 'toStation'
-    next.path = pathOnFloor(state, next, stationSeat(s.slot))
-    reseat(state)
+  // Customers wait on the sofa until someone calls them: a player taps them (or a free station), and a station
+  // with a staff member ready calls the next in line by itself, so staff are never idle.
+  for (const s of state.stations) {
+    if (s.customer !== null || s.slot < 0 || !staffAvailableAt(state, s.id)) continue
+    const next = nextFor(state, s)
+    if (next) sendTo(state, s, next)
   }
   // Paid customers leave by the door.
   state.customers = state.customers.filter(c => !(c.state === 'leaving' && !c.path.length))
@@ -528,6 +522,48 @@ export const MAX_CATCH_UP = 120
 export function runFor(state: SalonState, seconds: number) {
   let left = Math.min(MAX_CATCH_UP, Math.max(0, seconds))
   while (left > 1e-6) { const d = Math.min(0.25, left); tick(state, d); left -= d }
+}
+
+/** The next waiting customer (first come, first served) who wants what a station does. */
+function nextFor(state: SalonState, s: Station): Customer | undefined {
+  return state.customers.find(c => (c.state === 'waiting' || c.state === 'entering') && TREATMENTS[c.plan.treatment].station === s.kind)
+}
+
+/** Send a waiting customer to a free station: up from the sofa, across the open floor to the station's front, into the seat. */
+function sendTo(state: SalonState, s: Station, c: Customer) {
+  s.customer = c.id
+  s.step = 0
+  s.progress = 0
+  s.steps = stepCount(c.plan.treatment, c.plan.seed, c.plan.disaster)
+  c.station = s.id
+  c.seat = null
+  c.state = 'toStation'
+  const seat = stationSeat(s.slot), front = stationFront(s.slot)
+  c.path = [...pathOnFloor(state, c, front), ...pathOnFloor(state, front, seat)]
+  reseat(state)
+}
+
+/** A player's call: a customer to the free station of their kind nearest the player, or a free station's next in line. */
+function call(state: SalonState, by: number, customer?: number, station?: string): boolean {
+  if (state.phase !== 'open' && state.phase !== 'closing') return false
+  const free = state.stations.filter(s => s.customer === null && s.slot >= 0)
+  if (customer !== undefined) {
+    const c = state.customers.find(cu => cu.id === customer)
+    if (!c || (c.state !== 'waiting' && c.state !== 'entering')) return false
+    const kind = TREATMENTS[c.plan.treatment].station
+    const p = state.players.find(pl => pl.id === by)
+    const fits = free.filter(s => s.kind === kind && (!station || s.id === station))
+    if (!fits.length) return false
+    const at = (s: Station) => { const q = SLOTS[s.slot]; return p ? Math.hypot(q.x - p.x, q.y - p.y) : 0 }
+    fits.sort((a, b) => at(a) - at(b))
+    sendTo(state, fits[0], c)
+    return true
+  }
+  const s = free.find(st => st.id === station)
+  const next = s && nextFor(state, s)
+  if (!s || !next) return false
+  sendTo(state, s, next)
+  return true
 }
 
 function seatPoint(seat: number | null): Pt {

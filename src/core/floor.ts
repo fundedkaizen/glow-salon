@@ -43,7 +43,7 @@ export const PARTITIONS: Rect[] = [
  * right corner.
  */
 export const FIXTURES: Record<'waiting' | 'planter', Rect> = {
-  waiting: { x: 385, y: 385, w: 235, h: 72 },
+  waiting: { x: 330, y: 405, w: 235, h: 100 },
   planter: { x: 1190, y: 702, w: 74, h: 86 },
 }
 
@@ -75,6 +75,10 @@ export function stationRect(slot: number): Rect {
 }
 /** Where the customer sits at a station. */
 export function stationSeat(slot: number): Pt { const p = SLOTS[slot]; return { x: p.x + 10, y: p.y + 2 } }
+/** Where a customer comes up to a station before sitting: in front of it, on the aisle side. */
+export function stationFront(slot: number): Pt { const p = SLOTS[slot]; return { x: p.x + 10, y: p.y + (p.y < 500 ? STATION_H / 2 + 28 : -STATION_H / 2 - 28) } }
+/** In front of the reception desk, where arriving customers say hello on the way to the sofa. */
+export const DESK_FRONT: Pt = { x: DESK.x + DESK.w / 2 + 20, y: DESK.y + DESK.h + 40 }
 /** Where the player stands to work at a station. */
 export function stationSpot(slot: number): Pt { const p = SLOTS[slot]; return { x: p.x - 100, y: p.y + 30 } }
 
@@ -125,15 +129,18 @@ export function blockedGrid(slots: number[], props: string[]): Uint8Array {
 
 const cellOf = (p: Pt) => ({ cx: Math.max(0, Math.min(COLS - 1, Math.floor(p.x / CELL))), cy: Math.max(0, Math.min(ROWS - 1, Math.floor(p.y / CELL))) })
 
-/** Nearest open cell to a point (a target inside furniture walks to its edge). */
+/**
+ * Nearest open cell to a point (a target inside furniture walks to its edge): the nearest, and among near ones the
+ * one in front (larger y, the side seats and stations face) rather than a gap behind or beside the furniture.
+ */
 function openCellNear(grid: Uint8Array, p: Pt) {
   const { cx, cy } = cellOf(p)
   if (!grid[cy * COLS + cx]) return { cx, cy }
   for (let r = 1; r < 8; r++) {
     let best: { cx: number; cy: number } | null = null, bestD = Infinity
-    for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+    for (let y = cy - r; y <= cy + r + 2; y++) for (let x = cx - r; x <= cx + r; x++) {
       if (x < 0 || y < 0 || x >= COLS || y >= ROWS || grid[y * COLS + x]) continue
-      const d = (x - cx) ** 2 + (y - cy) ** 2
+      const d = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) - (y > cy ? 1.6 : 0)
       if (d < bestD) { bestD = d; best = { cx: x, cy: y } }
     }
     if (best) return best
@@ -142,11 +149,72 @@ function openCellNear(grid: Uint8Array, p: Pt) {
 }
 
 /**
- * A* over the grid, 8 directions without cutting corners. Returns waypoints from `from` to `to` (the exact
- * end point is appended so characters stop where they should), simplified to where the path turns.
+ * How much each open cell costs to cross, besides its length: a lot right beside a wall or a piece of furniture,
+ * a little one cell further out, nothing in the open. People then keep to the middle of the room and walk round
+ * furniture with a little room to spare, instead of scraping along the wall behind the sofa. Cached per grid.
+ */
+const PENALTY = [0, 4, 0.5, 0.2]
+const costs = new WeakMap<Uint8Array, Float32Array>()
+export function costField(grid: Uint8Array): Float32Array {
+  let c = costs.get(grid)
+  if (c) return c
+  // Distance (in cells, 8 directions) to the nearest blocked cell or the edge of the floor, by breadth-first rings.
+  const dist = new Int16Array(COLS * ROWS).fill(-1)
+  let ring: number[] = []
+  for (let i = 0; i < COLS * ROWS; i++) if (grid[i]) { dist[i] = 0; ring.push(i) }
+  for (let x = 0; x < COLS; x++) for (const y of [0, ROWS - 1]) { const i = y * COLS + x; if (dist[i] < 0) { dist[i] = 1; ring.push(i) } }
+  for (let y = 0; y < ROWS; y++) for (const x of [0, COLS - 1]) { const i = y * COLS + x; if (dist[i] < 0) { dist[i] = 1; ring.push(i) } }
+  while (ring.length) {
+    const next: number[] = []
+    for (const i of ring) {
+      const x = i % COLS, y = (i / COLS) | 0
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy
+        if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue
+        const ni = ny * COLS + nx
+        if (dist[ni] >= 0) continue
+        dist[ni] = dist[i] + 1
+        next.push(ni)
+      }
+    }
+    ring = next
+  }
+  c = new Float32Array(COLS * ROWS)
+  for (let i = 0; i < c.length; i++) c[i] = PENALTY[dist[i]] ?? 0
+  costs.set(grid, c)
+  return c
+}
+
+/**
+ * Whether the straight line between two cells crosses no blocked cell, and in its middle no cell dearer than the
+ * cheaper end (near each end, no dearer than that end): a shortcut never scrapes along furniture the path avoided.
+ */
+function clearLine(grid: Uint8Array, cost: Float32Array, a: number, b: number): boolean {
+  const ax = (a % COLS) + 0.5, ay = ((a / COLS) | 0) + 0.5, bx = (b % COLS) + 0.5, by = ((b / COLS) | 0) + 0.5
+  const len = Math.hypot(bx - ax, by - ay)
+  const n = Math.ceil(len * 4)
+  for (let k = 1; k < n; k++) {
+    const t = k / n
+    const limit = t * len < 1.5 ? cost[a] : (1 - t) * len < 1.5 ? cost[b] : Math.min(cost[a], cost[b])
+    // The line and its two neighbours a third of a cell to each side, so the body does not clip corners.
+    for (const o of [-0.3, 0, 0.3]) {
+      const px = ax + (bx - ax) * t + o * (by - ay) / Math.max(1e-6, Math.hypot(bx - ax, by - ay)), py = ay + (by - ay) * t - o * (bx - ax) / Math.max(1e-6, Math.hypot(bx - ax, by - ay))
+      const i = Math.floor(py) * COLS + Math.floor(px)
+      if (grid[i] || cost[i] > limit) return false
+    }
+  }
+  return true
+}
+
+/**
+ * A* over the grid (8 directions, never cutting a corner), each step weighted by the cells' closeness to walls and
+ * furniture (costField), so paths run through the open middle. The cells are then string-pulled into straight runs
+ * across open floor. Returns waypoints from `from` to `to`, ending exactly at `to`. Deterministic, so the host and
+ * every guest walk the same path.
  */
 export function findPath(grid: Uint8Array, from: Pt, to: Pt): Pt[] {
   const start = openCellNear(grid, from), goal = openCellNear(grid, to)
+  const cost = costField(grid)
   const idx = (x: number, y: number) => y * COLS + x
   const g = new Float32Array(COLS * ROWS).fill(Infinity)
   const came = new Int32Array(COLS * ROWS).fill(-1)
@@ -172,22 +240,42 @@ export function findPath(grid: Uint8Array, from: Pt, to: Pt): Pt[] {
       const ni = idx(nx, ny)
       if (grid[ni] || closed[ni]) continue
       if (dx && dy && (grid[idx(x + dx, y)] || grid[idx(x, y + dy)])) continue
-      const cost = g[cur] + (dx && dy ? 1.414 : 1)
-      if (cost < g[ni]) { g[ni] = cost; came[ni] = cur; open.push(ni) }
+      const step = (dx && dy ? 1.414 : 1) * (1 + cost[ni])
+      if (g[cur] + step < g[ni]) { g[ni] = g[cur] + step; came[ni] = cur; open.push(ni) }
     }
   }
   if (!found) return [to]
   const cells: number[] = []
   for (let c = goalIndex; c !== -1; c = came[c]) cells.push(c)
   cells.reverse()
+  // String-pulling: from each corner, run straight to the furthest cell in clear view.
   const pts: Pt[] = []
-  for (let i = 1; i < cells.length - 1; i++) {
-    const a = cells[i - 1], b = cells[i], c = cells[i + 1]
-    const d1 = [b % COLS - a % COLS, ((b / COLS) | 0) - ((a / COLS) | 0)], d2 = [c % COLS - b % COLS, ((c / COLS) | 0) - ((b / COLS) | 0)]
-    if (d1[0] !== d2[0] || d1[1] !== d2[1]) pts.push({ x: (b % COLS) * CELL + CELL / 2, y: ((b / COLS) | 0) * CELL + CELL / 2 })
+  let i = 0
+  while (i < cells.length - 1) {
+    let j = cells.length - 1
+    while (j > i + 1 && !clearLine(grid, cost, cells[i], cells[j])) j--
+    if (j < cells.length - 1) pts.push({ x: (cells[j] % COLS) * CELL + CELL / 2, y: ((cells[j] / COLS) | 0) * CELL + CELL / 2 })
+    i = j
   }
+  // A goal inside furniture (a seat, a work spot tucked in): step up to its edge on open floor first.
+  const end = cellOf(to)
+  if (end.cx !== goal.cx || end.cy !== goal.cy) pts.push({ x: goal.cx * CELL + CELL / 2, y: goal.cy * CELL + CELL / 2 })
   pts.push(to)
   return pts
+}
+
+/** Whether a point is on open floor (not in a wall or furniture). */
+export function isOpen(grid: Uint8Array, p: Pt): boolean { const { cx, cy } = cellOf(p); return !grid[cy * COLS + cx] }
+
+/**
+ * Where a player's tap on furniture takes them: straight down the screen to the furniture's front edge (the first
+ * open cell below the tapped point), so a tap on a sofa walks up to the sofa, not round behind it. Open points stay.
+ */
+export function frontOf(grid: Uint8Array, p: Pt): Pt {
+  if (isOpen(grid, p)) return p
+  const { cx, cy } = cellOf(p)
+  for (let y = cy + 1; y < Math.min(ROWS, cy + 8); y++) if (!grid[y * COLS + cx]) return { x: cx * CELL + CELL / 2, y: y * CELL + CELL / 2 }
+  return p
 }
 
 /** Move a point along a path by `step` pixels; returns the remaining path. */

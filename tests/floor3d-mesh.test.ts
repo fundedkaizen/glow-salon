@@ -12,6 +12,7 @@ import { toWorld } from '../src/render3d/mapping.ts'
 import { buildRoom } from '../src/render3d/room.ts'
 import { furnitureFiles, loadModelFiles } from '../src/render3d/models.ts'
 import { readFileSync } from 'node:fs'
+import { withoutImages } from './glb.ts'
 
 /**
  * The mesh layout check: builds the real 3D salon (the room, the garden and every piece of furniture, exactly as
@@ -109,7 +110,7 @@ const personAt = (x: number, z: number, r = 0.17) => new Box3(new Vector3(x - r,
 
 export async function run() {
   // Helper B's models, read from disk: the check sees every mesh of every model as it stands in the salon.
-  const read = async (file: string) => { const b = readFileSync(`public/models/${file}`); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer }
+  const read = async (file: string) => withoutImages(readFileSync(`public/models/${file}`))
   await loadModelFiles([...furnitureFiles(), ...GIFTS.map(g => `gifts/gift-${g.regular}.glb`)], read)
   shell = record(() => { buildRoom() })
   const starters = ['plant', 'candles', 'rug', 'lights', 'art', 'neon', 'aquarium', 'chandelier']

@@ -86,6 +86,16 @@ PERF_TABLE
   built by Helper B's scripts).
 - Everything else in `src/render3d/` is our own.
 
+## Paths and calling customers
+
+- `core/floor.ts findPath` weighs each cell by how close it is to walls and furniture (`costField`) and string-pulls
+  the result, so people keep to open floor. A goal inside furniture is approached from the front. Arrivals walk door,
+  desk front, sofa; called customers walk to the station's front, then the seat. A player's tap on furniture walks
+  to its front edge (`frontOf`). All deterministic: the host and the guests compute the same paths.
+- Customers wait on the sofa until called (`call` action): a tap on them, or on a free station (the next in line).
+  Staffed stations call by themselves. A callable customer's bubble pulses, and the first carries "Tap to call"; a
+  tap when every chair of their kind is busy says so. The day-loop tests play as a prompt caller (`tests/calls.ts`).
+
 ## Notes
 
 - Tone mapping is Neutral (not ACES or AgX): it keeps the pastels saturated. `?tm=aces|agx` and `?exp=` compare.

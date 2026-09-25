@@ -97,7 +97,7 @@ export function placeModel(b: Build, id: string, x: number, z: number, ry = 0, o
   if (!m) return false
   const { file, overrides } = styleOf(m, opts.style ?? 0)
   const k = opts.k ?? (opts.fit ? Math.min(1, opts.fit / Math.max(m.footprint[0], m.footprint[1])) : 1)
-  const ok = bakeModel(b.kit, file, x, z, ry, k, { ...overrides, ...(opts.tint ?? {}) }, opts.y ?? 0)
+  const ok = bakeModel(b.kit, file, x, z, ry, k, { ...overrides, ...(opts.tint ?? {}) }, opts.y ?? 0, b.extra)
   if (ok && m.height > 0.05 && (opts.y ?? 0) < 0.1) b.blobs.push({ x, z, rx: (m.footprint[0] * k) / 2 + 0.1, rz: (m.footprint[1] * k) / 2 + 0.1, a: 0.28 })
   return ok
 }

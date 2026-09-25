@@ -1,5 +1,7 @@
 import { check } from './harness.ts'
-import { newSave, startDay, reduce, tick, receipt, awards, toSave, completionOf, type PlayerStats, type SalonState } from '../src/core/salon.ts'
+import { newSave, startDay, reduce, receipt, awards, toSave, completionOf, type PlayerStats, type SalonState } from '../src/core/salon.ts'
+import { tick } from './calls.ts'
+import { tick as coreTick } from '../src/core/salon.ts'
 import { ITEMS, canBuy, customersPerDay, ambiencePoints, ambienceStars, wealth, toolTier, payFor, tipFor, nextUnlock, START_MONEY, CONFIRM_PRICE } from '../src/core/economy.ts'
 import { starsFor, speedScore, writeReview, average, addReview, revealTitle } from '../src/core/reviews.ts'
 import { planDay } from '../src/core/customers.ts'
@@ -104,6 +106,26 @@ export function run() {
   for (let t = 0; t < 3000; t++) tick(waitState, 0.25)
   check('nobody walks out', waitState.customers.length === 4 && waitState.phase === 'closing')
   check('mood floor', waitState.customers.every(x => x.mood >= 0.2))
+
+  // Tap to call: a waiting customer stays on the sofa until called (no staff), then walks to the station.
+  const callState = startDay(newSave(21))
+  reduce(callState, 0, { a: 'join', name: 'A' })
+  reduce(callState, 0, { a: 'open' })
+  for (let t = 0; t < 60 && !callState.customers.some(x => x.state === 'waiting'); t += 0.1) coreTick(callState, 0.1)
+  const waiter = callState.customers.find(x => x.state === 'waiting')
+  for (let t = 0; t < 40; t += 0.1) coreTick(callState, 0.1)
+  check('call: a waiting customer does not go to a free station without a call', !!waiter && waiter.state === 'waiting' && callState.stations[0].customer === null, waiter?.state)
+  check('call: waiting drains mood slowly (not to the floor in 40 s)', !!waiter && waiter.mood < 1 && waiter.mood > 0.5, waiter?.mood)
+  check('call: a customer cannot be called to a busy or missing station', !reduce(callState, 0, { a: 'call', customer: waiter!.id, station: 'nope' }))
+  check('call: a tap on the customer calls them to the free station', reduce(callState, 0, { a: 'call', customer: waiter!.id }) && waiter!.state === 'toStation' && callState.stations[0].customer === waiter!.id)
+  check('call: they walk to the station and sit', (() => { for (let t = 0; t < 60 && waiter!.state !== 'seated'; t += 0.1) coreTick(callState, 0.1); return waiter!.state === 'seated' })())
+  check('call: nothing to call to a taken station', !reduce(callState, 0, { a: 'call', station: 's0' }))
+  const callState2 = startDay(newSave(21))
+  reduce(callState2, 0, { a: 'join', name: 'A' })
+  reduce(callState2, 0, { a: 'open' })
+  for (let t = 0; t < 60 && !callState2.customers.some(x => x.state === 'waiting'); t += 0.1) coreTick(callState2, 0.1)
+  check('call: a tap on a free station calls the next in line', reduce(callState2, 0, { a: 'call', station: 's0' }) && callState2.customers[0].state === 'toStation')
+  check('call: calling is for the open salon only', !reduce(startDay(newSave(3)), 0, { a: 'call', station: 's0' }))
 
   // Purchase and next day.
   const save = toSave(state)

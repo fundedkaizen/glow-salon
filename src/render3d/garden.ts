@@ -59,7 +59,7 @@ export function buildGarden(): Garden {
   let signAt: OutsideItem | null = null
   for (const it of items) piece(it.id, () => {
     const x = (it.x0 + it.x1) / 2, z = (it.z0 + it.z1) / 2, w = it.x1 - it.x0, d = it.z1 - it.z0
-    if (modelled(kit, it, x, z, w, d)) return
+    if (modelled(kit, it, x, z, w, d, group)) return
     switch (it.kind) {
       case 'bed': {
         kit.add(G.box(w, 0.24, d, 0.06), 0xfff4ee, 'satin', tf(x, 0.12, z))
@@ -257,8 +257,8 @@ export function buildGarden(): Garden {
  * Helper B's garden models where there is one: hedges tiled along their run, flower beds tiled along theirs, trees,
  * the bench and the lamps. False when there is none, or it has not loaded (the stand-in is built instead).
  */
-function modelled(kit: Kit, it: OutsideItem, x: number, z: number, w: number, d: number): boolean {
-  const id = it.kind === 'hedge' ? 'hedge' : it.kind === 'bed' ? 'flower-bed' : it.kind === 'tree' ? 'tree' : it.kind === 'bench' ? 'bench' : it.kind === 'lamp' || it.kind === 'streetlamp' ? 'street-lamp' : null
+function modelled(kit: Kit, it: OutsideItem, x: number, z: number, w: number, d: number, group: Group): boolean {
+  const id = it.kind === 'rack' ? 'bike-rack' : it.kind === 'hedge' ? 'hedge' : it.kind === 'bed' ? 'flower-bed' : it.kind === 'tree' ? 'tree' : it.kind === 'bench' ? 'bench' : it.kind === 'lamp' || it.kind === 'streetlamp' ? 'street-lamp' : null
   const m = id ? model(id) : undefined
   if (!m || !hasModel(m.file)) return false
   const [fw, fd] = m.footprint
@@ -274,6 +274,7 @@ function modelled(kit: Kit, it: OutsideItem, x: number, z: number, w: number, d:
   }
   if (it.kind === 'tree') return bakeModel(kit, m.file, x, z, it.seed * 1.7, it.h / m.height)
   if (it.kind === 'bench') return bakeModel(kit, m.file, x, z, Math.PI / 2)
+  if (it.kind === 'rack') return bakeModel(kit, m.file, x, z, 0, 1, {}, 0, group)
   return bakeModel(kit, m.file, x, z, it.kind === 'streetlamp' ? -Math.PI / 2 : 0, it.h / m.height)
 }
 
