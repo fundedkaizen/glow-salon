@@ -136,7 +136,9 @@ export class TreatmentView {
     this.artRoot.pivot.set(512, 540)
     this.artRoot.position.set(512, 540)
     this.artRoot.addChild(this.surface.root, this.foam.root, this.featuresLayer)
-    this.surface.insertBelow(treatment === 'facial' ? 'cream' : 'scrub', this.targetsLayer)
+    // Facial targets (pimples) sit under the foam, cream and clay; nail targets (gems) sit on top of the polish.
+    if (treatment === 'facial') this.surface.insertBelow('cream', this.targetsLayer)
+    else this.artRoot.addChildAt(this.targetsLayer, this.artRoot.getChildIndex(this.surface.root) + 1)
     this.world.addChild(this.photoRoot, this.overFx, this.flap, this.fx.root, this.revealLayer, this.toolLayer)
     this.root.addChild(this.world)
     this.hint.anchor.set(0.5)
@@ -715,10 +717,10 @@ export class TreatmentView {
     const s = new Sprite(bits.gem())
     s.anchor.set(0.5)
     s.tint = colors[(t.n ?? 0) % colors.length]
-    s.scale.set(instant ? 0.5 : 0.01)
+    s.scale.set(instant ? 0.68 : 0.01)
     root.removeChildren()
     root.addChild(s)
-    if (!instant) this.animate(0.3, k => s.scale.set(0.5 * easeOutBack(k)))
+    if (!instant) this.animate(0.3, k => s.scale.set(0.68 * easeOutBack(k)))
   }
 
   private animations: { t: number; dur: number; fn: (t: number) => void }[] = []
