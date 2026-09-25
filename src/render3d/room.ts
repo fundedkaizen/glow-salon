@@ -3,7 +3,7 @@ import { DOOR_Y0, DOOR_Y1, WINDOWS } from '../art/salon/room.ts'
 import { G, Kit, tf } from './kit.ts'
 import { PARTITIONS } from '../core/floor.ts'
 import { lenX, lenZ, ROOM3, toWorld, UNITS_PER_M } from './mapping.ts'
-import { lawnTexture, paintShade, pavingTexture, wallTexture, windowView, woodTexture, type ShadeBlob } from './textures.ts'
+import { herringboneTexture, lawnTexture, marbleTexture, paintShade, pavingTexture, wallTexture, windowView, woodTexture, type ShadeBlob } from './textures.ts'
 
 /**
  * The salon's shell, seen dollhouse style from the front left: a warm wood floor, two tall walls (the back wall
@@ -29,6 +29,8 @@ export type RoomParts = {
   bell: Object3D
   /** Repaint the floor's shade layer (corner occlusion and contact shadows) for the furniture there now. */
   setShade: (blobs: ShadeBlob[]) => void
+  /** The floor and wall upgrades (unlocks.ts tiers): oak, herringbone or marble; plaster or silk. */
+  setTiers: (floor: number, walls: number) => void
 }
 
 const { w: W, d: D, wallH: H, wallT: T, lowWallH: LOW } = ROOM3
@@ -106,10 +108,11 @@ export function buildRoom(): RoomParts {
   // Arched niches: behind the reception, around the wall decor spots, between the windows.
   const backArches = [200, 402, 612, 866, 1052].map(x => x / UNITS_PER_M)
   const backFace = new Mesh(new PlaneGeometry(W, H), new MeshStandardMaterial({ map: wallTexture(W, H, 'right', backArches), roughness: 0.92 }))
+  const rightArches = [3.4, 5.2]
   backFace.position.set(0, H / 2, 0.002)
   backFace.receiveShadow = true
   group.add(backFace)
-  const rightFace = new Mesh(new PlaneGeometry(D, H), new MeshStandardMaterial({ map: wallTexture(D, H, 'left', [3.4, 5.2]), roughness: 0.92 }))
+  const rightFace = new Mesh(new PlaneGeometry(D, H), new MeshStandardMaterial({ map: wallTexture(D, H, 'left', rightArches), roughness: 0.92 }))
   rightFace.rotation.y = -Math.PI / 2
   rightFace.position.set(W / 2 - 0.002, H / 2, D / 2)
   rightFace.receiveShadow = true
@@ -234,5 +237,29 @@ export function buildRoom(): RoomParts {
   bed(-W / 2 - T - 0.62, (doorZ1 + D) / 2 + 0.3, 0.9, Math.max(0.6, D - doorZ1 - 0.2), 13)
 
   group.add(kit.build())
-  return { group, door, bell, setShade }
+  let tiers = '1,1'
+  const setTiers = (floorTier: number, wallTier: number) => {
+    const key = `${floorTier},${wallTier}`
+    if (key === tiers) return
+    const [f0, w0] = tiers.split(',').map(Number)
+    tiers = key
+    const fm = floor.material as MeshStandardMaterial
+    if (floorTier !== f0) {
+      fm.map?.dispose()
+      const t = floorTier >= 3 ? marbleTexture() : floorTier === 2 ? herringboneTexture() : woodTexture()
+      t.repeat.set(W / 2, D / 2)
+      fm.map = t
+      fm.roughness = floorTier >= 3 ? 0.28 : 0.74
+      fm.needsUpdate = true
+    }
+    if (wallTier !== w0) {
+      for (const [m, w, corner, arches] of [[backFace, W, 'right', backArches], [rightFace, D, 'left', rightArches]] as const) {
+        const mat = m.material as MeshStandardMaterial
+        mat.map?.dispose()
+        mat.map = wallTexture(w, H, corner, [...arches], wallTier >= 2)
+        mat.needsUpdate = true
+      }
+    }
+  }
+  return { group, door, bell, setShade, setTiers }
 }

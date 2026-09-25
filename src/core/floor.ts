@@ -33,7 +33,18 @@ export const PARTITIONS: Rect[] = [
   { x: 306, y: 176, w: 20, h: 130 },
   { x: 680, y: 232, w: 20, h: 68 },
   { x: 1112, y: 500, w: 168, h: 20 },
+  // Behind the gap between the second and third chairs of the back row: the third chair's treatment nook.
+  { x: 1062, y: 232, w: 20, h: 68 },
 ]
+
+/**
+ * Fixed furniture with a footprint (it blocks walking): a waiting corner of armchairs round a coffee table, and a
+ * little fountain planter in the front right corner.
+ */
+export const FIXTURES: Record<'waiting' | 'planter', Rect> = {
+  waiting: { x: 118, y: 384, w: 176, h: 90 },
+  planter: { x: 1190, y: 702, w: 74, h: 86 },
+}
 
 export const SOFA = { x: 380, y: 196, w: 250, h: 92 }
 export const SOFA_SEATS: Pt[] = [{ x: 420, y: 262 }, { x: 480, y: 262 }, { x: 540, y: 262 }, { x: 600, y: 262 }]
@@ -105,6 +116,7 @@ export function blockedGrid(slots: number[], props: string[]): Uint8Array {
   block(DESK)
   block(SOFA)
   for (const p of PARTITIONS) block(p, 4)
+  for (const f of Object.values(FIXTURES)) block(f, 4)
   for (const slot of slots) if (slot >= 0 && slot < SLOTS.length) block(stationRect(slot), 4)
   for (const prop of props) if (PROP_BLOCK[prop]) block(PROP_BLOCK[prop])
   return grid

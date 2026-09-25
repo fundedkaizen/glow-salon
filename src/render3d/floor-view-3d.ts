@@ -1,5 +1,5 @@
 import { Container, Graphics, Sprite as PixiSprite, Text, type Application, type FederatedPointerEvent } from 'pixi.js'
-import { AdditiveBlending, Box3, CanvasTexture, Color, DirectionalLight, Fog, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, Points, PointsMaterial, BufferGeometry, Float32BufferAttribute, Quaternion, Raycaster, Scene, Sprite, SpriteMaterial, Vector2, Vector3, type Texture } from 'three'
+import { AdditiveBlending, Box3, CanvasTexture, Color, DirectionalLight, Fog, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PlaneGeometry, Points, PointsMaterial, BufferGeometry, Float32BufferAttribute, Quaternion, Raycaster, Scene, Sprite, SpriteMaterial, Vector2, Vector3, type Texture } from 'three'
 import { bits } from '../art/bits.ts'
 import { treatmentIcon, icons } from '../art/salon/icons.ts'
 import { paintGift } from '../art/salon/gift-art.ts'
@@ -7,9 +7,11 @@ import { paintFillerFrame, paintWallArt, type Piece } from '../art/salon/furnitu
 import { PLAYER_COLORS } from '../art/palette.ts'
 import { purr, softPop } from '../audio/salon-sfx.ts'
 import { sfx } from '../audio/sfx.ts'
-import { DECOR_ITEM_BY_ID, DECOR_SET_BY_ID, GIFT_BY_ID, GIFT_SLOTS, placeDecor } from '../core/decor.ts'
-import { canBuy, ITEM_BY_ID, ITEMS, STATION_NAME } from '../core/economy.ts'
-import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA, SOFA_SEATS, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
+import { DECOR_ITEM_BY_ID, GIFT_BY_ID, GIFT_SLOTS, placeDecor } from '../core/decor.ts'
+import { canBuy, ITEM_BY_ID, ITEMS, STATION_NAME, type Item } from '../core/economy.ts'
+import { ghostPicks, levelProgress, salonLevel, starsOwned, STYLE_COUNT, tierOf } from '../core/unlocks.ts'
+import { confetti } from '../ui/confetti.ts'
+import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, findPath, FIXTURES, FLOOR_H, FLOOR_W, PROP_BLOCK, PROP_SPOTS, ROWS, SOFA, SOFA_SEATS, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
 import { personaFor, storyBeat } from '../core/persona.ts'
 import { withFigure } from '../core/figure.ts'
 import type { Action } from '../core/salon.ts'
@@ -19,7 +21,10 @@ import { playerLook, type FloorHooks, type FloorState } from '../render/floor-vi
 import { Particles, easeOutBack } from '../render/particles.ts'
 import { CameraRig } from './camera.ts'
 import { Cat3D } from './cat3d.ts'
-import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, floorLamp, giftStand, glowSign, lounge, nailDesk, pedicureChair, sideTable, soonScreen, succulent, teaCart, topiary, welcomeSign, type Build, type Node3, type StationNodes } from './furniture.ts'
+import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, floorLamp, fountainGarden, giftStand, glowSign, lounge, nailDesk, pedicureChair, pendantLight, soonScreen, succulent, teaCart, topiary, trophyShelf, waitingCorner, welcomeSign, type Build, type Node3, type StationNodes } from './furniture.ts'
+import { AQUARIUM_X, buildAt, buildThumb, ghostable, SHELF, spotFor, stationKeys, stationOf, stylable, type SpotCtx } from './pieces.ts'
+import { ProgressUi } from './progress-ui.ts'
+import { setPalette, styleColor, styleName } from './styles.ts'
 import { disposeGroup, G, Kit, tf } from './kit.ts'
 import { lenX, lenZ, ROOM3, toSim, toWorld, turnTo, wallHeight, yawFor } from './mapping.ts'
 import { moodBubble, nameTag, speech, toolBubble, waitDots } from './overlay.ts'
@@ -41,6 +46,13 @@ type CustomerView = { person: Person3D; x: number; y: number; yaw: number; bubbl
 type PlayerView = { person: Person3D; tag: Container; x: number; y: number; yaw: number; name: string; workK: number; head: Vector3 }
 type StaffView = { person: Person3D; tag: Container; x: number; y: number; yaw: number; path: Pt[]; goal: Pt; tea: Container; tool: { root: Container; icon: PixiSprite }; puff: number; name: string; workK: number; head: Vector3 }
 type StationView = { nodes: StationNodes; box: Box3; center: Vector3; glow: Mesh; ring: Graphics; label: Container; text: Text }
+/** A grey ghost of something to buy next: where it stands, what a tap hits, and its price badge. */
+type BuyGhost = { item: Item; slot: number; box: Box3; anchor: Vector3; badge: Container; ph: number }
+/** A piece Decorate can restyle: its style key, what a tap hits, and where it pops from. */
+type StylePiece = { key: string; box: Box3; at: Vector3 }
+
+/** The grey the ghosts are made of: soft, light and a little see-through, as in Serenity's. */
+const GHOST_MAT = new MeshStandardMaterial({ color: 0xe6e2ea, roughness: 0.85, metalness: 0, transparent: true, opacity: 0.55, emissive: 0xffffff, emissiveIntensity: 0.1 })
 
 const { w: RW, d: RD } = ROOM3
 const _v = new Vector3()
@@ -100,8 +112,6 @@ export class FloorView3D {
   private highlight: Mesh
   private hover: Target | null = null
   private ghosts: { slot: number; mesh: Mesh; ph: number }[] = []
-  private spares: { slot: number; mesh: Mesh; ph: number }[] = []
-  private sparesLit = false
   private nextTab: 'stations' | undefined
   private ghostLabel: Container | null = null
   private neon: Mesh | null = null
@@ -114,6 +124,22 @@ export class FloorView3D {
   private raycaster = new Raycaster()
   private playerId: number
   private hooks: FloorHooks
+  // Progression (core/unlocks.ts): the ghosts, the level bar, the buy card and the style strip.
+  private progress: ProgressUi | null = null
+  private buyGhosts: BuyGhost[] = []
+  private ghostGroup: Group | null = null
+  private ghostKey = ''
+  private stylePieces: StylePiece[] = []
+  private decorating = false
+  /** A station bought from its ghost in the morning waits for its slot: place it there as soon as it exists. */
+  private placeInto: { item: string; slot: number } | null = null
+  /** The piece that just changed style, for its squash-and-stretch pop. */
+  private popAt: { at: Vector3; t: number } | null = null
+  private thumbs = new Map<string, string>()
+  /** The piece on the style strip, built on its own pivot, and the style it wore last build. */
+  private isoKey: string | null = null
+  private isoPivot: Group | null = null
+  private isoStyle: number | null = null
 
   constructor(app: Application, playerId: number, hooks: FloorHooks, opts: { demo?: boolean } = {}) {
     this.playerId = playerId
@@ -185,6 +211,15 @@ export class FloorView3D {
     this.prompt.eventMode = 'static'
     this.prompt.on('pointertap', (e: FederatedPointerEvent) => { e.stopPropagation(); this.interact() })
     this.uiLayer.addChild(this.prompt)
+    // Progression UI (not on the title screen).
+    const host = document.getElementById('ui')
+    if (!this.demo && host) this.progress = new ProgressUi(host, {
+      onBuy: id => this.buyFromGhost(id),
+      onCancelBuy: () => softPop(0.8),
+      onStyle: (key, style) => { sfx.pop(0.9); this.hooks.onAction({ a: 'style', item: key, style } as Action) },
+      onStylesDone: () => { sfx.click(); this.closeStyles() },
+      onDecorate: on => { sfx.click(); this.decorating = on; if (!on && this.isoKey) this.closeStyles() },
+    })
     // Input.
     this.root.eventMode = 'static'
     this.root.on('pointertap', e => this.onTap(e))
@@ -209,6 +244,7 @@ export class FloorView3D {
     }
     this.syncGrid(state)
     this.syncFurniture(state)
+    this.syncGhosts(state)
     this.syncPeople(state)
     this.syncEvents(state)
   }
@@ -237,26 +273,38 @@ export class FloorView3D {
 
   private syncFurniture(state: FloorState) {
     const decor = placeDecor(state.owned, state.ext?.decorOrder ?? [])
-    const key = state.stations.map(s => `${s.id}:${s.kind}:${s.slot}`).join(',') + '|' + state.owned.filter(id => ITEM_BY_ID[id]?.tab === 'decor').join(',') + '|' + decor.map(d => d.id + d.slot).join(',') + '|' + (state.ext?.salonName ?? '')
+    const styles = state.ext?.styles ?? {}
+    const key = state.stations.map(s => `${s.id}:${s.kind}:${s.slot}`).join(',') + '|' + state.owned.filter(id => ITEM_BY_ID[id]?.tab === 'decor').join(',') + '|' + decor.map(d => d.id + d.slot).join(',') + '|' + (state.ext?.salonName ?? '') + '|' + JSON.stringify(styles) + '|' + (this.isoKey ?? '')
     if (key === this.furnitureKey) return
     this.furnitureKey = key
     if (this.furniture) disposeGroup(this.furniture)
     for (const st of this.stations.values()) { st.ring.destroy(); st.label.destroy() }
     this.stations.clear()
     this.ghosts = []
-    this.spares = []
     this.ghostLabel?.destroy()
     this.ghostLabel = null
     this.neon = null
     this.glows = []
     this.fish = null
     this.twinkle = null
+    this.stylePieces = []
     const b: Build = { kit: new Kit(), extra: new Group(), blobs: [] }
     const w = (x: number, y: number) => toWorld(x, y)
+    const owned = new Set(state.owned)
+    // The piece being restyled is built on its own pivot, so it can squash and stretch as its style changes.
+    const iso: Build = { kit: new Kit(), extra: new Group(), blobs: b.blobs }
+    let isoAt: Vector3 | null = null
+    const into = <T>(key: string, x: number, z: number, box: Box3, fn: (bb: Build) => T): T => {
+      if (stylable(key)) this.stylePieces.push({ key, box, at: new Vector3(x, 0, z) })
+      if (key !== this.isoKey) return fn(b)
+      isoAt = new Vector3(x, 0, z)
+      return fn(iso)
+    }
+    const boxAt = (x: number, z: number, rx: number, rz: number, h: number) => new Box3(new Vector3(x - rx, 0, z - rz), new Vector3(x + rx, h, z + rz))
     // ---- front of house: the reception out from the wall (the computer faces the staff gap behind it)
     const deskC = w(DESK.x + DESK.w / 2, DESK.y + DESK.h / 2)
     const deskW = lenX(DESK.w) - 0.1, deskD = Math.min(0.85, lenZ(DESK.h) - 0.1)
-    desk(b, deskC.x, deskC.z, deskW, deskD)
+    into('desk', deskC.x, deskC.z, boxAt(deskC.x, deskC.z, deskW / 2, deskD / 2, 1.4), bb => desk(bb, deskC.x, deskC.z, deskW, deskD, styleColor(styles, 'desk'), tierOf(state.owned, 'desk')))
     this.deskBox.set(new Vector3(deskC.x - deskW / 2 - 0.1, 0, deskC.z - deskD / 2 - 0.1), new Vector3(deskC.x + deskW / 2 + 0.1, 1.5, deskC.z + deskD / 2 + 0.1))
     this.deskTop = { x: deskC.x, z: deskC.z }
     const plaque = plaqueTexture(state.ext?.salonName ?? 'Glow Salon')
@@ -266,8 +314,8 @@ export class FloorView3D {
     b.extra.add(pm)
     // The waiting lounge: a teal cloud sofa in an arc on a round rug, plants at its ends.
     const sofaZ = 0.62
-    this.sofaSeats = lounge(b, sofaZ, SOFA_SEATS.map(s => w(s.x, s.y).x))
     const lc = w(SOFA.x + SOFA.w / 2, 0)
+    this.sofaSeats = into('lounge', lc.x, sofaZ, boxAt(lc.x, sofaZ + 0.3, lenX(SOFA.w) / 2, 0.6, 1.1), bb => lounge(bb, sofaZ, SOFA_SEATS.map(s => w(s.x, s.y).x), styleColor(styles, 'lounge'), tierOf(state.owned, 'lounge')))
     floorDecal(b, rugTexture('round', '#bfeee4', '#7fd4c2', '#ffffff'), lc.x, sofaZ + 0.55, lenX(SOFA.w) + 0.4, 1.9, 0.004)
     teaCart(b, w(352, 0).x, 0.42, 0)
     floorLamp(b, w(646, 0).x, 0.42, 0xfff0e6)
@@ -275,12 +323,18 @@ export class FloorView3D {
     welcomeSign(b, w(118, 704).x + 0.3, w(118, 704).z + 0.2, 1.1)
     floorLamp(b, w(652, 792).x, RD - 0.45, 0xfbe0e8)
     this.lampGlow(b, w(652, 792).x, 1.5, RD - 0.45, 0.6)
-    sideTable(b, w(1228, 770).x - 0.2, RD - 0.55)
-    // Topiaries along the walls and by the partitions.
-    for (const [px, py] of [[660, 196], [720, 196], [1250, 690], [1250, 250], [44, 214], [980, 196]] as const) { const a = w(px, py); topiary(b, a.x, Math.max(0.32, a.z)) }
-    // The base rug under the middle of the salon, and a runner by the front.
-    const baseRug = w(560, 430)
-    floorDecal(b, rugTexture('round', '#fbe3ea', '#f5b3c6', '#ffffff'), baseRug.x, baseRug.z, 3.4, 2.3, 0.004)
+    // The waiting corner: armchairs round a coffee table on a rug, and the little fountain planter.
+    const wc = FIXTURES.waiting, wa = w(wc.x + wc.w / 2, wc.y + wc.h / 2)
+    waitingCorner(b, wa.x, wa.z, lenX(wc.w), lenZ(wc.h))
+    floorDecal(b, rugTexture('round', '#fbe3ea', '#f5b3c6', '#ffffff'), wa.x, wa.z, lenX(wc.w) + 0.7, lenZ(wc.h) + 0.6, 0.004)
+    const pc = FIXTURES.planter, pa = w(pc.x + pc.w / 2, pc.y + pc.h / 2)
+    fountainGarden(b, pa.x, pa.z, lenX(pc.w), lenZ(pc.h))
+    // Wall shelves with bottles, behind the reception and on the right wall.
+    decorItem(b, 'shelf', [0xffffff, 0xf6a9c2, 0xa9e3cf, 0xfbe0a0], w(DESK.x + 60, 0).x, 1.7, 0.02)
+    decorItem(b, 'shelf', [0xffffff, 0xcdbdf2, 0xf6a9c2, 0xfbe0a0], RW / 2 - 0.02, 1.7, w(0, 620).z, -Math.PI / 2)
+    // Topiaries along the walls and at the partitions' ends.
+    for (const [px, py] of [[660, 196], [1250, 690], [1250, 250], [44, 214], [980, 196], [316, 322], [690, 316], [1072, 316], [1100, 512]] as const) { const a = w(px, py); topiary(b, a.x, Math.max(0.32, a.z), px === 316 || px === 690 || px === 1072 || px === 1100 ? 0.8 : 1) }
+    // A runner by the front.
     const runner = w(440, 700)
     floorDecal(b, rugTexture('runner', '#fff3e6', '#ffc94d', '#f7a9bd'), runner.x, runner.z, 3.4, 1.1, 0.005)
     // ---- stations and the empty slots
@@ -295,11 +349,8 @@ export class FloorView3D {
         this.ghosts.push({ slot: i, mesh: m, ph: i * 0.7 })
         return
       }
-      if (firstEmpty && i < 6) soonScreen(b, at.x, at.z - 0.2)
-      else if (!this.demo) {
-        const m = floorDecal(b, slotTexture(false), at.x, at.z, lenX(150), lenZ(100), 0.012, 0, true)
-        this.spares.push({ slot: i, mesh: m, ph: i })
-      }
+      // The title's salon keeps its folding screen; in play, the next station stands there as a grey ghost.
+      if (firstEmpty && i < 6 && this.demo) soonScreen(b, at.x, at.z - 0.2)
       firstEmpty = false
     })
     if (unplaced && this.ghosts.length) {
@@ -308,11 +359,15 @@ export class FloorView3D {
       this.ghostLabel = label
     }
     const pad = padTexture()
+    const keys = stationKeys(state.owned)
     for (const st of state.stations) {
       if (st.slot < 0) continue
       const p = SLOTS[st.slot]
       const at = w(p.x, p.y)
-      const nodes = st.kind === 'facial' ? facialChair(b, at.x, at.z) : st.kind === 'feet' ? pedicureChair(b, at.x, at.z) : nailDesk(b, at.x, at.z)
+      const skey = keys[Number(st.id.slice(1))] ?? 'facial-chair-1'
+      const color = styleColor(styles, skey), tier = tierOf(state.owned, st.kind)
+      const nodes = into(skey, at.x, at.z, boxAt(at.x, at.z, 1.0, 0.7, 1.4), bb => st.kind === 'facial' ? facialChair(bb, at.x, at.z, color, tier) : st.kind === 'feet' ? pedicureChair(bb, at.x, at.z, color, tier) : nailDesk(bb, at.x, at.z, color, tier))
+      if (tierOf(state.owned, 'lights') >= 2) pendantLight(b, at.x + 0.1, at.z)
       const glow = new Mesh(new PlaneGeometry(lenX(190), lenZ(150)).rotateX(-Math.PI / 2), new MeshBasicMaterial({ map: pad, transparent: true, depthWrite: false, toneMapped: false, blending: AdditiveBlending, color: 0xf28db0, opacity: 0 }))
       glow.position.set(at.x - 0.1, 0.014, at.z + 0.1)
       glow.renderOrder = 2
@@ -339,9 +394,16 @@ export class FloorView3D {
     decorSlots.wall.forEach((p, i) => { if (!taken.has(`wall:${i}`)) wallPic(cachedPiece(`filler${i}`, () => paintFillerFrame(i)), p.x, p.y, 1.5) })
     decorSlots.floor.forEach((p, i) => { if (!taken.has(`floor:${i}`) && i !== 3) { const a = w(p.x, p.y); succulent(b, a.x, i >= 3 ? Math.min(a.z, RD - 0.35) : 0.35) } })
     // ---- starter decor
-    const owned = new Set(state.owned)
-    if (owned.has('rug')) { const a = w(420, 560); floorDecal(b, rugTexture('cloud', '#fdf6fb', '#f3c9da', '#f7b7cc'), a.x, a.z, 2.6, 1.9, 0.006) }
-    if (owned.has('plant')) { const a = w(1215, 0); bigPlant(b, RW / 2 - 0.45, 0.45, 0xf7d9e2, 1.1); void a }
+    if (owned.has('rug')) { const a = w(420, 560); const c = css(styleColor(styles, 'rug')); into('rug', a.x, a.z, boxAt(a.x, a.z, 1.2, 0.85, 0.2), bb => floorDecal(bb, rugTexture('cloud', '#fdf6fb', c, c), a.x, a.z, 2.6, 1.9, 0.006)) }
+    if (owned.has('plant')) into('plant', RW / 2 - 0.45, 0.45, boxAt(RW / 2 - 0.45, 0.45, 0.45, 0.45, 1.9), bb => bigPlant(bb, RW / 2 - 0.45, 0.45, styleColor(styles, 'plant'), 1.1))
+    // ---- the salon's upgrades (core/unlocks.ts): the fountain garden and the trophy shelf of stars
+    if (owned.has('up-fountain')) {
+      const r = PROP_BLOCK['up-fountain'], a = w(r.x + r.w / 2, r.y + r.h / 2)
+      fountainGarden(b, a.x, a.z, lenX(r.w), lenZ(r.h))
+    }
+    const stars = starsOwned(state.owned)
+    if (stars) trophyShelf(b, SHELF.x, SHELF.y, SHELF.z, SHELF.ry, stars)
+    this.room.setTiers(tierOf(state.owned, 'floor'), tierOf(state.owned, 'walls'))
     if (owned.has('candles')) {
       const a = { x: this.deskTop.x + 0.75, z: this.deskTop.z + 0.12 }
       for (const [dx, h] of [[0, 0.16], [0.08, 0.11], [-0.07, 0.09]] as const) {
@@ -371,7 +433,7 @@ export class FloorView3D {
       this.neon = glowSign(b, neonTexture(), a.x, wallHeight(74), 0.01, 1.4, 0.7)
     }
     if (owned.has('aquarium')) {
-      const a = w(72, 470)
+      const a = { x: AQUARIUM_X - 0.1, z: w(72, 460).z }
       aquarium(b, a.x + 0.1, a.z, Math.PI / 2)
       const fish = new InstancedMesh(G.sphere(0.03, 8), new MeshBasicMaterial({ toneMapped: false }), 3)
       ;[0xffa46b, 0xffd35a, 0xf48fb1].forEach((c, i) => fish.setColorAt(i, new Color(c)))
@@ -391,9 +453,10 @@ export class FloorView3D {
     // ---- decor sets, in their slots
     for (const d of decor) {
       const item = DECOR_ITEM_BY_ID[d.id]
-      const set = DECOR_SET_BY_ID[item.set]
-      const pal = set.palette
+      const pal = setPalette(styles, d.id)
       const a = w(d.x, d.y)
+      const bx = item.place === 'wall' || item.place === 'window' ? boxAt(a.x, 0.15, 0.6, 0.3, 2.6) : item.place === 'ceiling' ? boxAt(a.x, 1.2, 0.5, 0.5, 2.8) : boxAt(a.x, Math.max(0.55, Math.min(a.z, RD - 0.55)), 0.6, 0.5, 1.6)
+      this.stylePieces.push({ key: d.id, box: bx, at: new Vector3(a.x, 0, item.place === 'wall' || item.place === 'window' ? 0.2 : a.z) })
       if (item.place === 'window') {
         for (const wx of [760, 1160]) decorItem(b, 'curtains', pal, w(wx, 0).x, 2.72, 0.02)
         for (const wz of [330, 700]) decorItem(b, 'curtains', pal, RW / 2 - 0.02, 2.72, w(0, wz).z, -Math.PI / 2)
@@ -418,6 +481,22 @@ export class FloorView3D {
     })
     const group = new Group()
     group.add(b.kit.build(), b.extra)
+    this.isoPivot = null
+    if (isoAt && !iso.kit.empty) {
+      const at = isoAt as Vector3
+      const inner = iso.kit.build()
+      inner.add(iso.extra)
+      inner.position.set(-at.x, 0, -at.z)
+      const pivot = new Group()
+      pivot.position.copy(at)
+      pivot.add(inner)
+      group.add(pivot)
+      this.isoPivot = pivot
+      // The style just changed: pop it.
+      const style = styles[this.isoKey!] ?? 0
+      if (this.isoStyle !== null && style !== this.isoStyle) this.stylePop(at)
+      this.isoStyle = style
+    }
     this.furniture = group
     this.scene.add(group)
     this.room.setShade(b.blobs)
@@ -526,8 +605,13 @@ export class FloorView3D {
         const mine = e.player === this.playerId
         if (mine) this.hooks.onBoughtHere?.(e.item)
         setTimeout(() => { if (!this.destroyed) this.focusOn(spot.x, spot.y, mine) }, mine ? 450 : 0)
+        // Bought here: pick its look straight away (a treatment's look is its station's).
+        const got = ITEM_BY_ID[e.item]
+        const styleKey = got?.effect.kind === 'treatment' ? got.includes?.find(i => ITEM_BY_ID[i]?.effect.kind === 'station') : e.item
+        if (mine && styleKey && stylable(styleKey) && this.progress) setTimeout(() => { if (!this.destroyed && this.state?.owned.includes(styleKey)) this.openStyles(styleKey) }, 1300)
       } else if (e.kind === 'placed' && e.x !== undefined && e.y !== undefined) this.focusOn(e.x, e.y - 30, e.player === this.playerId)
       else if (e.kind === 'gift' && e.item) { const spot = this.itemSpot(e.item); if (spot) this.focusOn(spot.x, spot.y, false) }
+      else if (e.kind === 'unlock' && !this.demo) this.celebrate(e.amount ?? salonLevel(this.earned(state)), e.item)
       else if (e.kind === 'paid') {
         sfx.cash()
         const p = toWorld(e.x ?? 600, e.y ?? 400)
@@ -536,6 +620,263 @@ export class FloorView3D {
         this.burst(_v.set(p.x, 1.8, p.z), 'coin', 5)
       }
     }
+  }
+
+  // ------------------------------------------------------------------ progression: ghosts, styles, the level bar
+
+  /** The salon's lifetime earnings (the level bar), from the state the floor was given. */
+  private earned(state: FloorState) { return (state as { totals?: { earned: number } }).totals?.earned ?? 0 }
+
+  private buyCheck(state: FloorState, id: string) { return canBuy(state.owned, state.money ?? 0, id, state.day, salonLevel(this.earned(state))) }
+
+  /** Where things stand now, for the ghosts. */
+  private spotCtx(state: FloorState): SpotCtx {
+    const used = new Set(state.stations.map(s => s.slot))
+    const stationSlots: SpotCtx['stationSlots'] = {}
+    for (const s of state.stations) if (s.slot >= 0 && stationSlots[s.kind] === undefined) stationSlots[s.kind] = s.slot
+    const decor = placeDecor(state.owned, state.ext?.decorOrder ?? [])
+    return { freeSlots: SLOTS.map((_, i) => i).filter(i => !used.has(i)), takenDecor: new Set(decor.map(d => `${d.place}:${d.slot}`)), stationSlots, owned: state.owned }
+  }
+
+  /**
+   * The grey ghosts: the next few things to buy (core/unlocks.ts ghostPicks), standing where they would go, each
+   * with its price badge. Rebuilt only when the picks or their places change.
+   */
+  private syncGhosts(state: FloorState) {
+    if (this.demo || !this.progress) return
+    // A station bought from its ghost this morning goes straight into the ghost's slot.
+    const waiting = state.stations.find(s => s.slot < 0)
+    if (this.placeInto && waiting && !state.stations.some(s => s.slot === this.placeInto!.slot)) { this.hooks.onAction({ a: 'place', station: waiting.id, slot: this.placeInto.slot }); this.placeInto = null }
+    const picks = ghostPicks(ITEMS, state.money ?? 0, id => this.buyCheck(state, id), ghostable, this.view.h > this.view.w * 1.2 ? 3 : 4)
+    const ctx = this.spotCtx(state)
+    const placed: { item: Item; spot: NonNullable<ReturnType<typeof spotFor>> }[] = []
+    let nth = 0
+    for (const item of picks) {
+      // A station waiting for its spot shows the glowing slots instead of a station ghost.
+      if (stationOf(item) && waiting) continue
+      const spot = spotFor(item, ctx, stationOf(item) ? nth : 0)
+      if (!spot) continue
+      if (spot.kind === 'station') nth++
+      placed.push({ item, spot })
+    }
+    const key = placed.map(p => `${p.item.id}@${JSON.stringify(p.spot)}`).join('|') + `|${state.owned.length}`
+    if (key === this.ghostKey) return
+    this.ghostKey = key
+    this.clearGhosts()
+    const b: Build = { kit: new Kit(), extra: new Group(), blobs: [] }
+    for (const { item, spot } of placed) {
+      const r = buildAt(b, spot, ctx)
+      const inPlace = spot.kind === 'upgrade' && !['star', 'lights', 'fountain'].includes(spot.family)
+      const badge = this.makeBadge(item, inPlace)
+      this.uiLayer.addChild(badge)
+      this.buyGhosts.push({ item, slot: spot.kind === 'station' ? spot.slot : -1, box: inPlace ? new Box3() : r.box, anchor: r.anchor, badge, ph: Math.random() * 6 })
+    }
+    const group = new Group()
+    if (!b.kit.empty) group.add(b.kit.build(false, GHOST_MAT))
+    b.extra.traverse(o => { if (o instanceof Mesh) { const m = o.material as MeshStandardMaterial; m.transparent = true; m.opacity = 0.55; if ('color' in m) m.color.setRGB(0.92, 0.9, 0.95) } })
+    group.add(b.extra)
+    this.ghostGroup = group
+    this.scene.add(group)
+  }
+
+  private clearGhosts() {
+    for (const g of this.buyGhosts) g.badge.destroy({ children: true })
+    this.buyGhosts = []
+    if (this.ghostGroup) { disposeGroup(this.ghostGroup); this.ghostGroup = null }
+  }
+
+  /** A ghost's price tag: a white pill with a coin (and an arrow for an upgrade of something already here). */
+  private makeBadge(item: Item, upgrade: boolean): Container {
+    const c = new Container()
+    const bg = new Graphics()
+    const t = new Text({ text: `$${item.price.toLocaleString('en-US')}`, style: { fontFamily: 'Nunito, system-ui, sans-serif', fontSize: 14, fontWeight: '800', fill: 0x5a3a52 }, resolution: 3 })
+    t.anchor.set(0, 0.5)
+    const w = t.width + (upgrade ? 58 : 42)
+    c.addChild(bg, t)
+    t.position.set(-w / 2 + 34, 0)
+    const draw = (ok: boolean) => {
+      bg.clear()
+      bg.roundRect(-w / 2, -15, w, 30, 15).fill({ color: ok ? 0xffffff : 0xf4eef2 }).stroke({ width: 2, color: ok ? 0x6fc9a9 : 0xd9c8d2 })
+      bg.poly([-6, 13, 6, 13, 0, 21]).fill({ color: ok ? 0xffffff : 0xf4eef2 })
+      bg.circle(-w / 2 + 17, 0, 10).fill({ color: ok ? 0xf0b840 : 0xd8c9a8 }).circle(-w / 2 + 15, -2, 4).fill({ color: 0xffffff, alpha: 0.5 })
+      if (upgrade) bg.poly([w / 2 - 20, 5, w / 2 - 12, -6, w / 2 - 4, 5]).fill({ color: ok ? 0x45b890 : 0xc8b8c2 })
+      t.style.fill = ok ? 0x5a3a52 : 0x9a8494
+    }
+    ;(c as Container & { draw?: (ok: boolean) => void; ok?: boolean }).draw = draw
+    draw(false)
+    c.eventMode = 'static'
+    c.cursor = 'pointer'
+    c.on('pointertap', (e: FederatedPointerEvent) => { e.stopPropagation(); if (this.inputOn) this.openBuy(item) })
+    return c
+  }
+
+  /** The buy card for a ghost. */
+  private openBuy(item: Item) {
+    const state = this.state
+    if (!state || !this.progress) return
+    sfx.click()
+    const check = this.buyCheck(state, item.id)
+    const reason = check.ok ? null : check.reason
+    this.progress.showBuy(item.id, item.name, item.blurb, item.price, this.thumbFor(item), reason)
+  }
+
+  private buyFromGhost(id: string) {
+    const g = this.buyGhosts.find(x => x.item.id === id)
+    if (g && g.slot >= 0) this.placeInto = { item: id, slot: g.slot }
+    sfx.buy()
+    this.hooks.onAction({ a: 'buy', item: id })
+  }
+
+  /** The style strip for a piece: its three looks as cards, the piece on its own pivot so it can pop. */
+  private openStyles(key: string) {
+    const state = this.state
+    if (!state || !this.progress || !stylable(key)) return
+    const style = state.ext?.styles?.[key] ?? 0
+    this.isoKey = key
+    this.isoStyle = style
+    this.furnitureKey = ''
+    this.syncFurniture(state)
+    const cards = Array.from({ length: STYLE_COUNT }, (_, i) => ({ name: styleName(key, i), thumb: this.thumb(key, i) }))
+    const name = key === 'desk' ? 'Reception' : key === 'lounge' ? 'Waiting lounge' : key === 'facial-chair-1' ? 'Facial chair' : ITEM_BY_ID[key]?.name ?? ''
+    this.progress.showStyles(key, `${name}: pick a look`, cards, style)
+    const piece = this.stylePieces.find(p => p.key === key)
+    if (piece) this.rig.focus(piece.at.x, piece.at.z, 1.6)
+  }
+
+  private closeStyles() {
+    this.progress?.hideStyles()
+    this.isoKey = null
+    this.isoStyle = null
+    this.furnitureKey = ''
+    if (this.state) this.syncFurniture(this.state)
+  }
+
+  /** A style just changed: sparkles, a pop and a squash and stretch. */
+  private stylePop(at: Vector3) {
+    this.popAt = { at: at.clone(), t: 0 }
+    this.burst(_v.set(at.x, 0.9, at.z), 'sparkle', 14)
+    this.burst(_v.set(at.x, 0.9, at.z), 'heart', 3)
+    sfx.sparkle()
+  }
+
+  /** A picture of a piece in one of its styles, for the style cards (cached). */
+  private thumb(key: string, style: number): string {
+    const owned = this.state?.owned ?? []
+    const id = `${key}|${style}|${['desk', 'lounge', 'facial', 'nails', 'feet'].map(f => tierOf(owned, f as 'desk')).join('')}`
+    const hit = this.thumbs.get(id)
+    if (hit) return hit
+    const url = this.picture(bb => buildThumb(bb, key, style, owned))
+    this.thumbs.set(id, url)
+    return url
+  }
+
+  /** A picture of an item before it is bought, for its buy card. */
+  private thumbFor(item: Item): string {
+    const state = this.state!
+    const owned = [...state.owned, item.id]
+    const st = stationOf(item)
+    const key = st ? (item.effect.kind === 'station' ? item.id : item.includes?.find(i => ITEM_BY_ID[i]?.effect.kind === 'station') ?? item.id) : item.id
+    if (stylable(key) || st) return this.picture(bb => buildThumb(bb, key, 0, owned))
+    const fam = item.id.replace(/^up-/, '').replace(/-\d$/, '')
+    if (fam === 'desk' || fam === 'lounge') return this.picture(bb => buildThumb(bb, fam, state.ext?.styles?.[fam] ?? 0, owned))
+    if (fam === 'facial' || fam === 'nails' || fam === 'feet') return this.picture(bb => buildThumb(bb, fam === 'facial' ? 'facial-chair-1' : fam === 'nails' ? 'nail-desk' : 'pedi-chair', 0, owned))
+    const spot = spotFor(item, this.spotCtx(state), 0)
+    return spot ? this.picture(bb => buildAt(bb, spot, this.spotCtx(state))) : ''
+  }
+
+  /** Render what `build` makes, alone, at the salon's angle, into a small transparent picture. */
+  private picture(build: (b: Build) => void): string {
+    const b: Build = { kit: new Kit(), extra: new Group(), blobs: [] }
+    build(b)
+    const group = new Group()
+    if (!b.kit.empty) group.add(b.kit.build(false))
+    group.add(b.extra)
+    const scene = new Scene()
+    scene.add(group, new HemisphereLight(0xfff4f0, 0xd9a896, 1.1))
+    const key = new DirectionalLight(0xffeedd, 1.8)
+    key.position.set(-3, 6, 4)
+    const fill = new DirectionalLight(0xfff3ec, 0.8)
+    fill.position.set(-5, 3, 6)
+    scene.add(key, fill)
+    scene.environment = this.scene.environment
+    scene.environmentIntensity = 0.5
+    const box = new Box3().setFromObject(group)
+    if (box.isEmpty()) return ''
+    const centre = box.getCenter(new Vector3())
+    const cam = new OrthographicCamera(-1, 1, 1, -1, 0.1, 100)
+    const yaw = this.rig.yaw, pitch = this.rig.pitch
+    cam.position.set(centre.x + Math.sin(yaw) * Math.cos(pitch) * 20, centre.y + Math.sin(pitch) * 20, centre.z + Math.cos(yaw) * Math.cos(pitch) * 20)
+    cam.lookAt(centre)
+    cam.updateMatrixWorld(true)
+    let mx = 0.1, my = 0.1
+    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+      const p = new Vector3(x, y, z).applyMatrix4(cam.matrixWorldInverse)
+      mx = Math.max(mx, Math.abs(p.x)); my = Math.max(my, Math.abs(p.y))
+    }
+    const aspect = 4 / 3
+    const half = Math.max(my, mx / aspect) * 1.12
+    cam.left = -half * aspect; cam.right = half * aspect; cam.top = half; cam.bottom = -half
+    cam.updateProjectionMatrix()
+    const url = this.stage.snapshot(scene, cam, 208, 156).toDataURL()
+    group.traverse(o => { if (o instanceof Mesh) o.geometry.dispose() })
+    return url
+  }
+
+  /** The level bar, the Decorate button and the ghosts' badges, every frame. */
+  private updateProgress(state: FloorState, dt: number) {
+    const ui = this.progress
+    if (!ui) return
+    ui.visible = this.root.visible
+    const lp = levelProgress(this.earned(state))
+    ui.setLevel(lp.level, lp.next.name, lp.have, lp.need)
+    this.barT -= dt
+    if (this.barT <= 0) {
+      this.barT = 0.5
+      const hud = document.querySelector('.gs-goal:not([hidden])') ?? document.querySelector('.gs-hud-left')
+      const r = hud?.getBoundingClientRect()
+      if (r && r.height) ui.place(r.bottom + 8, r.left)
+    }
+    const inTreatment = !!state.players.find(p => p.id === this.playerId)?.station
+    if (state.phase !== 'prep' && this.decorating) { this.decorating = false; if (this.isoKey) this.closeStyles() }
+    ui.setDecorate(state.phase === 'prep' && !inTreatment && this.inputOn, this.decorating)
+    // Badges: over their ghost, bobbing gently; bright when there is money for it.
+    for (const g of this.buyGhosts) {
+      g.ph += dt
+      const b = g.badge as Container & { draw?: (ok: boolean) => void; ok?: boolean }
+      const ok = this.buyCheck(state, g.item.id).ok
+      if (ok !== b.ok) { b.ok = ok; b.draw?.(ok) }
+      b.visible = this.root.visible && !this.decorating
+      this.pin(b, g.anchor, 0, (ok ? Math.sin(g.ph * 3) * 3 : 0) - 18)
+      // Never lost off the edge of the screen (or under the HUD).
+      b.x = Math.max(60, Math.min(this.view.w - 60, b.x))
+      b.y = Math.max(this.view.h > this.view.w * 1.2 ? 130 : 90, Math.min(this.view.h - 80, b.y))
+      b.scale.set(this.ui * (ok ? 1 + Math.max(0, Math.sin(g.ph * 3)) * 0.04 : 0.92))
+    }
+    if (this.ghostGroup) this.ghostGroup.visible = !this.decorating
+    GHOST_MAT.emissiveIntensity = 0.1 + Math.sin(this.t * 2.2) * 0.06
+    GHOST_MAT.opacity = 0.52 + Math.sin(this.t * 2.2) * 0.07
+    // The squash and stretch of a piece that just changed its look.
+    if (this.popAt && this.isoPivot) {
+      this.popAt.t += dt
+      const k = this.popAt.t / 0.5
+      const s = k >= 1 ? 1 : 1 + Math.sin(k * Math.PI * 2.5) * 0.18 * (1 - k)
+      this.isoPivot.scale.set(1 / Math.sqrt(s), s, 1 / Math.sqrt(s))
+      if (k >= 1) this.popAt = null
+    }
+  }
+  private barT = 0
+
+  /** A salon level up: confetti, a chime, and a look at what just opened. */
+  private celebrate(level: number, item: string | undefined) {
+    const host = document.getElementById('ui')
+    if (host) confetti(host, { x: this.view.w / 2, y: this.view.h * 0.35 }, 90)
+    sfx.unlockChime()
+    this.float(`Level ${level}!`, _v.set(0, 2.4, ROOM3.d / 2), 0x9c86d9, 30)
+    setTimeout(() => {
+      if (this.destroyed) return
+      const g = this.buyGhosts.find(x => x.item.id === item) ?? this.buyGhosts[this.buyGhosts.length - 1]
+      if (g) this.rig.focus(g.anchor.x, g.anchor.z, 2.4)
+    }, 700)
   }
 
   // ------------------------------------------------------------------ input
@@ -550,7 +891,7 @@ export class FloorView3D {
   private onBlur = () => this.keys.clear()
 
   /** What is under a screen point: a station, the desk, the cat, or a spot on the floor (sim units). */
-  private pick(sx: number, sy: number): { target: Target | null; floor: Pt | null; slot: number } {
+  private pick(sx: number, sy: number): { target: Target | null; floor: Pt | null; slot: number; ghost: BuyGhost | null; piece: StylePiece | null } {
     const ndc = new Vector2((sx / this.view.w) * 2 - 1, -(sy / this.view.h) * 2 + 1)
     this.raycaster.setFromCamera(ndc, this.rig.camera)
     const ray = this.raycaster.ray
@@ -574,17 +915,21 @@ export class FloorView3D {
       if (t > 0) { const p = ray.at(t, _v2); floor = toSim(p.x, p.z) }
     }
     let slot = -1
-    if (floor) for (const g of [...this.ghosts, ...this.spares]) { const at = SLOTS[g.slot]; if (Math.abs(floor.x - at.x) < 80 && Math.abs(floor.y - at.y) < 60) slot = g.slot }
-    return { target: (best as { t: Target } | null)?.t ?? null, floor, slot }
+    if (floor) for (const g of this.ghosts) { const at = SLOTS[g.slot]; if (Math.abs(floor.x - at.x) < 80 && Math.abs(floor.y - at.y) < 60) slot = g.slot }
+    // The grey ghosts, and (while decorating) the pieces that can change their look: the nearest hit.
+    const nearest = <T extends { box: Box3 }>(list: T[]) => { let hit: T | null = null, hd = Infinity; for (const g of list) { if (g.box.isEmpty()) continue; const p = ray.intersectBox(g.box, _v2); if (p) { const d = ray.origin.distanceTo(p); if (d < hd) { hd = d; hit = g } } } return hit }
+    return { target: (best as { t: Target } | null)?.t ?? null, floor, slot, ghost: nearest(this.buyGhosts), piece: this.decorating ? nearest(this.stylePieces) : null }
   }
 
   private onTap(e: FederatedPointerEvent) {
     if (!this.inputOn || this.demo || !this.state) return
     sfx.unlock()
     const hit = this.pick(e.global.x, e.global.y)
+    if (this.decorating) { if (hit.piece) { sfx.click(); this.openStyles(hit.piece.key) } return }
+    if (this.progress?.buying) this.progress.hideBuy()
+    if (hit.ghost && !hit.target) { this.openBuy(hit.ghost.item); return }
     const unplaced = this.state.stations.find(s => s.slot < 0)
     if (hit.slot >= 0 && unplaced && this.ghosts.some(g => g.slot === hit.slot)) { sfx.click(); this.hooks.onAction({ a: 'place', station: unplaced.id, slot: hit.slot }); return }
-    if (hit.slot >= 0 && this.spares.some(g => g.slot === hit.slot)) { sfx.click(); this.nextTab = 'stations'; this.goTo({ kind: 'computer', ...COMPUTER_SPOT }); return }
     if (hit.target) { this.goTo(hit.target); return }
     if (!hit.floor) return
     this.goal = null
@@ -668,9 +1013,7 @@ export class FloorView3D {
     this.blobs.count = blobs
     this.blobs.instanceMatrix.needsUpdate = true
     // Spare slots glow a little when a new station is affordable today.
-    if (state) this.sparesLit = ITEMS.some(i => i.effect.kind === 'station' && canBuy(state.owned, state.money ?? 0, i.id, state.day).ok)
     for (const g of this.ghosts) { g.ph += dt; const k = 1 + Math.sin(g.ph * 3) * 0.035; g.mesh.scale.set(k, k, 1); (g.mesh.material as MeshBasicMaterial).opacity = 0.75 + 0.25 * Math.sin(g.ph * 3) }
-    for (const g of this.spares) { g.ph += dt; (g.mesh.material as MeshBasicMaterial).opacity = this.sparesLit ? 0.7 + 0.3 * Math.sin(g.ph * 2.4) : 0.5 }
     this.updateDoor(dt)
     this.updateAmbient(dt)
     // The camera follows the local player on small screens.
@@ -687,6 +1030,7 @@ export class FloorView3D {
       this.placePeopleUi(state)
       this.updateStations(state)
       this.updatePrompt(state, dt)
+      this.updateProgress(state, dt)
     }
     if (this.ghostLabel && this.ghosts.length) { const at = SLOTS[this.ghosts[0].slot]; const p = toWorld(at.x, at.y); this.pin(this.ghostLabel, _v.set(p.x, 1.2, p.z), 0, Math.sin(this.t * 2.2) * 3) }
     this.fx.update(dt)
@@ -1197,6 +1541,8 @@ export class FloorView3D {
     for (const v of this.players.values()) v.person.destroy()
     for (const v of this.staff.values()) v.person.destroy()
     this.cat.destroy()
+    this.clearGhosts()
+    this.progress?.destroy()
     if (this.furniture) disposeGroup(this.furniture)
     this.scene.traverse(o => { if (o instanceof Mesh) o.geometry.dispose() })
     this.stage.idle()

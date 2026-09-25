@@ -2,6 +2,7 @@ import { DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Plane
 import type { DecorKind } from '../core/decor.ts'
 import { G, Kit, shade, tf } from './kit.ts'
 import { COLORS } from './room.ts'
+import { lenX, lenZ } from './mapping.ts'
 import type { ShadeBlob } from './textures.ts'
 
 /**
@@ -35,6 +36,9 @@ export const C = {
   ink: 0x5a3a52,
 }
 
+/** Where the therapist works, from the station's centre: the sim's stationSpot offset (-100, +30 units). */
+const WORK = { x: lenX(-100), z: lenZ(30) }
+
 const node = (frame: { x: number; z: number; ry: number }, lx: number, ly: number, lz: number, yaw: number): Node3 => {
   const v = new Vector3(lx, ly, lz).applyAxisAngle(new Vector3(0, 1, 0), frame.ry)
   return { x: frame.x + v.x, y: ly, z: frame.z + v.z, yaw: yaw + frame.ry }
@@ -47,20 +51,26 @@ const node = (frame: { x: number; z: number; ry: number }, lx: number, ly: numbe
  * and a blush band. The computer's screen faces the staff gap behind it (-Z), where the player stands to use it.
  * `w` x `d` is its footprint in metres, centred at (x, z).
  */
-export function desk(b: Build, x: number, z: number, w: number, d: number) {
+export function desk(b: Build, x: number, z: number, w: number, d: number, band = C.blush, tier = 1) {
   const { kit } = b
   kit.at(tf(x, 0, z), () => {
     const h = 1.02, r = d / 2
     // The body: a straight run and a round end on the lounge side.
     kit.add(G.box(w - r, h - 0.06, d, 0.06), C.white, 'satin', tf(-r / 2, (h - 0.06) / 2, 0))
     kit.add(G.cyl(r, r, h - 0.06, 28), C.white, 'satin', tf(w / 2 - r, (h - 0.06) / 2, 0))
-    kit.add(G.box(w - r, 0.12, 0.03, 0.01), C.blush, 'satin', tf(-r / 2, 0.62, d / 2 + 0.005))
-    kit.add(G.torus(r + 0.006, 0.02, Math.PI, 20), C.blush, 'satin', tf(w / 2 - r, 0.62, 0, Math.PI / 2, 0, -Math.PI / 2))
+    kit.add(G.box(w - r, 0.12, 0.03, 0.01), band, 'satin', tf(-r / 2, 0.62, d / 2 + 0.005))
+    kit.add(G.torus(r + 0.006, 0.02, Math.PI, 20), band, 'satin', tf(w / 2 - r, 0.62, 0, Math.PI / 2, 0, -Math.PI / 2))
+    // Gold (tier 3): gold fluting down the front and two glowing orb lamps.
+    if (tier >= 3) {
+      for (let fx = -w / 2 + 0.2; fx < w / 2 - r; fx += 0.22) kit.add(G.cyl(0.018, 0.018, 0.5, 6), C.gold, 'metal', tf(fx, 0.3, d / 2 + 0.02))
+      for (const ox of [-w / 2 + 0.55, w / 2 - r - 0.1]) { kit.add(G.cyl(0.03, 0.05, 0.22, 10), C.gold, 'metal', tf(ox, h + 0.14, -0.05)); kit.add(G.sphere(0.09, 12), 0xfff0d6, 'glow', tf(ox, h + 0.32, -0.05)) }
+    }
     kit.add(G.box(w - r, 0.03, 0.02, 0.01), C.gold, 'metal', tf(-r / 2, 0.08, d / 2 + 0.005))
-    // The marble top with a gold edge.
-    kit.add(G.box(w - r + 0.04, 0.06, d + 0.08, 0.025), C.marble, 'gloss', tf(-r / 2, h, 0))
-    kit.add(G.cyl(r + 0.04, r + 0.04, 0.06, 28), C.marble, 'gloss', tf(w / 2 - r, h, 0))
-    kit.add(G.box(w - r + 0.06, 0.02, d + 0.1, 0.008), C.gold, 'metal', tf(-r / 2, h - 0.04, 0))
+    // The top: white, then marble with a gold edge (tier 2 and up).
+    const top = tier >= 2 ? C.marble : 0xfbf7f4
+    kit.add(G.box(w - r + 0.04, 0.06, d + 0.08, 0.025), top, 'gloss', tf(-r / 2, h, 0))
+    kit.add(G.cyl(r + 0.04, r + 0.04, 0.06, 28), top, 'gloss', tf(w / 2 - r, h, 0))
+    if (tier >= 2) kit.add(G.box(w - r + 0.06, 0.02, d + 0.1, 0.008), C.gold, 'metal', tf(-r / 2, h - 0.04, 0))
     // The computer, facing the staff side; a keyboard, a bell and a vase on the counter.
     kit.add(G.box(0.62, 0.4, 0.04, 0.03), 0xf2f0f4, 'satin', tf(-0.2, h + 0.36, 0.12, 0.1, Math.PI, 0))
     kit.add(G.box(0.56, 0.33, 0.01, 0.005), 0x9fd8f0, 'glow', tf(-0.2, h + 0.37, 0.095, 0.1, Math.PI, 0))
@@ -78,7 +88,7 @@ export function desk(b: Build, x: number, z: number, w: number, d: number) {
  * The waiting lounge: a puffy teal "cloud" sofa in a gentle arc (one seat per waiting spot) with a gold foot under
  * each seat. Returns each seat's hip point.
  */
-export function lounge(b: Build, z: number, seatsX: number[], color = 0x6fd0c0): Node3[] {
+export function lounge(b: Build, z: number, seatsX: number[], color = 0x6fd0c0, tier = 1): Node3[] {
   const { kit } = b
   const n = seatsX.length
   const nodes: Node3[] = []
@@ -97,6 +107,19 @@ export function lounge(b: Build, z: number, seatsX: number[], color = 0x6fd0c0):
   })
   const mid = (seatsX[0] + seatsX[n - 1]) / 2
   b.blobs.push({ x: mid, z: z + 0.1, rx: (seatsX[n - 1] - seatsX[0]) / 2 + 0.6, rz: 0.6, a: 0.32 })
+  // Velvet (tier 2): a round coffee table with magazines. Grand (tier 3): brass lamps at the ends.
+  if (tier >= 2) {
+    kit.add(G.cyl(0.36, 0.36, 0.05, 28), C.marble, 'gloss', tf(mid, 0.42, z + 0.95))
+    kit.add(G.cyl(0.05, 0.08, 0.4, 12), C.gold, 'metal', tf(mid, 0.2, z + 0.95))
+    kit.add(G.box(0.26, 0.015, 0.18, 0.004), 0xf6a9c2, 'satin', tf(mid - 0.08, 0.455, z + 0.92, 0, 0.4, 0))
+    kit.add(G.cyl(0.05, 0.04, 0.1, 10), color, 'gloss', tf(mid + 0.12, 0.5, z + 1.0))
+    b.blobs.push({ x: mid, z: z + 0.95, rx: 0.42, rz: 0.42, a: 0.3 })
+  }
+  if (tier >= 3) for (const lx of [seatsX[0] - 0.62, seatsX[n - 1] + 0.62]) {
+    kit.add(G.cyl(0.16, 0.18, 0.04, 16), C.gold, 'metal', tf(lx, 0.02, z + 0.3))
+    kit.add(G.cyl(0.014, 0.014, 1.4, 8), C.gold, 'metal', tf(lx, 0.72, z + 0.3))
+    kit.add(G.sphere(0.16, 14), 0xfff0d6, 'glow', tf(lx, 1.48, z + 0.3))
+  }
   return nodes
 }
 
@@ -202,7 +225,7 @@ export function succulent(b: Build, x: number, z: number) {
  * The facial chair: a tufted recliner on a gold pedestal, head end to the left (where the therapist stands),
  * legs along the leg rest to the right, with a magnifier lamp and a trolley.
  */
-export function facialChair(b: Build, x: number, z: number, color = 0xf2798f): StationNodes {
+export function facialChair(b: Build, x: number, z: number, color = 0xf2798f, tier = 1): StationNodes {
   const { kit } = b
   const f = { x, z, ry: 0 }
   kit.at(tf(x, 0, z), () => {
@@ -215,8 +238,15 @@ export function facialChair(b: Build, x: number, z: number, color = 0xf2798f): S
     kit.add(G.box(0.8, 0.14, 0.6, 0.07), color, 'satin', tf(-0.52, 0.72, 0, 0, 0, -0.62))
     kit.add(G.box(0.24, 0.12, 0.3, 0.06), shade(color, 0.15), 'satin', tf(-0.86, 1.0, 0, 0, 0, -0.62))
     kit.add(G.box(0.78, 0.13, 0.56, 0.06), color, 'satin', tf(0.72, 0.47, 0, 0, 0, 0.1))
-    // Tufting.
-    for (let i = 0; i < 3; i++) kit.add(G.sphere(0.02, 6), shade(color, -0.2), 'satin', tf(-0.32 - i * 0.16, 0.66 + i * 0.12, 0, 0, 0, -0.62))
+    // Plush (tier 2): tufting and a bolster. Luxe (tier 3): a rose-gold arch over the head end.
+    if (tier >= 2) {
+      for (let i = 0; i < 3; i++) for (const bz of [-0.15, 0.15]) kit.add(G.sphere(0.022, 6), shade(color, -0.22), 'satin', tf(-0.32 - i * 0.16, 0.66 + i * 0.12, bz, 0, 0, -0.62))
+      kit.add(G.capsule(0.07, 0.4, 10), C.cream, 'satin', tf(-0.78, 0.98, 0, Math.PI / 2, 0, 0))
+    }
+    if (tier >= 3) {
+      kit.add(G.torus(0.62, 0.035, Math.PI, 28), 0xe8b4a0, 'metal', tf(-0.55, 0.3, 0, 0, Math.PI / 2, 0))
+      kit.add(G.cyl(0.4, 0.44, 0.04, 28), 0xe8b4a0, 'metal', tf(0.05, 0.05, 0))
+    }
     // Arm rests.
     for (const s of [-1, 1]) kit.add(G.box(0.46, 0.06, 0.08, 0.03), C.gold, 'metal', tf(0.02, 0.66, s * 0.34))
     for (const s of [-1, 1]) kit.add(G.box(0.4, 0.07, 0.1, 0.04), shade(color, 0.1), 'satin', tf(0.02, 0.7, s * 0.34))
@@ -229,7 +259,7 @@ export function facialChair(b: Build, x: number, z: number, color = 0xf2798f): S
     trolley(kit, -1.05, 0.62)
   })
   b.blobs.push({ x: x + 0.05, z, rx: 1.1, rz: 0.55, a: 0.32 })
-  return { seat: node(f, 0.05, 0.56, 0, Math.PI / 2), work: node(f, -1.33, 0, 0.5, Math.PI / 2 - 0.3), recline: 1.0, seatKind: 'chair' }
+  return { seat: node(f, 0.05, 0.56, 0, Math.PI / 2), work: node(f, WORK.x, 0, WORK.z, Math.PI / 2 - 0.3), recline: 1.0, seatKind: 'chair' }
 }
 
 function trolley(kit: Kit, x: number, z: number) {
@@ -243,7 +273,7 @@ function trolley(kit: Kit, x: number, z: number) {
 }
 
 /** The pedicure throne: a padded armchair on a step, facing left into a round foot basin. */
-export function pedicureChair(b: Build, x: number, z: number, color = 0xa78be8): StationNodes {
+export function pedicureChair(b: Build, x: number, z: number, color = 0xa78be8, tier = 1): StationNodes {
   const { kit } = b
   const f = { x, z, ry: 0 }
   kit.at(tf(x, 0, z), () => {
@@ -264,17 +294,24 @@ export function pedicureChair(b: Build, x: number, z: number, color = 0xa78be8):
     kit.add(G.lathe('basin', [[0, 0], [0.28, 0], [0.33, 0.22], [0.34, 0.26], [0.3, 0.26], [0.26, 0.05], [0, 0.05]], 24), C.white, 'gloss', tf(-0.42, 0, 0))
     kit.add(G.cyl(0.3, 0.3, 0.01, 24), 0x9fdcef, 'gloss', tf(-0.42, 0.2, 0))
     kit.add(G.torus(0.335, 0.015, Math.PI * 2, 28), C.gold, 'metal', tf(-0.42, 0.26, 0, Math.PI / 2, 0, 0))
+    // Jets (tier 2): bubbling water. Royal (tier 3): a gold crown and a golden basin rim.
+    if (tier >= 2) for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2; kit.add(G.sphere(0.03, 6), 0xe8fbff, 'glow', tf(-0.42 + Math.cos(a) * 0.17, 0.215, Math.sin(a) * 0.17)) }
+    if (tier >= 3) {
+      kit.add(G.box(0.14, 0.16, 0.5, 0.06), C.gold, 'metal', tf(0.7, 1.46, 0, 0, 0, 0.12))
+      for (const bz of [-0.2, 0, 0.2]) kit.add(G.sphere(0.045, 8), C.gold, 'metal', tf(0.71, 1.58, bz))
+      kit.add(G.torus(0.34, 0.04, Math.PI * 2, 28), C.gold, 'metal', tf(-0.42, 0.24, 0, Math.PI / 2, 0, 0))
+    }
     // A little stool for the therapist, and a towel.
     kit.add(G.cyl(0.18, 0.16, 0.08, 16), shade(color, 0.2), 'satin', tf(-1.05, 0.42, 0.28))
     kit.add(G.cyl(0.02, 0.02, 0.38, 6), C.gold, 'metal', tf(-1.05, 0.19, 0.28))
     kit.add(G.box(0.3, 0.06, 0.2, 0.03), C.white, 'matte', tf(0.3, 0.33, 0.52))
   })
   b.blobs.push({ x: x + 0.05, z, rx: 0.95, rz: 0.55, a: 0.32 })
-  return { seat: node(f, 0.3, 0.6, 0, -Math.PI / 2), work: node(f, -1.33, 0, 0.45, Math.PI / 2 - 0.4), feet: node(f, -0.42, 0.12, 0, 0), recline: 0.15, seatKind: 'pedicure' }
+  return { seat: node(f, 0.3, 0.6, 0, -Math.PI / 2), work: node(f, WORK.x, 0, WORK.z, Math.PI / 2 - 0.4), feet: node(f, -0.42, 0.12, 0, 0), recline: 0.15, seatKind: 'pedicure' }
 }
 
 /** The nail desk: a marble-topped desk with a lamp and a polish rack, a stool for the customer on the right. */
-export function nailDesk(b: Build, x: number, z: number, color = 0xffc94d): StationNodes {
+export function nailDesk(b: Build, x: number, z: number, color = 0xffc94d, tier = 1): StationNodes {
   const { kit } = b
   const f = { x, z, ry: 0 }
   kit.at(tf(x, 0, z), () => {
@@ -298,13 +335,20 @@ export function nailDesk(b: Build, x: number, z: number, color = 0xffc94d): Stat
     kit.add(G.torus(0.14, 0.012, Math.PI * 2, 18), C.gold, 'metal', tf(0.14, 0.2, 0, Math.PI / 2, 0, 0))
     kit.add(G.cyl(0.16, 0.18, 0.02, 16), C.gold, 'metal', tf(0.14, 0.01, 0))
     // The therapist's chair on the far side.
-    kit.add(G.cyl(0.19, 0.17, 0.09, 16), shade(color, -0.1), 'satin', tf(-1.2, 0.5, 0))
-    kit.add(G.box(0.08, 0.36, 0.34, 0.04), shade(color, -0.1), 'satin', tf(-1.4, 0.72, 0))
-    kit.add(G.cyl(0.025, 0.025, 0.45, 8), C.gold, 'metal', tf(-1.2, 0.24, 0))
-    kit.add(G.cyl(0.16, 0.18, 0.02, 16), C.gold, 'metal', tf(-1.2, 0.01, 0))
+    const tx = WORK.x - 0.05
+    kit.add(G.cyl(0.19, 0.17, 0.09, 16), shade(color, -0.1), 'satin', tf(tx, 0.5, 0))
+    kit.add(G.box(0.08, 0.36, 0.34, 0.04), shade(color, -0.1), 'satin', tf(tx - 0.2, 0.72, 0))
+    kit.add(G.cyl(0.025, 0.025, 0.45, 8), C.gold, 'metal', tf(tx, 0.24, 0))
+    kit.add(G.cyl(0.16, 0.18, 0.02, 16), C.gold, 'metal', tf(tx, 0.01, 0))
+    // Ring light (tier 2); a crystal top (tier 3).
+    if (tier >= 2) {
+      kit.add(G.cyl(0.01, 0.01, 0.5, 6), C.gold, 'metal', tf(dx - 0.1, 0.98, 0.42))
+      kit.add(G.torus(0.14, 0.022, Math.PI * 2, 24), 0xfff6ea, 'glow', tf(dx - 0.1, 1.28, 0.42, 0, Math.PI / 2, 0))
+    }
+    if (tier >= 3) kit.add(G.box(0.7, 0.03, 1.2, 0.015), 0xeaf6ff, 'glass', tf(dx, 0.775, 0))
   })
   b.blobs.push({ x: x - 0.4, z, rx: 1.0, rz: 0.7, a: 0.3 })
-  return { seat: node(f, 0.14, 0.58, 0, -Math.PI / 2), work: node(f, -1.2, 0, 0, Math.PI / 2), recline: 0, seatKind: 'stool' }
+  return { seat: node(f, 0.14, 0.58, 0, -Math.PI / 2), work: node(f, WORK.x - 0.05, 0, 0, Math.PI / 2), recline: 0, seatKind: 'stool' }
 }
 
 /** Where a station will go: a folding screen with a little sign (more room is coming). */
@@ -601,4 +645,108 @@ export function aquarium(b: Build, x: number, z: number, ry: number) {
     kit.add(G.sphere(0.07, 8), C.leaf, 'matte', tf(0.32, 0.82, -0.05, 0, 0, 0, 0.6, 1.4, 0.6))
   })
   b.blobs.push({ x, z, rx: 0.65, rz: 0.35, a: 0.3 })
+}
+
+// ------------------------------------------------------------------ upgrades and density
+
+/** The fountain garden (an upgrade): a white planter bed of greenery and flowers round a tiered fountain. */
+export function fountainGarden(b: Build, x: number, z: number, w: number, d: number) {
+  const { kit } = b
+  kit.at(tf(x, 0, z), () => {
+    kit.add(G.box(w, 0.32, d, 0.1), C.white, 'satin', tf(0, 0.16, 0))
+    kit.add(G.box(w - 0.14, 0.06, d - 0.14, 0.04), 0x5f4436, 'matte', tf(0, 0.3, 0))
+    let k = 3
+    const rnd = () => { k = (k * 16807) % 2147483647; return k / 2147483647 }
+    for (let i = 0; i < 26; i++) {
+      const fx = (rnd() - 0.5) * (w - 0.3), fz = (rnd() - 0.5) * (d - 0.3)
+      if (Math.hypot(fx, fz) < 0.28) continue
+      kit.add(G.sphere(0.14 + rnd() * 0.07, 8), rnd() < 0.5 ? C.leaf : C.leafDark, 'matte', tf(fx, 0.4, fz, 0, 0, 0, 1, 0.8, 1))
+      if (rnd() < 0.8) kit.add(G.sphere(0.04, 6), rnd() < 0.5 ? 0xffffff : 0xfff3a8, 'matte', tf(fx + 0.04, 0.52, fz))
+    }
+    kit.add(G.cyl(0.26, 0.3, 0.16, 20), 0x9aa6b8, 'satin', tf(0, 0.38, 0))
+    kit.add(G.cyl(0.22, 0.22, 0.02, 20), 0x8fd3ef, 'gloss', tf(0, 0.46, 0))
+    kit.add(G.cyl(0.05, 0.06, 0.34, 10), 0x9aa6b8, 'satin', tf(0, 0.6, 0))
+    kit.add(G.cyl(0.15, 0.08, 0.08, 16), 0x9aa6b8, 'satin', tf(0, 0.78, 0))
+    kit.add(G.cyl(0.12, 0.12, 0.015, 16), 0x8fd3ef, 'gloss', tf(0, 0.82, 0))
+    kit.add(G.capsule(0.035, 0.28, 6), 0xbfeefa, 'glass', tf(0.1, 0.62, 0, 0, 0, 0.3))
+  })
+  b.blobs.push({ x, z, rx: w / 2 + 0.2, rz: d / 2 + 0.2, a: 0.35 })
+}
+
+/** A five-pointed star's outline points, flat, for the trophy shelf. */
+const STAR = (() => {
+  const pts: [number, number][] = []
+  for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2; const r = i % 2 ? 0.045 : 0.11; pts.push([Math.cos(a) * r, Math.sin(a) * r]) }
+  return pts
+})()
+
+/** The trophy shelf on a wall, with one golden star per salon star owned. */
+export function trophyShelf(b: Build, x: number, y: number, z: number, ry: number, stars: number) {
+  const { kit } = b
+  kit.at(tf(x, y, z, 0, ry, 0), () => {
+    kit.add(G.box(1.5, 0.05, 0.22, 0.015), C.white, 'satin', tf(0, 0, 0.11))
+    kit.add(G.box(1.5, 0.05, 0.22, 0.015), C.white, 'satin', tf(0, 0.42, 0.11))
+    for (const sx of [-0.7, 0.7]) kit.add(G.box(0.04, 0.46, 0.2, 0.01), C.gold, 'metal', tf(sx, 0.21, 0.1))
+    for (let i = 0; i < Math.min(stars, 14); i++) {
+      const row = Math.floor(i / 7), col = i % 7
+      kit.at(tf(-0.54 + col * 0.18, 0.15 + row * 0.42, 0.12), () => starShape(kit))
+    }
+  })
+}
+
+/** A little gold star standing on a foot. */
+export function starShape(kit: Kit) {
+  for (let k = 0; k < 10; k++) {
+    const [ax, ay] = STAR[k], [bx, by] = STAR[(k + 1) % 10]
+    kit.add(G.box(Math.hypot(bx - ax, by - ay) + 0.01, 0.03, 0.03, 0.01), C.gold, 'metal', tf((ax + bx) / 2, (ay + by) / 2, 0, 0, 0, Math.atan2(by - ay, bx - ax)))
+  }
+  kit.add(G.sphere(0.055, 8), C.gold, 'metal', tf(0, 0, 0, 0, 0, 0, 1, 1, 0.4))
+  kit.add(G.cyl(0.02, 0.04, 0.08, 8), C.gold, 'metal', tf(0, -0.1, 0))
+}
+
+/** A pendant light hanging over a station (the crystal lights upgrade). */
+export function pendantLight(b: Build, x: number, z: number) {
+  const { kit } = b
+  kit.at(tf(x, 0, z), () => {
+    kit.add(G.cyl(0.004, 0.004, 0.7, 4), 0x8a6a80, 'matte', tf(0, 2.75, 0))
+    kit.add(G.cyl(0.08, 0.2, 0.16, 18), C.gold, 'metal', tf(0, 2.35, 0))
+    kit.add(G.sphere(0.08, 10), 0xfff0d6, 'glow', tf(0, 2.26, 0))
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; kit.add(G.sphere(0.025, 6), 0xf6f0ff, 'glass', tf(Math.cos(a) * 0.15, 2.22, Math.sin(a) * 0.15)) }
+  })
+}
+
+/** A standing vanity mirror with a little shelf of bottles (behind a station, as Serenity lines its chairs). */
+export function vanityMirror(b: Build, x: number, z: number, ry = 0, frame = C.gold) {
+  const { kit } = b
+  kit.at(tf(x, 0, z, 0, ry, 0), () => {
+    kit.add(G.box(0.7, 0.72, 0.36, 0.04), C.white, 'satin', tf(0, 0.36, 0))
+    kit.add(G.box(0.72, 0.03, 0.38, 0.01), frame, 'metal', tf(0, 0.72, 0))
+    kit.add(G.torus(0.28, 0.03, Math.PI * 2, 28), frame, 'metal', tf(0, 1.22, -0.1, 0, 0, 0, 0.9, 1.25, 1))
+    kit.add(G.cyl(0.26, 0.26, 0.015, 28), 0xdfeaf2, 'metal', tf(0, 1.22, -0.1, Math.PI / 2, 0, 0, 0.9, 1, 1.25))
+    for (const [bx, c] of [[-0.2, 0xa9e3cf], [-0.08, 0xf6a9c2], [0.18, 0xcdbdf2]] as const) kit.add(G.cyl(0.03, 0.03, 0.11, 8), c, 'gloss', tf(bx, 0.79, 0.04))
+  })
+  b.blobs.push({ x, z, rx: 0.45, rz: 0.3, a: 0.28 })
+}
+
+/** The day-one waiting corner: two armchairs facing each other across a round coffee table, and a plant. */
+export function waitingCorner(b: Build, x: number, z: number, w: number, d: number) {
+  const { kit } = b
+  const chair = (cx: number, cz: number, ry: number, color: number) => kit.at(tf(cx, 0, cz, 0, ry, 0), () => {
+    kit.add(G.box(0.72, 0.28, 0.7, 0.13), shade(color, -0.05), 'satin', tf(0, 0.22, 0))
+    kit.add(G.box(0.62, 0.14, 0.56, 0.07), shade(color, 0.12), 'satin', tf(0, 0.42, 0.05))
+    kit.add(G.box(0.72, 0.52, 0.22, 0.11), color, 'satin', tf(0, 0.62, -0.26, -0.18, 0, 0))
+    for (const s of [-1, 1]) kit.add(G.box(0.16, 0.3, 0.64, 0.08), color, 'satin', tf(s * 0.33, 0.46, 0))
+    for (const fx of [-0.28, 0.28]) for (const fz of [-0.25, 0.25]) kit.add(G.cyl(0.025, 0.02, 0.12, 6), C.gold, 'metal', tf(fx, 0.06, fz))
+  })
+  chair(x - w / 2 + 0.36, z, Math.PI / 2 - 0.25, 0xf4a3bd)
+  chair(x + w / 2 - 0.36, z, -Math.PI / 2 + 0.25, 0xf4a3bd)
+  kit.at(tf(x, 0, z), () => {
+    kit.add(G.cyl(0.3, 0.3, 0.05, 26), C.marble, 'gloss', tf(0, 0.44, 0))
+    kit.add(G.cyl(0.04, 0.07, 0.42, 12), C.gold, 'metal', tf(0, 0.21, 0))
+    kit.add(G.box(0.22, 0.015, 0.16, 0.004), 0xa9d9ef, 'satin', tf(-0.06, 0.475, 0.02, 0, 0.3, 0))
+    kit.add(G.cyl(0.05, 0.04, 0.1, 10), 0xffffff, 'gloss', tf(0.1, 0.52, -0.05))
+    for (const [fx, fz, c] of [[0.1, -0.05, 0xf48fb1], [0.13, -0.02, 0xffffff], [0.08, -0.08, 0xfff3a8]] as const) kit.add(G.sphere(0.035, 6), c, 'matte', tf(fx, 0.6, fz))
+  })
+  plantInPot(kit, x, 0, z - d / 2 - 0.05, 1.1)
+  b.blobs.push({ x, z, rx: w / 2 + 0.2, rz: d / 2 + 0.2, a: 0.3 })
 }

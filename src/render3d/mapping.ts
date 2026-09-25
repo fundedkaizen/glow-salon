@@ -3,12 +3,12 @@ import { FLOOR_H, FLOOR_W, WALL_H } from '../core/floor.ts'
 /**
  * The sim's flat 1280 x 800 floor (src/core/floor.ts) and the 3D room, in metres. The sim never changes: its
  * (x, y) lands on the ground plane as (X, Z), Y is up, and the back wall's inner face is Z = 0 (sim y = WALL_H).
- * The 2D floor draws a person 1.28 times their 128 grid units (about 164 units), and so does this room: 88 units
- * make a metre, so a 1.7 m person stands about 150 units tall and reads at the same size against the room.
+ * The 2D floor draws a person 1.28 times their 128 grid units (about 164 units), and so does this room: 100 units
+ * make a metre, so a 1.7 m person stands about 170 units tall and reads at the same size against the room.
  * The 2D art drew the floor foreshortened in y, so depth gets a little stretch (DEPTH_K) for true 3D.
  * Pure (no three.js), so tests run it in plain Node.
  */
-export const UNITS_PER_M = 88
+export const UNITS_PER_M = 100
 export const DEPTH_K = 1.12
 
 /** The room's inside, in metres: X from -W/2 (the door wall) to W/2, Z from 0 (the back wall) to D (the front). */

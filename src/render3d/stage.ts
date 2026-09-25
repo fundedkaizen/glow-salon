@@ -1,5 +1,5 @@
 import type { Application, WebGLRenderer as PixiGL } from 'pixi.js'
-import { ACESFilmicToneMapping, AgXToneMapping, EquirectangularReflectionMapping, NeutralToneMapping, PCFShadowMap, PMREMGenerator, SRGBColorSpace, WebGLRenderer, type Camera, type Scene, type Texture } from 'three'
+import { ACESFilmicToneMapping, AgXToneMapping, EquirectangularReflectionMapping, NeutralToneMapping, PCFShadowMap, PMREMGenerator, SRGBColorSpace, WebGLRenderer, WebGLRenderTarget, type Camera, type Scene, type Texture } from 'three'
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'
 import { TEX } from './textures.ts'
 
@@ -71,6 +71,34 @@ export class Stage {
     this.lastTris = this.renderer.info.render.triangles
     this.pixi.resetState()
     this.pixi.background.clearBeforeRender = false
+  }
+
+  /** Render a small picture offscreen (the style cards' thumbnails) into a 2D canvas. */
+  snapshot(scene: Scene, camera: Camera, w: number, h: number): HTMLCanvasElement {
+    const rt = new WebGLRenderTarget(w, h, { samples: 4, colorSpace: SRGBColorSpace })
+    const r = this.renderer
+    r.resetState()
+    const shadows = r.shadowMap.enabled
+    r.shadowMap.enabled = false
+    r.setRenderTarget(rt)
+    r.setViewport(0, 0, w, h)
+    r.setClearColor(0x000000, 0)
+    r.clear()
+    r.render(scene, camera)
+    const px = new Uint8Array(w * h * 4)
+    r.readRenderTargetPixels(rt, 0, 0, w, h, px)
+    r.setRenderTarget(null)
+    r.shadowMap.enabled = shadows
+    rt.dispose()
+    this.pixi.resetState()
+    const c = document.createElement('canvas')
+    c.width = w; c.height = h
+    const ctx = c.getContext('2d')!
+    const img = ctx.createImageData(w, h)
+    // WebGL rows run bottom to top.
+    for (let y = 0; y < h; y++) img.data.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4)
+    ctx.putImageData(img, 0, 0)
+    return c
   }
 
   /** No 3D this frame (a close-up is open): Pixi clears the canvas itself again. */

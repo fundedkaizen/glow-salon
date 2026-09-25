@@ -137,21 +137,15 @@ export type GhostCheck = (id: string) => { ok: true } | { ok: false; reason: str
  * The ghosts on the floor: a few things to buy next, cheapest first. An item qualifies when it stands in the salon
  * (`standsInSalon`) and could be bought now, or as soon as there is money for it; it shows when the salon can
  * nearly afford it (price at most 1.5 times the wallet plus 120). With nothing that close, the cheapest one still
- * shows, so there is always a goal on the floor. At most `max`, and at most two stations.
+ * shows, so there is always a goal on the floor. At most `max`: stations first (at most two, they matter most),
+ * then the cheapest of the rest, shown cheapest first.
  */
 export function ghostPicks(items: readonly Item[], money: number, check: GhostCheck, standsInSalon: (item: Item) => boolean, max = 4): Item[] {
   const open = items.filter(i => !i.gift && !i.soon && standsInSalon(i)).filter(i => { const c = check(i.id); return c.ok || c.reason.startsWith('Needs $') })
   open.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id))
   const near = open.filter(i => i.price <= money * 1.5 + 120)
   const pool = near.length ? near : open.slice(0, 1)
-  const out: Item[] = []
-  let stations = 0
-  for (const i of pool) {
-    const station = i.effect.kind === 'station' || i.effect.kind === 'treatment'
-    if (station && stations >= 2) continue
-    if (station) stations++
-    out.push(i)
-    if (out.length >= max) break
-  }
-  return out
+  const isStation = (i: Item) => i.effect.kind === 'station' || i.effect.kind === 'treatment'
+  const out = [...pool.filter(isStation).slice(0, 2), ...pool.filter(i => !isStation(i))].slice(0, max)
+  return out.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id))
 }

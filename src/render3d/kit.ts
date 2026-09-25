@@ -85,8 +85,11 @@ export class Kit {
 
   get empty() { return TIERS.every(t => !this.parts[t].length) }
 
-  /** One mesh per finish. Shadows: everything casts and receives except glass and glow. */
-  build(shadows = true): Group {
+  /**
+   * One mesh per finish. Shadows: everything casts and receives except glass and glow. `override`: draw every
+   * finish with this one material instead (the grey ghosts of things to buy).
+   */
+  build(shadows = true, override?: Material): Group {
     const group = new Group()
     for (const t of TIERS) {
       const list = this.parts[t]
@@ -95,7 +98,7 @@ export class Kit {
       for (const g of list) g.dispose()
       if (!merged) continue
       merged.computeBoundingSphere()
-      const mesh = new Mesh(merged, MAT[t])
+      const mesh = new Mesh(merged, override ?? MAT[t])
       mesh.name = t
       const solid = t !== 'glass' && t !== 'glow'
       mesh.castShadow = shadows && solid

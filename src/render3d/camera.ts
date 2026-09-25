@@ -105,7 +105,8 @@ export class CameraRig {
     // A portrait phone shows most of the salon (the whole diamond would make people too small to read) and pans
     // with the player; a landscape screen sees the whole room, like Serenity's.
     const portrait = view.h > view.w * 1.2
-    this.useD = demo ? Math.min(this.fitD, fitAt('cover')) : portrait ? this.fitD * 0.6 : this.fitD
+    // Serenity's view fills the frame (the walls cut by its edges): zoom in and follow the player.
+    this.useD = demo ? Math.min(this.fitD, fitAt('cover')) * 0.86 : portrait ? this.fitD * 0.52 : this.fitD * 0.8
     this.panR = this.panRange(this.right, a, 'x')
     this.panF = this.panRange(this.back, a, 'y')
   }

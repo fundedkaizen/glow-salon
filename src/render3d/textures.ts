@@ -42,7 +42,7 @@ export function woodTexture(): CanvasTexture {
   const r = rng(7)
   const rows = 9
   const ph = S / rows
-  const base = [240, 194, 160]
+  const base = [236, 184, 140]
   for (let row = 0; row < rows; row++) {
     let x = -r() * 400
     while (x < S) {
@@ -86,6 +86,57 @@ export function woodTexture(): CanvasTexture {
   return tex(c, { repeat: true, aniso: 16 })
 }
 
+/** The sunlit oak floor upgrade: pale herringbone, one tile is 2 m square. */
+export function herringboneTexture(): CanvasTexture {
+  const S = 1024
+  const [c, ctx] = canvas(S, S)
+  const r = rng(17)
+  ctx.fillStyle = rgb(236, 196, 158)
+  ctx.fillRect(0, 0, S, S)
+  const L = 256, Wd = 64
+  for (let y = -L; y < S + L; y += Wd) for (let x = -L; x < S + L; x += L) {
+    for (const flip of [0, 1]) {
+      const k = (r() - 0.5) * 0.12
+      ctx.save()
+      ctx.translate(x + (flip ? L / 2 : 0), y + (flip ? Wd / 2 : 0))
+      ctx.rotate(flip ? -Math.PI / 4 : Math.PI / 4)
+      ctx.fillStyle = rgb(242 * (1 + k), 204 * (1 + k), 166 * (1 + k))
+      ctx.fillRect(0, 0, L * 0.7, Wd * 0.7)
+      ctx.strokeStyle = rgb(170, 120, 90, 0.35)
+      ctx.lineWidth = 2
+      ctx.strokeRect(0, 0, L * 0.7, Wd * 0.7)
+      ctx.restore()
+    }
+  }
+  return tex(c, { repeat: true, aniso: 16 })
+}
+
+/** The marble floor upgrade: polished blush marble tiles with soft veins. */
+export function marbleTexture(): CanvasTexture {
+  const S = 1024
+  const [c, ctx] = canvas(S, S)
+  const r = rng(29)
+  const n = 4
+  for (let ty = 0; ty < n; ty++) for (let tx = 0; tx < n; tx++) {
+    const k = (r() - 0.5) * 8
+    ctx.fillStyle = rgb(250 + k, 232 + k, 230 + k)
+    ctx.fillRect(tx * (S / n), ty * (S / n), S / n, S / n)
+  }
+  for (let i = 0; i < 26; i++) {
+    ctx.strokeStyle = rgb(210, 170, 176, 0.18 + r() * 0.2)
+    ctx.lineWidth = 1 + r() * 2.5
+    ctx.beginPath()
+    let x = r() * S, y = r() * S
+    ctx.moveTo(x, y)
+    for (let s = 0; s < 8; s++) { x += (r() - 0.3) * 120; y += (r() - 0.5) * 90; ctx.lineTo(x, y) }
+    ctx.stroke()
+  }
+  ctx.strokeStyle = rgb(255, 255, 255, 0.9)
+  ctx.lineWidth = 3
+  for (let i = 0; i <= n; i++) { ctx.beginPath(); ctx.moveTo(i * (S / n), 0); ctx.lineTo(i * (S / n), S); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i * (S / n)); ctx.lineTo(S, i * (S / n)); ctx.stroke() }
+  return tex(c, { repeat: true, aniso: 16 })
+}
+
 /** A tiled paving for the pavement outside, and a lawn. */
 export function pavingTexture(): CanvasTexture {
   const S = 512
@@ -122,7 +173,7 @@ export function lawnTexture(): CanvasTexture {
  * `arches`, metres from the wall's left end), a white skirting board, and soft occlusion where the wall meets the
  * floor and the other wall. `w` and `h` in metres; `cornerAt` darkens the end at that side.
  */
-export function wallTexture(w: number, h: number, cornerAt: 'left' | 'right' | null, arches: number[] = []): CanvasTexture {
+export function wallTexture(w: number, h: number, cornerAt: 'left' | 'right' | null, arches: number[] = [], silk = false): CanvasTexture {
   const PX = 96
   const [c, ctx] = canvas(Math.round(w * PX), Math.round(h * PX))
   const W = c.width, H = c.height
@@ -135,6 +186,14 @@ export function wallTexture(w: number, h: number, cornerAt: 'left' | 'right' | n
   // A faint plaster mottle.
   const r = rng(21)
   for (let i = 0; i < 900; i++) { ctx.fillStyle = rgb(255, 230, 222, 0.05 + r() * 0.05); ctx.beginPath(); ctx.arc(r() * W, r() * H, 6 + r() * 16, 0, Math.PI * 2); ctx.fill() }
+  // Silk walls (an upgrade): a soft damask pattern and gilded panel lines.
+  if (silk) {
+    ctx.fillStyle = rgb(255, 240, 234, 0.35)
+    for (let yy = 30; yy < H; yy += 60) for (let xx = (yy / 60) % 2 ? 30 : 0; xx < W; xx += 60) { ctx.beginPath(); ctx.ellipse(xx, yy, 9, 16, 0, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.ellipse(xx, yy, 16, 6, 0, 0, Math.PI * 2); ctx.fill() }
+    ctx.strokeStyle = rgb(232, 190, 110, 0.9)
+    ctx.lineWidth = 3
+    ctx.strokeRect(6, y(2.6), W - 12, 2.3 * PX)
+  }
   // Arched niches.
   for (const ax of arches) {
     const cx = ax * PX, aw = 0.92 * PX, bottom = y(0.2), top = y(2.28)
