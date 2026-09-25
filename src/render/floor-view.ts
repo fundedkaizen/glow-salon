@@ -1053,7 +1053,8 @@ export class FloorView {
     const spanW = FLOOR_W + OUTSIDE_W
     const fit = Math.min(w / spanW, h / FLOOR_H)
     // Small screens zoom in and follow the player, so people stay a readable size.
-    const readable = Math.min((h / FLOOR_H) * 0.86, 0.8)
+    // On a tall phone the room fills the height under the HUD (the top 20% or so), with no empty band above it.
+    const readable = h > w * 1.3 ? Math.min((h * 0.8) / FLOOR_H, 1.05) : Math.min((h / FLOOR_H) * 0.86, 0.8)
     // The title backdrop covers a tall phone screen instead of sitting in a thin strip.
     const cover = Math.max(w / spanW, h / FLOOR_H)
     const s = this.demo ? (fit < 0.5 ? cover : fit) : fit < 0.5 ? Math.max(fit, readable) : fit
