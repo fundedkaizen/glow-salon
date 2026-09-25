@@ -955,7 +955,8 @@ export class TreatmentView {
     if (this.destroyed) return
     this.time += dt
     this.handleInput(dt)
-    if (this.opts.role === 'lead') this.session.time(dt)
+    // Everyone keeps the clock, so a helper who takes over reports the real time.
+    this.session.time(dt)
     this.handleEvents(this.session.drain())
     if (this.advanceAt >= 0 && this.time >= this.advanceAt && this.session.ready) { this.advanceAt = -1; this.local({ k: 'advance', s: this.session.step }) }
     this.handleEvents(this.session.drain())
