@@ -69,8 +69,9 @@ const HEAD_TOP = 132
 
 /** Players have no customisation yet: a look from their name, so each keeps theirs. */
 export function playerLook(id: number, name: string): Look {
-  const look = randomLook(makeRng(hashString(name.toLowerCase()) ^ (id * 7919)))
-  return { ...look, accessory: look.accessory === 2 ? 0 : look.accessory }
+  const look = randomLook(makeRng(hashString(name.toLowerCase()) ^ (id * 7919)), { gender: 'female', age: 'adult' })
+  // Players keep the young-adult look they always had (no random grey hair) until avatars can be chosen.
+  return { ...look, accessory: look.accessory === 2 ? 0 : look.accessory, figure: { masc: false, age: 0.35 } }
 }
 
 const toTexture = (p: Piece) => canvasTexture(p.canvas)

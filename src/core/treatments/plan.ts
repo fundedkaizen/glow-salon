@@ -2,6 +2,7 @@ import { makeRng, type Rng } from '../rng.ts'
 import { FACIAL, FACIAL_STEPS as F } from './facial.ts'
 import { NAILS, NAIL_STEPS as N, repairStep } from './nails.ts'
 import { faceProfile, handProfile, type FaceProfile, type HandProfile } from './profile.ts'
+import { TREATMENTS } from './registry.ts'
 import type { StepDef, TreatmentDef, TreatmentId } from './types.ts'
 
 /**
@@ -111,7 +112,8 @@ export function planTreatment(treatment: TreatmentId, seed: number, disaster: bo
   const key = `${treatment}:${seed}:${disaster ? 1 : 0}`
   let plan = cache.get(key)
   if (!plan) {
-    plan = treatment === 'facial' ? facialPlan(seed, disaster) : nailsPlan(seed, disaster)
+    // A treatment without its own planner (a new family) runs its data as written.
+    plan = treatment === 'facial' ? facialPlan(seed, disaster) : treatment === 'nails' ? nailsPlan(seed, disaster) : { def: TREATMENTS[treatment], mask: null, polish: null, extras: [] }
     if (cache.size > 300) cache.clear()
     cache.set(key, plan)
   }
