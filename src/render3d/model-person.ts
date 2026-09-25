@@ -157,10 +157,23 @@ export class ModelPerson {
   private play(name: string, fade = 0.25) {
     const next = this.actions.get(name)
     if (!next || next === this.current) return
-    next.reset().setEffectiveWeight(1).play()
-    if (this.current && fade > 0) next.crossFadeFrom(this.current, fade, false)
-    else if (this.current) this.current.stop()
+    this.blendTo(next, fade)
     this.current = next
+  }
+
+  /**
+   * Start `next` and fade every other running clip out over `fade` seconds, so the weights always add up to one.
+   * (Crossfading from one tracked clip alone left a one-shot, a wave or a word, playing at full weight under the
+   * next clip: blended with the bind pose, a seated customer floated above her chair with her arms spread.)
+   */
+  private blendTo(next: AnimationAction, fade: number) {
+    next.reset().setEffectiveWeight(1).play()
+    if (fade > 0) next.fadeIn(fade)
+    for (const a of this.actions.values()) {
+      if (a === next || !a.isRunning()) continue
+      if (fade > 0 && a.getEffectiveWeight() > 0.001) a.fadeOut(fade)
+      else a.stop()
+    }
   }
 
   setExpr(e: Expr) { this.expr = e }
@@ -172,8 +185,7 @@ export class ModelPerson {
   private once(name: string) {
     const a = this.actions.get(name)
     if (!a || this.pose === 'sit') return
-    a.reset().setEffectiveWeight(1).play()
-    if (this.current) a.crossFadeFrom(this.current, 0.15, false)
+    this.blendTo(a, 0.15)
     this.oneShot = { action: a, left: (PEOPLE.clipSeconds as Record<string, number>)[name] ?? 1 }
   }
 
@@ -204,7 +216,11 @@ export class ModelPerson {
     if (this.oneShot && !sit) {
       this.oneShot.left -= dt
       if (this.oneShot.left <= 0) { const a = this.oneShot.action; this.oneShot = null; this.current = a; this.play(clip, 0.2) }
-    } else { this.oneShot = null; this.play(clip) }
+    } else {
+      // Sitting down cuts a one-shot short: back to the right clip, whatever was playing.
+      if (this.oneShot) { const a = this.oneShot.action; this.oneShot = null; this.current = a }
+      this.play(clip)
+    }
     const walk = this.actions.get('walk')
     if (walk) walk.timeScale = Math.max(0.6, Math.min(2.6, this.speed / this.walkSpeed))
     // Seated clips put the hips on the origin: lift the body to the seat's hip height.

@@ -88,9 +88,11 @@ export function run() {
   }
   check('phone: the player stays on screen anywhere in the salon', allSeen)
   check('the camera never turns (fixed yaw and pitch)', rig.yaw === yaw && rig.pitch === pitch)
-  // Phone portrait: most of the salon shows at once (Serenity shows the whole salon; a phone shows most of it).
+  // Phone portrait: close in (people read at a good size) with the player near the middle of the screen.
   for (let i = 0; i < 90; i++) rig.update(1 / 30, toWorld(640, 500))
   let seen = 0, all = 0
   for (let x = 40; x < FLOOR_W; x += 80) for (let y = WALL_H + 20; y < FLOOR_H; y += 60) { all++; const w = toWorld(x, y); if (onScreen(new Vector3(w.x, 0, w.z))) seen++ }
-  check('phone: at least half of the floor shows at once', seen / all >= 0.5, seen / all)
+  check('phone: close in (a fifth to three fifths of the floor at once)', seen / all >= 0.2 && seen / all <= 0.6, seen / all)
+  const mid = new Vector3(toWorld(640, 500).x, 0.9, toWorld(640, 500).z).project(rig.camera)
+  check('phone: the player is near the middle of the screen', Math.abs(mid.x) < 0.25 && Math.abs(mid.y) < 0.3, { x: mid.x, y: mid.y })
 }

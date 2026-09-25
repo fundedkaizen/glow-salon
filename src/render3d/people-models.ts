@@ -14,12 +14,13 @@ let loading: Promise<PeopleFiles | null> | null = null
 let loaded: PeopleFiles | null = null
 
 /** Start loading the people (once); resolves null when they cannot load (the stand-ins stay). */
-export function loadPeople(): Promise<PeopleFiles | null> {
+export function loadPeople(read?: (file: string) => Promise<ArrayBuffer>): Promise<PeopleFiles | null> {
   if (loading) return loading
   const loader = new GLTFLoader()
   loader.setMeshoptDecoder(MeshoptDecoder)
-  const base = `${import.meta.env.BASE_URL}models/`
-  const one = (file: string) => loader.loadAsync(base + file).then(g => ({ scene: g.scene, clips: g.animations }))
+  const base = `${import.meta.env?.BASE_URL ?? '/'}models/`
+  // `read`: the bytes from elsewhere (the tests read them from disk).
+  const one = (file: string) => (read ? read(file).then(buf => loader.parseAsync(buf, '')) : loader.loadAsync(base + file)).then(g => ({ scene: g.scene, clips: g.animations }))
   loading = Promise.all([one(PEOPLE.files.fem), one(PEOPLE.files.masc)])
     .then(([fem, masc]) => (loaded = { fem, masc }))
     .catch(error => { console.warn('3D people unavailable, using stand-ins', error); return null })

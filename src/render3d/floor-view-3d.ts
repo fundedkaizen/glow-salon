@@ -417,6 +417,23 @@ export class FloorView3D {
     this.room.setShade(b.blobs)
   }
 
+  /** What needs the player now, for the phone camera to lean towards: a seated customer nobody is serving, else a waiting one. */
+  private attention(): { x: number; z: number } | null {
+    const st = this.state
+    if (!st || st.phase === 'prep' || st.phase === 'receipt') return null
+    let best: { x: number; z: number } | null = null, bd = Infinity
+    for (const s of st.stations) {
+      if (s.slot < 0 || s.customer === null || s.lead !== null) continue
+      const c = st.customers.find(c => c.id === s.customer)
+      if (c?.state !== 'seated') continue
+      const p = SLOTS[s.slot], d = Math.hypot(p.x - this.me.x, p.y - this.me.y)
+      if (d < bd) { bd = d; best = toWorld(p.x, p.y) }
+    }
+    if (best) return best
+    const w = st.customers.find(c => c.state === 'waiting')
+    return w ? toWorld(w.x, w.y) : null
+  }
+
   /** Where something the salon owns stands, for the camera and the sparkles (sim units, as the 2D floor). */
   itemSpot(id: string): Pt | null {
     const state = this.state
@@ -972,7 +989,7 @@ export class FloorView3D {
     this.updateAmbient(dt)
     // The camera follows the local player on small screens.
     const follow = this.demo ? null : toWorld(this.me.x, this.me.y)
-    this.rig.update(dt, follow)
+    this.rig.update(dt, follow, follow && this.rig.phone ? this.attention() : null)
     // Only the far lawn fades into the pink: the fog starts past the room, however far the long lens stands.
     const fog = this.scene.fog as Fog
     const cd = this.rig.camera.position.distanceTo(this.rig.focusPoint)
