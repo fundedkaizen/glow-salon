@@ -5,11 +5,12 @@ import { DECOR_ITEM_BY_ID, GIFT_BY_ID, placeDecor } from '../core/decor.ts'
 import type { StationKind } from '../core/economy.ts'
 import { DESK, FIXTURES, PROP_BLOCK, PROP_SPOTS, SLOTS, SOFA, SOFA_SEATS } from '../core/floor.ts'
 import { starsOwned, tierOf } from '../core/unlocks.ts'
-import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, floorLamp, fountainGarden, giftStand, glowSign, lounge, nailDesk, pedicureChair, pendantLight, succulent, teaCart, topiary, trophyShelf, waitingCorner, welcomeSign, type Build, type Node3, type StationNodes } from './furniture.ts'
+import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, floorLamp, fountainGarden, giftStand, glowSign, lounge, nailDesk, pedicureChair, pendantLight, succulent, topiary, trophyShelf, waitingCorner, welcomeSign, type Build, type Node3, type StationNodes } from './furniture.ts'
 import { G, Kit, piece, tf } from './kit.ts'
-import { AQUARIUM_SPOT, ART, BOTTLES, CURTAIN_Y, decorSpot, FLOOR_SLOTS, FRONT_LAMP, GIFT_SPOTS, LIGHTS, NEON, onWall, PLANT_SPOT, TEA_CART, TOPIARIES, TROPHY, WALL_SLOTS, WELCOME, WINDOW_SPOTS } from './layout.ts'
+import { AQUARIUM_SPOT, ART, BOTTLES, CURTAIN_Y, decorSpot, DESK_TOP, FLOOR_SLOTS, FRONT_LAMP, GIFT_R, GIFT_SPOTS, LIGHTS, NEON, onWall, PLANT_SPOT, TOPIARIES, TROPHY, WALL_SLOTS, WELCOME, WINDOW_SPOTS } from './layout.ts'
 import { lenX, lenZ, ROOM3, toWorld, type V2 } from './mapping.ts'
 import { stationKeys, stylable } from './pieces.ts'
+import { armchairsModel, decorModel, deskModel, loungeModel, placeModel, stationModel } from './model-pieces.ts'
 import { setPalette, styleColor } from './styles.ts'
 import { fromCanvas, glowTexture, plaqueTexture, rugTexture, slotTexture, tex } from './textures.ts'
 
@@ -73,7 +74,7 @@ export function furnish(b: Build, iso: Build, spec: FurnishSpec): Furnished {
   const deskC = w(DESK.x + DESK.w / 2, DESK.y + DESK.h / 2)
   const deskW = lenX(DESK.w) - 0.1, deskD = Math.min(0.85, lenZ(DESK.h) - 0.1)
   Object.assign(out, { deskC, deskW, deskD })
-  into('desk', deskC.x, deskC.z, boxAt(deskC.x, deskC.z, deskW / 2, deskD / 2, 1.4), bb => desk(bb, deskC.x, deskC.z, deskW, deskD, styleColor(styles, 'desk'), tierOf(ownedList, 'desk')))
+  into('desk', deskC.x, deskC.z, boxAt(deskC.x, deskC.z, deskW / 2, deskD / 2, 1.4), bb => deskModel(bb, deskC.x, deskC.z, deskW, styles.desk ?? 0, tierOf(ownedList, 'desk')) || desk(bb, deskC.x, deskC.z, deskW, deskD, styleColor(styles, 'desk'), tierOf(ownedList, 'desk')))
   const plaque = plaqueTexture(spec.salonName)
   const pw = Math.min(deskW - 0.8, 0.2 * plaque.aspect)
   const pm = new Mesh(new PlaneGeometry(pw, pw / plaque.aspect), new MeshBasicMaterial({ map: plaque.tex, transparent: true, toneMapped: false }))
@@ -83,20 +84,19 @@ export function furnish(b: Build, iso: Build, spec: FurnishSpec): Furnished {
   // round a coffee table.
   const sofaZ = 0.62
   const lc = w(SOFA.x + SOFA.w / 2, 0)
-  out.sofaSeats = into('lounge', lc.x, sofaZ, boxAt(lc.x, sofaZ + 0.3, lenX(SOFA.w) / 2, 0.6, 1.1), bb => lounge(bb, sofaZ, SOFA_SEATS.map(s => w(s.x, s.y).x), styleColor(styles, 'lounge'), tierOf(ownedList, 'lounge')))
+  out.sofaSeats = into('lounge', lc.x, sofaZ, boxAt(lc.x, sofaZ + 0.3, lenX(SOFA.w) / 2, 0.6, 1.1), bb => loungeModel(bb, lc.x, sofaZ + 0.16, styles.lounge ?? 0, tierOf(ownedList, 'lounge')) ?? lounge(bb, sofaZ, SOFA_SEATS.map(s => w(s.x, s.y).x), styleColor(styles, 'lounge'), tierOf(ownedList, 'lounge')))
   const wc = FIXTURES.waiting, wa = w(wc.x + wc.w / 2, wc.y + wc.h / 2)
   const rugZ0 = sofaZ - 0.45, rugZ1 = wa.z + lenZ(wc.h) / 2 + 0.35
   floorDecal(b, rugTexture('round', '#bfeee4', '#7fd4c2', '#ffffff'), lc.x, (rugZ0 + rugZ1) / 2, lenX(SOFA.w) + 0.5, rugZ1 - rugZ0, 0.004)
-  piece('armchairs', () => waitingCorner(b, wa.x, wa.z, lenX(wc.w), lenZ(wc.h)))
-  piece('tea', () => teaCart(b, TEA_CART.x, TEA_CART.z, TEA_CART.ry))
+  piece('armchairs', () => armchairsModel(b, wa.x, wa.z, lenX(wc.w), 0) || waitingCorner(b, wa.x, wa.z, lenX(wc.w), lenZ(wc.h)))
   piece('welcome', () => welcomeSign(b, WELCOME.x, WELCOME.z, 1.1))
-  piece('frontLamp', () => floorLamp(b, FRONT_LAMP.x, FRONT_LAMP.z, 0xfbe0e8))
+  piece('frontLamp', () => placeModel(b, 'floor-lamp', FRONT_LAMP.x, FRONT_LAMP.z, 0, { style: 2 }) || floorLamp(b, FRONT_LAMP.x, FRONT_LAMP.z, 0xfbe0e8))
   lampGlow(FRONT_LAMP.x, 1.5, FRONT_LAMP.z, 0.6)
   // The little fountain planter in the front right corner (the fountain garden upgrade grows there).
-  if (!owned.has('up-fountain')) { const pc = FIXTURES.planter, pa = w(pc.x + pc.w / 2, pc.y + pc.h / 2); piece('planter', () => fountainGarden(b, pa.x, pa.z, lenX(pc.w), lenZ(pc.h))) }
+  if (!owned.has('up-fountain')) { const pc = FIXTURES.planter, pa = w(pc.x + pc.w / 2, pc.y + pc.h / 2); piece('planter', () => placeModel(b, 'plant-floor', pa.x - 0.04, pa.z, 0, { fit: 0.7 }) || fountainGarden(b, pa.x, pa.z, lenX(pc.w), lenZ(pc.h))) }
   // A wall shelf of bottles on the right wall, and topiaries along the walls and at the partitions' ends.
   piece('mount:bottles', () => { const p = onWall(BOTTLES.wall, BOTTLES.u); decorItem(b, 'shelf', [0xffffff, 0xcdbdf2, 0xf6a9c2, 0xfbe0a0], p.x, BOTTLES.y, p.z, p.ry) })
-  TOPIARIES.forEach((t, i) => piece(`topiary${i}`, () => topiary(b, t.x, t.z, t.k)))
+  TOPIARIES.forEach((t, i) => piece(`topiary${i}`, () => placeModel(b, 'plant-floor', t.x, t.z, 0, { k: 0.62 * t.k }) || topiary(b, t.x, t.z, t.k)))
   // A runner by the front.
   const runner = w(440, 700)
   floorDecal(b, rugTexture('runner', '#fff3e6', '#ffc94d', '#f7a9bd'), runner.x, runner.z, 3.4, 1.1, 0.005)
@@ -115,7 +115,7 @@ export function furnish(b: Build, iso: Build, spec: FurnishSpec): Furnished {
     const at = w(p.x, p.y)
     const key = keys[Number(st.id.slice(1))] ?? 'facial-chair-1'
     const color = styleColor(styles, key), tier = tierOf(ownedList, st.kind)
-    const nodes = into(key, at.x, at.z, boxAt(at.x, at.z, 1.0, 0.7, 1.4), bb => st.kind === 'facial' ? facialChair(bb, at.x, at.z, color, tier) : st.kind === 'feet' ? pedicureChair(bb, at.x, at.z, color, tier) : nailDesk(bb, at.x, at.z, color, tier), `station${st.slot}:${key}`)
+    const nodes = into(key, at.x, at.z, boxAt(at.x, at.z, 1.0, 0.7, 1.4), bb => stationModel(bb, st.kind, at.x, at.z, styles[key] ?? 0, tier) ?? (st.kind === 'facial' ? facialChair(bb, at.x, at.z, color, tier) : st.kind === 'feet' ? pedicureChair(bb, at.x, at.z, color, tier) : nailDesk(bb, at.x, at.z, color, tier)), `station${st.slot}:${key}`)
     if (tierOf(ownedList, 'lights') >= 2) piece(`pendant${st.slot}`, () => pendantLight(b, at.x + 0.1, at.z))
     out.stations.push({ ...st, key, at, nodes })
   }
@@ -131,23 +131,23 @@ export function furnish(b: Build, iso: Build, spec: FurnishSpec): Furnished {
     b.extra.add(m)
   }
   WALL_SLOTS.forEach((u, i) => { if (!taken.has(`wall:${i}`)) wallPic(cachedPiece(`filler${i}`, () => paintFillerFrame(i)), u, 1.7, 0.7) })
-  FLOOR_SLOTS.forEach((s, i) => { if (!taken.has(`floor:${i}`) && i !== 3) piece(`succulent${i}`, () => succulent(b, s.x, s.z)) })
+  FLOOR_SLOTS.forEach((s, i) => { if (!taken.has(`floor:${i}`) && i !== 3) piece(`succulent${i}`, () => placeModel(b, 'plant-small', s.x, s.z) || succulent(b, s.x, s.z)) })
 
   // ---- starter decor
-  if (owned.has('rug')) { const a = w(PROP_SPOTS.rug.x, PROP_SPOTS.rug.y); const c = css(styleColor(styles, 'rug')); into('rug', a.x, a.z, boxAt(a.x, a.z, 1.2, 0.85, 0.2), bb => floorDecal(bb, rugTexture('cloud', '#fdf6fb', c, c), a.x, a.z, 2.6, 1.9, 0.006)) }
-  if (owned.has('plant')) into('plant', PLANT_SPOT.x, PLANT_SPOT.z, boxAt(PLANT_SPOT.x, PLANT_SPOT.z, 0.45, 0.45, 1.9), bb => bigPlant(bb, PLANT_SPOT.x, PLANT_SPOT.z, styleColor(styles, 'plant'), PLANT_SPOT.k))
+  if (owned.has('rug')) { const a = w(PROP_SPOTS.rug.x, PROP_SPOTS.rug.y); const c = css(styleColor(styles, 'rug')); into('rug', a.x, a.z, boxAt(a.x, a.z, 1.2, 0.85, 0.2), bb => placeModel(bb, 'rug', a.x, a.z, 0, { style: styles.rug ?? 0, k: 1.15 }) || floorDecal(bb, rugTexture('cloud', '#fdf6fb', c, c), a.x, a.z, 2.6, 1.9, 0.006)) }
+  if (owned.has('plant')) into('plant', PLANT_SPOT.x, PLANT_SPOT.z, boxAt(PLANT_SPOT.x, PLANT_SPOT.z, 0.45, 0.45, 1.9), bb => placeModel(bb, 'plant-pot', PLANT_SPOT.x, PLANT_SPOT.z, 0, { style: styles.plant ?? 0 }) || bigPlant(bb, PLANT_SPOT.x, PLANT_SPOT.z, styleColor(styles, 'plant'), PLANT_SPOT.k))
   // ---- the salon's upgrades (core/unlocks.ts): the fountain garden and the trophy shelf of stars
   if (owned.has('up-fountain')) {
     const r = PROP_BLOCK['up-fountain'], a = w(r.x + r.w / 2, r.y + r.h / 2)
-    piece('up-fountain', () => fountainGarden(b, a.x, a.z, lenX(r.w), lenZ(r.h)))
+    piece('up-fountain', () => placeModel(b, 'fountain', a.x, a.z, 0, { fit: lenX(r.w) }) || fountainGarden(b, a.x, a.z, lenX(r.w), lenZ(r.h)))
   }
   const stars = starsOwned(ownedList)
   if (stars) piece('mount:trophies', () => { const p = onWall(TROPHY.wall, TROPHY.u); trophyShelf(b, p.x, TROPHY.y, p.z, p.ry, stars) })
   if (owned.has('candles')) piece('candles', () => {
     const a = { x: deskC.x + 0.75, z: deskC.z + 0.12 }
     for (const [dx, h] of [[0, 0.16], [0.08, 0.11], [-0.07, 0.09]] as const) {
-      b.kit.add(G.cyl(0.03, 0.03, h, 10), 0xfff4e6, 'satin', tf(a.x + dx, 1.055 + h / 2, a.z))
-      b.kit.add(G.sphere(0.014, 6), 0xffc27a, 'glow', tf(a.x + dx, 1.07 + h, a.z, 0, 0, 0, 0.8, 1.4, 0.8))
+      b.kit.add(G.cyl(0.03, 0.03, h, 10), 0xfff4e6, 'satin', tf(a.x + dx, DESK_TOP + h / 2, a.z))
+      b.kit.add(G.sphere(0.014, 6), 0xffc27a, 'glow', tf(a.x + dx, DESK_TOP + 0.015 + h, a.z, 0, 0, 0, 0.8, 1.4, 0.8))
     }
     lampGlow(a.x, 1.25, a.z, 0.25)
   })
@@ -178,7 +178,7 @@ export function furnish(b: Build, iso: Build, spec: FurnishSpec): Furnished {
   })
   if (owned.has('chandelier')) piece('chandelier', () => {
     const a = w(PROP_SPOTS.chandelier.x, 0)
-    decorItem(b, 'chandelier', [0xf7c6d4, 0xffffff, 0xffffff, 0xfbe0a0], a.x, 2.45, 1.7)
+    if (!placeModel(b, 'luxe-gold--chandelier', a.x, 1.7, 0, { k: 0.9, y: ROOM3.wallH - 2.9 * 0.9 - 0.02 })) decorItem(b, 'chandelier', [0xf7c6d4, 0xffffff, 0xffffff, 0xfbe0a0], a.x, 2.45, 1.7)
     out.glows.push({ s: glow(0xfff0d0, 0.5, 1.4, a.x, 2.45, 1.7), base: 0.5, ph: 1 })
   })
   // ---- decor sets, in their slots
@@ -192,7 +192,7 @@ export function furnish(b: Build, iso: Build, spec: FurnishSpec): Furnished {
     piece(`${item.place === 'wall' || item.place === 'window' ? 'mount:' : ''}${d.id}@${item.place}${d.slot}`, () => {
       if (item.place === 'window') for (const wsp of WINDOW_SPOTS) { const p = onWall(wsp.wall, wsp.u); decorItem(b, 'curtains', pal, p.x, CURTAIN_Y, p.z, p.ry) }
       else if (item.place === 'rug') floorDecal(b, rugTexture(item.kind === 'sand' ? 'plain' : 'round', css(pal[0]), css(pal[1]), css(pal[2])), sp.x, sp.z, item.size === 2 ? 3.0 : 2.3, item.size === 2 ? 2.0 : 1.5, 0.007)
-      else decorItem(b, item.kind, pal, sp.x, sp.y, sp.z, sp.ry, sp.k)
+      else if (!decorModel(b, d.id, item.place, d.slot, sp)) decorItem(b, item.kind, pal, sp.x, sp.y, sp.z, sp.ry, sp.k)
     })
   }
   // ---- gifts from friends, on little stands in the gift spots
@@ -200,7 +200,7 @@ export function furnish(b: Build, iso: Build, spec: FurnishSpec): Furnished {
     const spot = GIFT_SPOTS[i]
     const regular = GIFT_BY_ID[id]?.regular ?? ''
     const pic = cachedPiece(`gift:${regular}`, () => paintGift(regular) ?? paintFillerFrame(i))
-    piece(`gift${i}`, () => giftStand(b, fromCanvas(pic.canvas), spot.x, spot.z, spot.ry))
+    piece(`gift${i}`, () => placeModel(b, `gift-${regular}`, spot.x, spot.z, spot.ry, { fit: GIFT_R }) || giftStand(b, fromCanvas(pic.canvas), spot.x, spot.z, spot.ry))
   })
   return out
 }

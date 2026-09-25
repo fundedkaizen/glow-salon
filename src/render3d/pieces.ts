@@ -5,8 +5,9 @@ import { DESK, PROP_BLOCK, PROP_SPOTS, SLOTS, SOFA_SEATS } from '../core/floor.t
 import { tierOf } from '../core/unlocks.ts'
 import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, fountainGarden, lounge, nailDesk, pedicureChair, pendantLight, starShape, type Build } from './furniture.ts'
 import { G, tf } from './kit.ts'
+import { decorModel, decorModelId, deskModel, loungeModel, placeModel, stationModel } from './model-pieces.ts'
 import { lenX, lenZ, ROOM3, toWorld } from './mapping.ts'
-import { AQUARIUM_SPOT, ART, CURTAIN_Y, decorSpot, LIGHTS, NEON, onWall, PLANT_SPOT, TROPHY, WINDOW_SPOTS } from './layout.ts'
+import { AQUARIUM_SPOT, ART, CURTAIN_Y, decorSpot, DESK_TOP, LIGHTS, NEON, onWall, PLANT_SPOT, TROPHY, WINDOW_SPOTS } from './layout.ts'
 import { setPalette, styleColor, STYLE_COLORS } from './styles.ts'
 import { rugTexture } from './textures.ts'
 
@@ -91,9 +92,11 @@ export function buildAt(b: Build, spot: Spot, ctx: SpotCtx): { anchor: Vector3; 
     const a = toWorld(p.x, p.y)
     const c = STYLE_COLORS[spot.station][0]
     const tier = tierOf(ctx.owned, spot.station)
-    if (spot.station === 'facial') facialChair(b, a.x, a.z, c, tier)
-    else if (spot.station === 'feet') pedicureChair(b, a.x, a.z, c, tier)
-    else nailDesk(b, a.x, a.z, c, tier)
+    if (!stationModel(b, spot.station, a.x, a.z, 0, tier)) {
+      if (spot.station === 'facial') facialChair(b, a.x, a.z, c, tier)
+      else if (spot.station === 'feet') pedicureChair(b, a.x, a.z, c, tier)
+      else nailDesk(b, a.x, a.z, c, tier)
+    }
     around(a.x, a.z, 1.1, 0.75, 1.5)
     return { anchor: new Vector3(a.x, 1.9, a.z), box }
   }
@@ -105,18 +108,18 @@ export function buildAt(b: Build, spot: Spot, ctx: SpotCtx): { anchor: Vector3; 
     if (d.place === 'ceiling') { decorItem(b, d.kind, pal, sp.x, sp.y, sp.z); around(sp.x, sp.z, 0.5, 0.5, 2.8); return { anchor: new Vector3(sp.x, 2.7, sp.z), box } }
     if (d.place === 'rug') { floorDecal(b, rugTexture('round', '#e6e1ea', '#cfc8d6', '#ffffff'), sp.x, sp.z, 2.3, 1.5, 0.008); around(sp.x, sp.z, 1.15, 0.75, 0.3); return { anchor: new Vector3(sp.x, 0.5, sp.z), box } }
     if (d.place === 'window') { const w = WINDOW_SPOTS[0], p = onWall(w.wall, w.u); decorItem(b, 'curtains', pal, p.x, CURTAIN_Y, p.z, p.ry); around(p.x, 0.2, 0.8, 0.3, 2.8); return { anchor: new Vector3(p.x, 2.7, 0.3), box } }
-    decorItem(b, d.kind, pal, sp.x, sp.y, sp.z, sp.ry, sp.k)
+    if (!decorModel(b, spot.id, d.place, spot.slot, sp)) decorItem(b, d.kind, pal, sp.x, sp.y, sp.z, sp.ry, sp.k)
     around(sp.x, sp.z, 0.6, 0.5, sp.y + 1.5)
     return { anchor: new Vector3(sp.x, sp.y + 1.8, sp.z), box }
   }
   if (spot.kind === 'prop') {
     const id = spot.id
     const at = (x: number, y: number) => toWorld(x, y)
-    if (id === 'plant') { bigPlant(b, PLANT_SPOT.x, PLANT_SPOT.z, 0xf2e6df, PLANT_SPOT.k); around(PLANT_SPOT.x, PLANT_SPOT.z, 0.5, 0.5, 1.8); return { anchor: new Vector3(PLANT_SPOT.x, 2.1, PLANT_SPOT.z), box } }
+    if (id === 'plant') { if (!placeModel(b, 'plant-pot', PLANT_SPOT.x, PLANT_SPOT.z)) bigPlant(b, PLANT_SPOT.x, PLANT_SPOT.z, 0xf2e6df, PLANT_SPOT.k); around(PLANT_SPOT.x, PLANT_SPOT.z, 0.5, 0.5, 1.8); return { anchor: new Vector3(PLANT_SPOT.x, 2.1, PLANT_SPOT.z), box } }
     if (id === 'aquarium') { const { x, z } = AQUARIUM_SPOT; aquarium(b, x, z, Math.PI / 2); around(x, z, 0.35, 0.6, 1.4); return { anchor: new Vector3(x, 1.8, z), box } }
     if (id === 'rug') { const a = at(420, 560); floorDecal(b, rugTexture('cloud', '#e6e1ea', '#cfc8d6', '#ffffff'), a.x, a.z, 2.6, 1.9, 0.008); around(a.x, a.z, 1.3, 0.9, 0.3); return { anchor: new Vector3(a.x, 0.5, a.z), box } }
-    if (id === 'chandelier') { const a = at(PROP_SPOTS.chandelier.x, 0); decorItem(b, 'chandelier', [0xf7c6d4, 0xffffff, 0xffffff, 0xfbe0a0], a.x, 2.45, 1.7); around(a.x, 1.7, 0.5, 0.5, 3); return { anchor: new Vector3(a.x, 2.9, 1.7), box } }
-    if (id === 'candles') { const dx = toWorld(DESK.x + DESK.w / 2, 0).x + 0.75, dz = toWorld(0, DESK.y + DESK.h / 2).z + 0.12; for (const [ox, h] of [[0, 0.16], [0.08, 0.11], [-0.07, 0.09]] as const) b.kit.add(G.cyl(0.03, 0.03, h, 10), 0xfff4e6, 'satin', tf(dx + ox, 1.055 + h / 2, dz)); around(dx, dz, 0.2, 0.2, 1.4); return { anchor: new Vector3(dx, 1.6, dz), box } }
+    if (id === 'chandelier') { const a = at(PROP_SPOTS.chandelier.x, 0); if (!placeModel(b, 'luxe-gold--chandelier', a.x, 1.7, 0, { k: 0.9, y: ROOM3.wallH - 2.9 * 0.9 - 0.02 })) decorItem(b, 'chandelier', [0xf7c6d4, 0xffffff, 0xffffff, 0xfbe0a0], a.x, 2.45, 1.7); around(a.x, 1.7, 0.5, 0.5, 3); return { anchor: new Vector3(a.x, 2.9, 1.7), box } }
+    if (id === 'candles') { const dx = toWorld(DESK.x + DESK.w / 2, 0).x + 0.75, dz = toWorld(0, DESK.y + DESK.h / 2).z + 0.12; for (const [ox, h] of [[0, 0.16], [0.08, 0.11], [-0.07, 0.09]] as const) b.kit.add(G.cyl(0.03, 0.03, h, 10), 0xfff4e6, 'satin', tf(dx + ox, DESK_TOP + h / 2, dz)); around(dx, dz, 0.2, 0.2, 1.4); return { anchor: new Vector3(dx, 1.6, dz), box } }
     // Wall pieces: the fairy lights, the art and the neon.
     const wp = id === 'art' ? ART : NEON
     const x = id === 'lights' ? 0 : onWall('back', wp.u).x, y = (wp.y0 + wp.y1) / 2
@@ -129,7 +132,7 @@ export function buildAt(b: Build, spot: Spot, ctx: SpotCtx): { anchor: Vector3; 
   const f = spot.family
   if (spot.id === 'up-fountain') {
     const r = PROP_BLOCK['up-fountain'], a = toWorld(r.x + r.w / 2, r.y + r.h / 2)
-    fountainGarden(b, a.x, a.z, lenX(r.w), lenZ(r.h))
+    if (!placeModel(b, 'fountain', a.x, a.z, 0, { fit: lenX(r.w) })) fountainGarden(b, a.x, a.z, lenX(r.w), lenZ(r.h))
     around(a.x, a.z, lenX(r.w) / 2, lenZ(r.h) / 2, 1)
     return { anchor: new Vector3(a.x, 1.3, a.z), box }
   }
@@ -170,16 +173,20 @@ export function buildThumb(b: Build, key: string, style: number, owned: readonly
   const station: StationKind | null = key === 'facial-chair-1' ? 'facial' : item?.effect.kind === 'station' ? item.effect.station : null
   if (station) {
     const c = styleColor(styles, key), tier = tierOf(owned, station)
+    if (stationModel(b, station, 0, 0, style, 1)) return
     if (station === 'facial') facialChair(b, 0, 0, c, tier)
     else if (station === 'feet') pedicureChair(b, 0, 0, c, tier)
     else nailDesk(b, 0, 0, c, tier)
     return
   }
-  if (key === 'desk') { desk(b, 0, 0, 2.0, 0.75, styleColor(styles, 'desk'), tierOf(owned, 'desk')); return }
-  if (key === 'lounge') { lounge(b, 0, [-0.9, -0.3, 0.3, 0.9], styleColor(styles, 'lounge'), tierOf(owned, 'lounge')); return }
-  if (key === 'plant') { bigPlant(b, 0, 0, styleColor(styles, 'plant'), 1); return }
+  if (key === 'desk') { if (!deskModel(b, 0, 0, 1.6, style, 1)) desk(b, 0, 0, 2.0, 0.75, styleColor(styles, 'desk'), tierOf(owned, 'desk')); return }
+  if (key === 'lounge') { if (!loungeModel(b, 0, 0, style, 1)) lounge(b, 0, [-0.9, -0.3, 0.3, 0.9], styleColor(styles, 'lounge'), tierOf(owned, 'lounge')); return }
+  if (key === 'plant') { if (!placeModel(b, 'plant-pot', 0, 0, 0, { style })) bigPlant(b, 0, 0, styleColor(styles, 'plant'), 1); return }
+  if (key === 'rug' && placeModel(b, 'rug', 0, 0, 0, { style })) return
   if (key === 'rug') { const c = STYLE_COLORS.rug[style]; floorDecal(b, rugTexture('cloud', '#fdf6fb', css(c), css(c)), 0, 0, 2.2, 1.6, 0.01); return }
   const d = DECOR_ITEM_BY_ID[key]
+  const mid = d && decorModelId(key)
+  if (mid && placeModel(b, mid, 0, 0, 0, { tint: {} })) return
   if (d) decorItem(b, d.place === 'window' ? 'curtains' : d.kind, setPalette(styles, key), 0, d.place === 'window' ? 2.2 : 0, 0)
 }
 

@@ -64,7 +64,7 @@ const _c = new Color()
  * The layout check's record of every shape the kit adds (tests/floor3d-mesh.test.ts): its box in the room, the
  * piece it belongs to and an optional tag (a worker's own stool, say). Off in the game.
  */
-export type PartBox = { piece: string; tag: string; tier: Tier; box: Box3 }
+export type PartBox = { piece: string; tag: string; tier: Tier; box: Box3; geo: BufferGeometry }
 export const PARTS: { on: boolean; list: PartBox[]; piece: string; tag: string } = { on: false, list: [], piece: '', tag: '' }
 /** Build `fn` as one named piece (for the layout check). */
 export function piece<T>(name: string, fn: () => T): T {
@@ -95,7 +95,23 @@ export class Kit {
     for (let i = 0; i < n; i++) { col[i * 3] = _c.r; col[i * 3 + 1] = _c.g; col[i * 3 + 2] = _c.b }
     g.setAttribute('color', new BufferAttribute(col, 3))
     this.parts[tier].push(g)
-    if (PARTS.on) { g.computeBoundingBox(); PARTS.list.push({ piece: PARTS.piece, tag: PARTS.tag, tier, box: g.boundingBox!.clone() }) }
+    if (PARTS.on) { g.computeBoundingBox(); PARTS.list.push({ piece: PARTS.piece, tag: PARTS.tag, tier, box: g.boundingBox!.clone(), geo: g }) }
+    return this
+  }
+
+  /**
+   * Add a model's mesh (with its occlusion already in its vertex colours) in the current frame at a local
+   * transform, its colours multiplied by `color` (models.ts).
+   */
+  addColoured(geo: BufferGeometry, color: Color, tier: Tier, local?: Matrix4): this {
+    const g = geo.clone()
+    _m.copy(this.stack[this.stack.length - 1])
+    if (local) _m.multiply(local)
+    g.applyMatrix4(_m)
+    const col = g.getAttribute('color') as BufferAttribute
+    for (let i = 0; i < col.count; i++) col.setXYZ(i, col.getX(i) * color.r, col.getY(i) * color.g, col.getZ(i) * color.b)
+    this.parts[tier].push(g)
+    if (PARTS.on) { g.computeBoundingBox(); PARTS.list.push({ piece: PARTS.piece, tag: PARTS.tag, tier, box: g.boundingBox!.clone(), geo: g }) }
     return this
   }
 

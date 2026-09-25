@@ -34,6 +34,7 @@ import { ModelPerson, modelPerson } from './model-person.ts'
 import { loadPeople } from './people-models.ts'
 import { buildRoom, type RoomParts } from './room.ts'
 import { furnish, newBuild } from './furnish.ts'
+import { furnitureFiles, hasModel, loadModelFiles } from './models.ts'
 import { stageFor, type Stage } from './stage.ts'
 import { blobTexture, glowTexture, padTexture, ringTexture } from './textures.ts'
 
@@ -69,6 +70,8 @@ function makePerson(look: import('../core/customers.ts').Look, role: 'customer' 
 }
 const _v = new Vector3()
 const _v2 = new Vector3()
+/** A model file's bytes, from the site's models folder. */
+const readModel = (file: string) => fetch(`${import.meta.env.BASE_URL}models/${file}`).then(r => { if (!r.ok) throw new Error(`${r.status} ${file}`); return r.arrayBuffer() })
 
 export class FloorView3D {
   /** The overlay layer (Pixi) over the 3D scene; hidden while a close-up is open (then the 3D pauses too). */
@@ -151,6 +154,8 @@ export class FloorView3D {
   /** The piece that just changed style, for its squash-and-stretch pop. */
   private popAt: { at: Vector3; t: number } | null = null
   private thumbs = new Map<string, string>()
+  /** Model files already asked for (a file that fails to load is not asked for again). */
+  private asked = new Set<string>()
   /** The piece on the style strip, built on its own pivot, and the style it wore last build. */
   private isoKey: string | null = null
   private isoPivot: Group | null = null
@@ -213,6 +218,8 @@ export class FloorView3D {
     this.scene.add(this.motes)
     // ---- the modelled people: once they load, everyone on the floor swaps from the stand-in
     loadPeople().then(files => { if (files && !this.destroyed) this.swapPeople() })
+    // ---- Helper B's furniture, plants and garden: the stand-ins show until they load, then the salon rebuilds
+    loadModelFiles(furnitureFiles(), readModel).then(() => this.modelsChanged(true))
     // ---- passers-by on the pavement
     const pr = makeRng(this.demo ? 11 : 29)
     for (let i = 0; i < 2; i++) {
@@ -305,6 +312,9 @@ export class FloorView3D {
     const key = state.stations.map(s => `${s.id}:${s.kind}:${s.slot}`).join(',') + '|' + state.owned.filter(id => ITEM_BY_ID[id]?.tab === 'decor').join(',') + '|' + decor.map(d => d.id + d.slot).join(',') + '|' + (state.ext?.salonName ?? '') + '|' + JSON.stringify(styles) + '|' + (this.isoKey ?? '')
     if (key === this.furnitureKey) return
     this.furnitureKey = key
+    // Gifts' models load when they are first owned.
+    const gifts = state.owned.filter(id => GIFT_BY_ID[id]).map(id => `gifts/gift-${GIFT_BY_ID[id].regular}.glb`).filter(f => !hasModel(f) && !this.asked.has(f))
+    if (gifts.length) { for (const f of gifts) this.asked.add(f); loadModelFiles(gifts, readModel).then(() => this.modelsChanged()) }
     if (this.furniture) disposeGroup(this.furniture)
     for (const st of this.stations.values()) { st.ring.destroy(); st.label.destroy() }
     this.stations.clear()
@@ -754,6 +764,16 @@ export class FloorView3D {
       const g = this.buyGhosts.find(x => x.item.id === item) ?? this.buyGhosts[this.buyGhosts.length - 1]
       if (g) this.rig.focus(g.anchor.x, g.anchor.z, 2.4)
     }, 700)
+  }
+
+  /** New models loaded: rebuild the salon (and the garden, the first time) with them. */
+  private modelsChanged(garden = false) {
+    if (this.destroyed) return
+    if (garden) this.room.regarden()
+    this.furnitureKey = ''
+    this.ghostKey = ''
+    this.thumbs.clear()
+    if (this.state) { this.syncFurniture(this.state); this.syncGhosts(this.state) }
   }
 
   /** The modelled people have loaded: rebuild every person on the floor from their look. */

@@ -10,6 +10,8 @@ import { PARTS, type PartBox } from '../src/render3d/kit.ts'
 import { ALL_DECOR, doorway, ENTRANCE, outsideItems } from '../src/render3d/layout.ts'
 import { toWorld } from '../src/render3d/mapping.ts'
 import { buildRoom } from '../src/render3d/room.ts'
+import { furnitureFiles, loadModelFiles } from '../src/render3d/models.ts'
+import { readFileSync } from 'node:fs'
 
 /**
  * The mesh layout check: builds the real 3D salon (the room, the garden and every piece of furniture, exactly as
@@ -22,6 +24,29 @@ import { buildRoom } from '../src/render3d/room.ts'
 const TOL = 0.012
 const hit = (a: Box3, b: Box3) => a.min.x < b.max.x - TOL && b.min.x < a.max.x - TOL && a.min.y < b.max.y - TOL && b.min.y < a.max.y - TOL && a.min.z < b.max.z - TOL && b.min.z < a.max.z - TOL
 
+/** The boxes of a part's triangles that reach into `box` (a shape's own box is too coarse for a big curved mesh). */
+function trisIn(p: PartBox, box: Box3): Box3[] {
+  const pos = p.geo.getAttribute('position')
+  const out: Box3[] = []
+  const t = new Box3(), v = new Vector3()
+  const n = p.geo.index ? p.geo.index.count : pos.count
+  for (let i = 0; i + 2 < n; i += 3) {
+    t.makeEmpty()
+    for (let k = 0; k < 3; k++) { const j = p.geo.index ? p.geo.index.getX(i + k) : i + k; t.expandByPoint(v.fromBufferAttribute(pos, j)) }
+    if (hit(t, box)) out.push(t.clone())
+  }
+  return out
+}
+/** Two parts truly touch: some triangle of one reaches some triangle of the other. */
+function partsHit(p: PartBox, q: PartBox): boolean {
+  if (!hit(p.box, q.box)) return false
+  const a = trisIn(p, q.box)
+  if (!a.length) return false
+  for (const bt of trisIn(q, p.box)) for (const at of a) if (hit(at, bt)) return true
+  return false
+}
+const partHitsBox = (p: PartBox, box: Box3) => hit(p.box, box) && trisIn(p, box).length > 0
+
 const fmt = (b: Box3) => `[${b.min.x.toFixed(2)}..${b.max.x.toFixed(2)}, ${b.min.y.toFixed(2)}..${b.max.y.toFixed(2)}, ${b.min.z.toFixed(2)}..${b.max.z.toFixed(2)}]`
 function record(fn: () => void): PartBox[] {
   PARTS.on = true
@@ -30,8 +55,8 @@ function record(fn: () => void): PartBox[] {
   return PARTS.list.filter(p => !p.piece.startsWith('skip:'))
 }
 
-/** Every part of the room and the garden (built once). */
-const shell = record(() => { buildRoom() })
+/** Every part of the room and the garden (built once the models have loaded). */
+let shell: PartBox[] = []
 
 function allowed(a: string, b: string) {
   const mounted = (x: string) => x.startsWith('mount:')
@@ -59,7 +84,7 @@ function clashes(parts: PartBox[], only?: (p: PartBox) => boolean): string[] {
     const A = byPiece.get(names[i])!, B = byPiece.get(names[j])!
     if (!hit(A.box, B.box) || allowed(names[i], names[j])) continue
     if (only && !A.parts.some(only) && !B.parts.some(only)) continue
-    outer: for (const p of A.parts) for (const q of B.parts) if (hit(p.box, q.box)) {
+    outer: for (const p of A.parts) for (const q of B.parts) if (partsHit(p, q)) {
       bad.add(`${names[i]} x ${names[j]}`)
       if (process.env.MESH_DEBUG) console.log(names[i], fmt(p.box), 'x', names[j], fmt(q.box))
       break outer
@@ -81,7 +106,11 @@ function build(s: FurnishSpec) {
 /** A person standing (or working) at a spot: a slim column. */
 const personAt = (x: number, z: number, r = 0.17) => new Box3(new Vector3(x - r, 0.12, z - r), new Vector3(x + r, 1.75, z + r))
 
-export function run() {
+export async function run() {
+  // Helper B's models, read from disk: the check sees every mesh of every model as it stands in the salon.
+  const read = async (file: string) => { const b = readFileSync(`public/models/${file}`); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer }
+  await loadModelFiles([...furnitureFiles(), ...GIFTS.map(g => `gifts/gift-${g.regular}.glb`)], read)
+  shell = record(() => { buildRoom() })
   const starters = ['plant', 'candles', 'rug', 'lights', 'art', 'neon', 'aquarium', 'chandelier']
   const upgrades = UPGRADE_ITEMS.map(i => i.id)
   const gifts = GIFTS.slice(0, 8).map(g => g.id)
@@ -104,7 +133,7 @@ export function run() {
     STANDING.forEach((p, i) => { const a = toWorld(p.x, p.y); people.push([`customer queueing ${i}`, personAt(a.x, a.z)]) })
     for (let i = 0; i < 4; i++) { const p = spawnPoint(i), a = toWorld(p.x, p.y); people.push([`player ${i} at the start`, personAt(a.x, a.z)]) }
     const inBad: string[] = []
-    for (const [who, box] of people) for (const p of parts) if (p.tag !== 'worker-seat' && hit(box, p.box)) { inBad.push(`${who} stands in ${p.piece}`); if (process.env.MESH_DEBUG) console.log(who, fmt(box), p.piece, fmt(p.box)); break }
+    for (const [who, box] of people) for (const p of parts) if (p.tag !== 'worker-seat' && partHitsBox(p, box)) { inBad.push(`${who} stands in ${p.piece}`); if (process.env.MESH_DEBUG) console.log(who, fmt(box), p.piece, fmt(p.box)); break }
     check(`mesh: people stand clear of every piece (${label})`, inBad.length === 0, inBad.slice(0, 6))
   }
 

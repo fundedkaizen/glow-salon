@@ -31,10 +31,10 @@ export const COMPUTER_SPOT: Pt = { x: 200, y: 208 }
  */
 export const PARTITIONS: Rect[] = [
   { x: 306, y: 176, w: 20, h: 130 },
-  { x: 680, y: 232, w: 20, h: 68 },
+  { x: 680, y: 232, w: 20, h: 60 },
   { x: 1112, y: 500, w: 168, h: 20 },
   // Behind the gap between the second and third chairs of the back row: the third chair's treatment nook.
-  { x: 1062, y: 232, w: 20, h: 68 },
+  { x: 1062, y: 232, w: 20, h: 60 },
 ]
 
 /**
@@ -43,7 +43,7 @@ export const PARTITIONS: Rect[] = [
  * right corner.
  */
 export const FIXTURES: Record<'waiting' | 'planter', Rect> = {
-  waiting: { x: 420, y: 385, w: 210, h: 72 },
+  waiting: { x: 385, y: 385, w: 235, h: 72 },
   planter: { x: 1190, y: 702, w: 74, h: 86 },
 }
 

@@ -86,15 +86,17 @@ export const FLOOR_SLOTS: { x: number; z: number; w: number; d: number; ry: numb
 ]
 /** The eight gift stands (core decor.ts GIFT_SLOTS, by index), each about 0.44 m round. */
 export const GIFT_SPOTS: { x: number; z: number; ry: number }[] = [
-  { x: -6.1, z: 2.2, ry: Math.PI / 2 }, { x: 3.95, z: 0.35, ry: 0 }, { x: 6.1, z: 3.25, ry: -Math.PI / 2 }, { x: 1.3, z: 6.62, ry: Math.PI },
-  { x: 2.2, z: 6.62, ry: Math.PI }, { x: 4.45, z: 6.62, ry: Math.PI }, { x: -1.4, z: 6.62, ry: Math.PI }, { x: -3.45, z: 6.62, ry: Math.PI },
+  { x: -6.1, z: 2.2, ry: Math.PI / 2 }, { x: 3.95, z: 0.35, ry: 0 }, { x: 6.1, z: 3.25, ry: -Math.PI / 2 }, { x: 1.3, z: 6.72, ry: Math.PI },
+  { x: 2.2, z: 6.72, ry: Math.PI }, { x: 4.45, z: 6.72, ry: Math.PI }, { x: -1.4, z: 6.72, ry: Math.PI }, { x: -3.45, z: 6.72, ry: Math.PI },
 ]
-export const GIFT_R = 0.44
+export const GIFT_R = 0.4
 /** Fixed pieces: the tea cart, the front lamp, the welcome sign, the topiaries, the plant corner, the aquarium. */
-export const TEA_CART = { x: -2.9, z: 0.36, ry: Math.PI / 2, w: 0.42, d: 0.7 }
-export const FRONT_LAMP = { x: -2.6, z: 6.62 }
+/** The reception desk's top and the lounge's coffee table's top (the table decor slots stand on them). */
+export const DESK_TOP = 1.11
+export const COFFEE_TOP = 0.56
+export const FRONT_LAMP = { x: -2.25, z: 6.72 }
 export const WELCOME = { x: -4.92, z: 6.11 }
-export const TOPIARIES: { x: number; z: number; k: number }[] = [{ x: 0.3, z: 0.34, k: 1 }, { x: -3.05, z: 1.7, k: 0.8 }, { x: 4.5, z: 3.74, k: 0.8 }]
+export const TOPIARIES: { x: number; z: number; k: number }[] = [{ x: -3.05, z: 1.7, k: 0.8 }, { x: 4.5, z: 3.74, k: 0.8 }]
 export const PLANT_SPOT = { x: W / 2 - 0.55, z: 0.62, r: 0.8, k: 0.95 }
 export const AQUARIUM_SPOT = { x: -W / 2 + 0.3, z: toWorld(0, 460).z, w: 0.5, d: 1.1 }
 
@@ -118,7 +120,6 @@ export function floorItems(owned: readonly string[], slots: number[], decorOrder
   out.push({ id: 'waiting', ...rectBox(FIXTURES.waiting), kind: 'furniture' })
   PARTITIONS.forEach((p, i) => out.push({ id: `partition${i}`, ...rectBox(p), kind: 'wall' }))
   for (const s of slots) if (s >= 0) out.push({ id: `station${s}`, ...rectBox(stationRect(s)), kind: 'station' })
-  out.push({ id: 'tea', ...around(TEA_CART.x, TEA_CART.z, TEA_CART.w, TEA_CART.d), kind: 'furniture' })
   out.push({ id: 'frontLamp', ...around(FRONT_LAMP.x, FRONT_LAMP.z, 0.4, 0.4), kind: 'furniture' })
   out.push({ id: 'welcome', ...around(WELCOME.x, WELCOME.z, 0.5, 0.45), kind: 'furniture' })
   TOPIARIES.forEach((t, i) => out.push({ id: `topiary${i}`, ...around(t.x, t.z, 0.5 * t.k, 0.5 * t.k), kind: 'plant' }))
@@ -249,7 +250,8 @@ export function decorSpot(place: string, slot: number, kind: DecorKind): { x: nu
   if (place === 'wall') { const p = onWall('back', WALL_SLOTS[slot]); return { x: p.x, y: WALL_SLOT.y, z: 0, ry: 0, k: 1 } }
   if (place === 'table') {
     const desk = toWorld(DESK.x + DESK.w / 2, DESK.y + DESK.h / 2)
-    return slot === 0 ? { x: desk.x - 0.55, y: 1.055, z: desk.z, ry: 0, k: 1 } : { x: TEA_CART.x, y: 0.76, z: TEA_CART.z, ry: 0, k: 1 }
+    const w = toWorld(FIXTURES.waiting.x + FIXTURES.waiting.w / 2, FIXTURES.waiting.y + FIXTURES.waiting.h / 2)
+    return slot === 0 ? { x: desk.x - 0.55, y: DESK_TOP, z: desk.z, ry: 0, k: 1 } : { x: w.x + 0.1, y: COFFEE_TOP, z: w.z, ry: 0, k: 1 }
   }
   const slots = DECOR_SLOTS_3D[place as 'ceiling' | 'rug'] ?? []
   const p = slots[slot] ?? { x: 0, z: D / 2 }

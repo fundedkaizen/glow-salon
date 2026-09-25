@@ -1,5 +1,6 @@
 import { CanvasTexture, Color, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Quaternion, Vector3 } from 'three'
 import { G, Kit, piece, shade, tf } from './kit.ts'
+import { bakeModel, hasModel, model } from './models.ts'
 import { outsideItems, STREET, type OutsideItem } from './layout.ts'
 import { ROOM3 } from './mapping.ts'
 import { pavingTexture, tex } from './textures.ts'
@@ -15,7 +16,7 @@ const LEAF = [0x7cc06e, 0x62ad5c, 0x8fcf7c, 0x6fb865]
 const FLOWERS = [0xf48fb1, 0xffffff, 0xf7b7cc, 0xffd35a, 0xcdbdf2, 0xf5a99a]
 const GOLD = 0xe6bd6a
 
-export type Garden = { group: Group; update: (t: number) => void; setName: (name: string) => void }
+export type Garden = { group: Group; update: (t: number) => void; setName: (name: string) => void; name: string }
 
 export function buildGarden(): Garden {
   const group = new Group()
@@ -58,6 +59,7 @@ export function buildGarden(): Garden {
   let signAt: OutsideItem | null = null
   for (const it of items) piece(it.id, () => {
     const x = (it.x0 + it.x1) / 2, z = (it.z0 + it.z1) / 2, w = it.x1 - it.x0, d = it.z1 - it.z0
+    if (modelled(kit, it, x, z, w, d)) return
     switch (it.kind) {
       case 'bed': {
         kit.add(G.box(w, 0.24, d, 0.06), 0xfff4ee, 'satin', tf(x, 0.12, z))
@@ -202,7 +204,9 @@ export function buildGarden(): Garden {
     signMesh.rotation.y = -Math.PI / 2
     group.add(signMesh)
   }
+  const garden: Garden = { group, update: () => {}, setName: () => {}, name: 'Glow Salon' }
   const setName = (name: string) => {
+    garden.name = name
     const c = document.createElement('canvas')
     c.width = 512; c.height = 176
     const ctx = c.getContext('2d')!
@@ -219,7 +223,6 @@ export function buildGarden(): Garden {
     signMat.needsUpdate = true
   }
   setName('Glow Salon')
-
   const m = new Matrix4(), q = new Quaternion(), v = new Vector3(), sc = new Vector3()
   const update = (t: number) => {
     // Canopies sway a little in the breeze.
@@ -245,7 +248,33 @@ export function buildGarden(): Garden {
     flies.instanceMatrix.needsUpdate = true
   }
   update(0)
-  return { group, update, setName }
+  garden.update = update
+  garden.setName = setName
+  return garden
+}
+
+/**
+ * Helper B's garden models where there is one: hedges tiled along their run, flower beds tiled along theirs, trees,
+ * the bench and the lamps. False when there is none, or it has not loaded (the stand-in is built instead).
+ */
+function modelled(kit: Kit, it: OutsideItem, x: number, z: number, w: number, d: number): boolean {
+  const id = it.kind === 'hedge' ? 'hedge' : it.kind === 'bed' ? 'flower-bed' : it.kind === 'tree' ? 'tree' : it.kind === 'bench' ? 'bench' : it.kind === 'lamp' || it.kind === 'streetlamp' ? 'street-lamp' : null
+  const m = id ? model(id) : undefined
+  if (!m || !hasModel(m.file)) return false
+  const [fw, fd] = m.footprint
+  if (it.kind === 'hedge' || it.kind === 'bed') {
+    // Tiled along the longer side, each tile stretched a little to fill the run exactly.
+    const along = d > w, len = Math.max(w, d), across = Math.min(w, d)
+    const n = Math.max(1, Math.round(len / fw))
+    for (let i = 0; i < n; i++) {
+      const f = -len / 2 + (len / n) * (i + 0.5)
+      bakeModel(kit, m.file, along ? x : x + f, along ? z + f : z, along ? Math.PI / 2 : 0, [len / (n * fw), it.kind === 'hedge' ? it.h / m.height : 1, across / fd])
+    }
+    return true
+  }
+  if (it.kind === 'tree') return bakeModel(kit, m.file, x, z, it.seed * 1.7, it.h / m.height)
+  if (it.kind === 'bench') return bakeModel(kit, m.file, x, z, Math.PI / 2)
+  return bakeModel(kit, m.file, x, z, it.kind === 'streetlamp' ? -Math.PI / 2 : 0, it.h / m.height)
 }
 
 /** Grass with gentle colour: two greens in soft patches and fine blades. */

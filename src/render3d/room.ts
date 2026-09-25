@@ -35,6 +35,8 @@ export type RoomParts = {
   setTiers: (floor: number, walls: number) => void
   /** The garden's breeze and butterflies, and the salon's name on the sign at the gate. */
   garden: ReturnType<typeof buildGarden>
+  /** Build the garden again (Helper B's garden models have loaded). */
+  regarden: () => void
 }
 
 const { w: W, d: D, wallH: H, wallT: T, lowWallH: LOW } = ROOM3
@@ -218,5 +220,13 @@ function buildShell(): RoomParts {
       }
     }
   }
-  return { group, door, bell, setShade, setTiers, garden }
+  const parts: RoomParts = { group, door, bell, setShade, setTiers, garden, regarden: () => {
+    const name = parts.garden.name
+    parts.garden.group.removeFromParent()
+    parts.garden.group.traverse(o => { if (o instanceof Mesh) o.geometry.dispose() })
+    parts.garden = piece('room', buildGarden)
+    parts.garden.setName(name)
+    group.add(parts.garden.group)
+  } }
+  return parts
 }
