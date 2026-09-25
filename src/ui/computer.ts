@@ -3,8 +3,8 @@ import { paintAquarium, paintCandles, paintChandelier, paintCloudRug, paintFacia
 import { portrait } from '../art/salon/people.ts'
 import { RES } from '../art/salon/room.ts'
 import { sfx } from '../audio/sfx.ts'
-import { DECOR_SETS, DECOR_ITEM_BY_ID, completeSets, placeDecor, SET_BONUS } from '../core/decor.ts'
-import { ambienceStars, canBuy, CONFIRM_PRICE, ITEM_BY_ID, ITEMS, type Item, type ShopTab } from '../core/economy.ts'
+import { DECOR_SETS, DECOR_ITEM_BY_ID, completeSets, GIFT_BY_ID, placeDecor, SET_BONUS, SET_EFFECT_TEXT } from '../core/decor.ts'
+import { AMBIENCE_GOAL, ambiencePoints, canBuy, CONFIRM_PRICE, ITEM_BY_ID, ITEMS, type Item, type ShopTab } from '../core/economy.ts'
 import { CAMPAIGNS, canRunCampaign, CAMPAIGN_BY_ID } from '../core/marketing.ts'
 import type { Action, Pending, Player, Station } from '../core/salon.ts'
 import type { SalonExt } from '../core/salon-ext.ts'
@@ -12,7 +12,7 @@ import { candidatesFor, levelName, MAX_STAFF, STAFF_TRAIT_BY_ID, traitLabel, wee
 import { COMING_SOON } from '../core/treatments/registry.ts'
 import { confetti } from './confetti.ts'
 import { esc, h, money } from './dom.ts'
-import { ICON } from './salon-icons.ts'
+import { ICON, SHOP_ICON } from './salon-icons.ts'
 import './salon.css'
 
 /**
@@ -53,6 +53,12 @@ const TAB_INTRO: Record<Tab, string> = {
   staff: 'Hire help for your extra stations. Tap a name to rename them.',
 }
 
+/** Painted art for gifts in the shop list, the closest the art has for now. */
+const GIFT_PREVIEW: Record<string, string> = {
+  maya: 'pastel-pop:macaron-shelf', tomas: 'retro-diner:milkshake-counter', hazel: 'zen-garden:bonsai', dev: 'neon-night:arcade-cabinet', bea: 'cottagecore:teapot-set',
+  lulu: 'pastel-pop:bubble-lamp', ivan: 'tropical:surf-sign', sol: 'retro-diner:jukebox', celeste: 'luxe-gold:gilded-frame', noor: 'cottagecore:herb-shelf', 'lady-v': 'luxe-gold:gold-mirror',
+}
+
 // ------------------------------------------------------------------ painted previews for the cards
 
 const previewCache = new Map<string, string>()
@@ -84,15 +90,29 @@ const STARTER_ART: Record<string, () => Piece> = {
 function itemArt(item: Item): string {
   if (item.effect.kind === 'decor') {
     if (DECOR_ITEM_BY_ID[item.id]) return img(previewOf(item.id, () => decorPiece(item.id)))
+    const gift = GIFT_BY_ID[item.id]
+    if (gift) {
+      const art = GIFT_PREVIEW[gift.regular]
+      if (art) return img(previewOf(item.id, () => decorPiece(art)))
+      const starter = gift.regular === 'rosa' ? STARTER_ART.plant : gift.regular === 'mira' ? STARTER_ART.art : null
+      return starter ? img(previewOf(item.id, starter)) : ICON.gift
+    }
     const make = STARTER_ART[item.id]
     if (make) return img(previewOf(item.id, make))
   }
   if (item.effect.kind === 'station') return img(previewOf(`st-${item.effect.station}`, () => (item.effect.kind === 'station' && item.effect.station === 'nails' ? paintNailDesk().front : paintFacialChair().back)))
+  const icon = SHOP_ICON[item.id]
+  if (icon) return ICON[icon]
   if (item.tab === 'tools') return ICON.tools
   if (item.tab === 'treatments') return ICON.sparkle
   return ICON.bag
 }
+
+/** Card background by tool tier, so each kit looks its own: pink, lilac, gold, diamond blue. */
+const TIER_BG = ['', 'linear-gradient(160deg,#fde6ee,#f1ecfd)', 'linear-gradient(160deg,#f1ecfd,#e3dcfb)', 'linear-gradient(160deg,#fff3cf,#f8dfa0)', 'linear-gradient(160deg,#e8f7ff,#cfe9fb)']
+const artBg = (item: Item) => (item.effect.kind === 'toolTier' ? ` style="background:${TIER_BG[item.effect.tier] ?? TIER_BG[1]}"` : '')
 const img = (url: string) => (url ? `<img src="${url}" alt="">` : ICON.bag)
+const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
 
 const starsRow = (n: number, max = 5) => `<span class="gs-stars">${Array.from({ length: max }, (_, i) => `<i class="${i < n ? 'on' : ''}">&#9733;</i>`).join('')}</span>`
 
@@ -147,7 +167,7 @@ export class Computer {
       this.moneyEl.textContent = money(state.money)
     }
     const e = state.ext
-    const key = [this.tab, state.money, state.owned.join(','), state.stations.map(s => s.id).join(','), state.pending?.id ?? '', JSON.stringify(e?.staff.map(s => [s.name, s.station, s.level, s.xp, s.breakLeft > 0])), e?.campaigns.map(c => c.id + c.day).join(','), e?.loyalty, e?.hired.join(','), e?.vote?.ref, e?.decorOrder.slice(-8).join(','), state.day].join('|')
+    const key = [this.tab, state.money, state.owned.join(','), state.stations.map(s => `${s.id}${s.slot}`).join(','), state.pending?.id ?? '', JSON.stringify(e?.staff.map(s => [s.name, s.station, s.level, s.xp, s.breakLeft > 0])), e?.campaigns.map(c => c.id + c.day).join(','), e?.loyalty, e?.hired.join(','), e?.vote?.ref, e?.decorOrder.slice(-8).join(','), state.day].join('|')
     if (key === this.key) return
     // Never rebuild under a name being typed.
     if (this.main.contains(document.activeElement) && document.activeElement instanceof HTMLInputElement) return
@@ -182,19 +202,21 @@ export class Computer {
   private affordable(tab: Tab): number {
     const s = this.state!
     if (tab === 'marketing' || tab === 'staff') return 0
-    return ITEMS.filter(i => i.tab === tab && canBuy(s.owned, s.money, i.id).ok).length
+    return ITEMS.filter(i => i.tab === tab && canBuy(s.owned, s.money, i.id, s.day).ok).length
   }
 
   private itemCard(item: Item, extra = ''): HTMLElement {
     const s = this.state!
-    const check = canBuy(s.owned, s.money, item.id)
+    const check = canBuy(s.owned, s.money, item.id, s.day)
     const owned = s.owned.includes(item.id)
-    const locked = !owned && !check.ok && check.reason.startsWith('Needs') && !check.reason.includes('$')
+    const arriving = !check.ok && check.reason.startsWith('Arrives')
+    const locked = !owned && !check.ok && ((check.reason.startsWith('Needs') && !check.reason.includes('$')) || arriving)
     const card = h('div', `gs-card${owned ? ' owned' : ''}${locked ? ' locked' : ''}${this.justBought === item.id ? ' just' : ''}`)
     const vote = s.players.length > 1 && item.price >= CONFIRM_PRICE && !owned
-    card.innerHTML = `<div class="gs-card-art">${itemArt(item)}</div><h3>${esc(item.name)}</h3><p>${esc(item.blurb)}</p>${extra}`
+    const isNew = !owned && item.unlockDay !== undefined && item.unlockDay >= s.day - 1 && item.unlockDay <= s.day
+    card.innerHTML = `<div class="gs-card-art"${artBg(item)}>${itemArt(item)}</div>${isNew ? '<span class="gs-new">New</span>' : ''}<h3>${esc(item.name)}</h3><p>${esc(item.blurb)}</p>${extra}`
     const foot = h('div', 'gs-card-foot')
-    foot.innerHTML = `<span class="gs-price">${owned ? 'Owned' : money(item.price)}</span>`
+    foot.innerHTML = `<span class="gs-price">${owned ? (item.gift ? 'A gift' : 'Owned') : money(item.price)}</span>`
     if (!owned) {
       const btn = h('button', `gs-btn ${check.ok ? 'pink' : ''}`, check.ok ? (vote ? 'Ask to buy' : 'Buy') : esc(check.reason))
       btn.disabled = !check.ok || !!s.pending
@@ -230,16 +252,23 @@ export class Computer {
 
   private renderDecor() {
     const s = this.state!
-    const amb = ambienceStars(s.owned)
-    this.main.querySelector('.gs-os-head')!.insertAdjacentHTML('beforeend', `<div class="gs-chip" style="height:44px">${ICON.heart}<div><small>Ambience</small><b>${amb.toFixed(1)} / 5</b></div></div>`)
+    // Ambience in points, towards the goal of five ambience stars.
+    const pts = ambiencePoints(s.owned)
+    this.main.querySelector('.gs-os-head')!.insertAdjacentHTML('beforeend', `<div class="gs-chip gs-amb" style="height:auto;padding:8px 14px 8px 8px">${ICON.heart}<div><small>Ambience</small><b>${pts} / ${AMBIENCE_GOAL}</b><div class="gs-progress" style="width:120px;margin-top:4px"><i style="width:${Math.min(100, (pts / AMBIENCE_GOAL) * 100)}%"></i></div></div></div>`)
     this.main.append(h('div', 'gs-section', 'Starter touches'))
-    this.renderItems(ITEMS.filter(i => i.tab === 'decor' && !DECOR_ITEM_BY_ID[i.id]))
+    this.renderItems(ITEMS.filter(i => i.tab === 'decor' && !DECOR_ITEM_BY_ID[i.id] && !i.gift))
+    // Gifts from regulars who became close friends.
+    const gifts = ITEMS.filter(i => i.gift && s.owned.includes(i.id))
+    this.main.append(h('div', 'gs-section', `Gifts from friends <small>${gifts.length ? `${gifts.length} on the gift shelf` : 'Regulars who become close friends leave you a gift'}</small>`))
+    if (gifts.length) this.renderItems(gifts)
     const complete = completeSets(s.owned)
     for (const set of DECOR_SETS) {
       const have = set.items.filter(i => s.owned.includes(i.id)).length
       const gate = ITEM_BY_ID[set.items[0].id].needs?.[0]
-      const open = !gate || s.owned.includes(gate)
-      const head = h('div', 'gs-section', `${esc(set.label)} <small>${have} of 6</small>${complete.includes(set.id) ? `<span class="gs-chip-lite">Set complete: +${SET_BONUS} ambience</span>` : `<small>Complete the set for +${SET_BONUS} ambience</small>`}${open ? '' : `<small>Opens after a ${esc(ITEM_BY_ID[gate!].name)}</small>`}`)
+      const arrives = ITEM_BY_ID[set.items[0].id].unlockDay ?? 0
+      const open = (!gate || s.owned.includes(gate)) && arrives <= s.day
+      const bonus = `+${SET_BONUS} ambience and ${esc(lowerFirst(SET_EFFECT_TEXT[set.id] ?? ''))}`
+      const head = h('div', 'gs-section', `${esc(set.label)} <small>${have} of 6</small>${complete.includes(set.id) ? `<span class="gs-chip-lite">Set complete: ${bonus}</span>` : `<small>Complete the set: ${bonus}</small>`}${open ? '' : arrives > s.day ? `<small>Arrives on day ${arrives}</small>` : `<small>Opens after a ${esc(ITEM_BY_ID[gate!].name)}</small>`}`)
       this.main.append(head)
       const bar = h('div', 'gs-progress', `<i style="width:${(have / 6) * 100}%"></i>`)
       bar.style.margin = '-4px 0 10px'
@@ -253,12 +282,13 @@ export class Computer {
     const e = s.ext
     const grid = h('div', 'gs-grid')
     for (const c of CAMPAIGNS) {
-      const check = canRunCampaign(c.id, e?.campaigns ?? [], !!e?.loyalty, s.money)
+      const check = canRunCampaign(c.id, e?.campaigns ?? [], !!e?.loyalty, s.money, s.day)
       const running = e?.campaigns.find(a => a.id === c.id)
       const owned = c.permanent && e?.loyalty
-      const card = h('div', `gs-card${owned || running ? ' owned' : ''}`)
+      const arriving = !check.ok && check.reason.startsWith('Arrives')
+      const card = h('div', `gs-card${owned || running ? ' owned' : ''}${arriving ? ' locked' : ''}`)
       const status = owned ? 'Active for good' : running ? `Running: day ${running.day + 1} of ${c.perDay.length}` : ''
-      card.innerHTML = `<div class="gs-card-art" style="background:linear-gradient(160deg,#fff6dc,#fde6ee)">${ICON.megaphone}</div><h3>${esc(c.label)}</h3><p>${esc(c.blurb)}</p>${status ? `<span class="gs-tagline">${status}</span>` : ''}`
+      card.innerHTML = `<div class="gs-card-art" style="background:linear-gradient(160deg,#fff6dc,#fde6ee)">${ICON[SHOP_ICON[c.id] ?? 'megaphone']}</div><h3>${esc(c.label)}</h3><p>${esc(c.blurb)}</p>${status ? `<span class="gs-tagline">${status}</span>` : ''}`
       const foot = h('div', 'gs-card-foot', `<span class="gs-price">${owned ? 'Owned' : money(c.price)}</span>`)
       if (!owned && !running) {
         const vote = s.players.length > 1 && c.price >= CONFIRM_PRICE
@@ -327,7 +357,7 @@ export class Computer {
     info.append(row)
     info.insertAdjacentHTML('beforeend', `${this.traits(m.traits)}${this.skills(m.skills)}${lvl}`)
     const sel = h('select', 'gs-select') as HTMLSelectElement
-    sel.innerHTML = `<option value="">Helping at reception</option>` + s.stations.map((st, i) => `<option value="${st.id}">${st.kind === 'facial' ? 'Facial chair' : 'Nail desk'} ${i + 1}</option>`).join('')
+    sel.innerHTML = `<option value="">Anywhere they are skilled</option>` + s.stations.map((st, i) => `<option value="${st.id}">${st.kind === 'facial' ? 'Facial chair' : 'Nail desk'} ${i + 1}</option>`).join('')
     sel.value = m.station ?? ''
     sel.onchange = () => { sfx.click(); this.hooks.onAction({ a: 'assignStaff', id: m.id, station: sel.value || null }) }
     const where = h('div', 'gs-skill', 'Works at ')
@@ -350,7 +380,7 @@ export class Computer {
     const foot = h('div', 'gs-card-foot', `<span class="gs-price">${hired ? 'Hired' : money(c.fee)}</span>`)
     if (!hired) {
       const staffCap = Math.min(MAX_STAFF, s.stations.length - 1 + Math.floor(s.stations.length / 3))
-      const reason = s.stations.length < 2 ? 'Needs a second station' : (e?.staff.length ?? 0) >= staffCap ? 'Needs another station' : s.money < c.fee ? `Needs ${money(c.fee - s.money)} more` : ''
+      const reason = s.stations.length < 2 || (e?.staff.length ?? 0) >= staffCap ? 'Needs a chair' : s.money < c.fee ? `Needs ${money(c.fee - s.money)} more` : ''
       const vote = s.players.length > 1 && c.fee >= CONFIRM_PRICE
       const btn = h('button', `gs-btn ${reason ? '' : 'mint'}`, reason || (vote ? 'Ask to hire' : 'Hire'))
       btn.disabled = !!reason || !!e?.vote

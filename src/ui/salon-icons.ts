@@ -30,6 +30,25 @@ export const ICON = {
   copy: svg(`<rect x="10" y="9" width="15" height="17" rx="3" fill="#fff" ${line}/><path d="M7 21V8a2 2 0 0 1 2-2h11" fill="none" ${line}/>`),
   cat: svg(`<path d="M8 12l1-7 5 4h4l5-4 1 7c2 2 3 5 2 8-1 5-6 7-10 7s-9-2-10-7c-1-3 0-6 2-8z" fill="#f3b270" ${line}/><circle cx="12.5" cy="17" r="1.4" fill="#4a2c38"/><circle cx="19.5" cy="17" r="1.4" fill="#4a2c38"/><path d="M15 20.5h2l-1 1z" fill="#e98aa0"/>`),
   bag: svg(`<path d="M7 11h18l-1.5 15h-15z" fill="#f7b7cc" ${line}/><path d="M12 11V9a4 4 0 0 1 8 0v2" fill="none" ${line}/>`),
+  // Shop thumbnails: one per campaign, tool kit and treatment.
+  flyer: svg(`<path d="M8 5h13l4 4v18H8z" fill="#fff" ${line}/><path d="M21 5v4h4" fill="#fde6ee" ${line}/><rect x="11" y="11" width="11" height="6" rx="2" fill="#f7b7cc"/><path d="M11 20h11M11 23h7" stroke="#cdbdf2" stroke-width="1.8" stroke-linecap="round"/>`),
+  phone: svg(`<rect x="9" y="3" width="14" height="26" rx="4" fill="#cdbdf2" ${line}/><rect x="11" y="7" width="10" height="16" rx="2" fill="#fff"/><path d="M16 12.5c-1.2-1.6-4-.6-3 1.6.6 1.3 3 3 3 3s2.4-1.7 3-3c1-2.2-1.8-3.2-3-1.6z" fill="#f48fb1"/><circle cx="16" cy="26" r="1.3" fill="#fff"/>`),
+  radio: svg(`<rect x="4" y="11" width="24" height="16" rx="4" fill="#fbe18f" ${line}/><path d="M9 11l12-6" ${line}/><circle cx="11" cy="19" r="4.5" fill="#fff" ${line}/><circle cx="11" cy="19" r="1.6" fill="#8a5a74"/><path d="M19 16h6M19 19h6M19 22h4" stroke="#c28a16" stroke-width="1.6" stroke-linecap="round"/>`),
+  magazine: svg(`<path d="M7 5h16a2 2 0 0 1 2 2v20H9a2 2 0 0 1-2-2z" fill="#f7b7cc" ${line}/><circle cx="16" cy="13" r="4" fill="#fbd9c4"/><path d="M10 25c0-4 3-6 6-6s6 2 6 6" fill="#fff"/><path d="M10 8h12" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>`),
+  card: svg(`<rect x="3" y="8" width="26" height="17" rx="4" fill="#a9e3cf" ${line}/><path d="M3 13h26" stroke="#3fae88" stroke-width="2.4"/>${[0, 1, 2, 3, 4].map(i => `<circle cx="${8 + i * 4}" cy="20" r="1.5" fill="${i < 3 ? '#f48fb1' : '#fff'}"/>`).join('')}`),
+  camera: svg(`<rect x="4" y="10" width="24" height="16" rx="4" fill="#cdbdf2" ${line}/><path d="M11 10l2-4h6l2 4" fill="#b9a5ee" ${line}/><circle cx="16" cy="18" r="5" fill="#fff" ${line}/><circle cx="16" cy="18" r="2.4" fill="#8f78d6"/><circle cx="24" cy="14" r="1.3" fill="#f48fb1"/>`),
+  facialKit: svg(`<rect x="4" y="15" width="24" height="12" rx="3" fill="#f7b7cc" ${line}/><path d="M9 15V9l3-4 3 4v6" fill="#fff" ${line}/><circle cx="21" cy="9" r="3.5" fill="none" stroke="#9580dc" stroke-width="2.2"/><path d="M21 12.5V15" stroke="#9580dc" stroke-width="2.2"/><path d="M4 20h24" stroke="#fde6ee" stroke-width="2"/>`),
+  nailKit: svg(`<rect x="4" y="16" width="24" height="11" rx="3" fill="#a9e3cf" ${line}/><rect x="8" y="9" width="6" height="7" rx="1.5" fill="#4a3a52"/><rect x="7" y="13" width="8" height="8" rx="2.5" fill="#f48fb1" ${line}/><path d="M19 17l6-11" stroke="#b7a6c9" stroke-width="3" stroke-linecap="round"/>`),
+  diamond: svg(`<path d="M6 12l4-6h12l4 6-10 15z" fill="#bfe6f7" ${line}/><path d="M6 12h20M10 6l3 6 3-6 3 6 3-6M13 12l3 15 3-15" fill="none" stroke="#7fb8d6" stroke-width="1.2"/>`),
+  polish: svg(`<rect x="12" y="3" width="8" height="10" rx="2" fill="#4a3a52"/><rect x="7" y="12" width="18" height="17" rx="5" fill="#f48fb1" ${line}/><rect x="10" y="15" width="3" height="10" rx="1.5" fill="#fff" opacity=".7"/>`),
+  billboard: svg(`<rect x="3" y="5" width="26" height="14" rx="3" fill="#fbe18f" ${line}/><path d="M9 19v9M23 19v9" ${line}/><path d="M8 12h16" stroke="#f48fb1" stroke-width="3" stroke-linecap="round"/>`),
+}
+
+/** The shop thumbnail for an item or a campaign that has no painted art. */
+export const SHOP_ICON: Record<string, keyof typeof ICON> = {
+  flyers: 'flyer', social: 'phone', radio: 'radio', magazine: 'magazine', loyalty: 'card', influencer: 'camera', billboard: 'billboard',
+  'facial-kit-2': 'facialKit', 'facial-kit-3': 'facialKit', 'facial-kit-4': 'diamond', 'nail-kit-2': 'nailKit', 'nail-kit-3': 'nailKit', 'nail-kit-4': 'diamond',
+  'treat-nails': 'polish',
 }
 
 export type IconName = keyof typeof ICON
