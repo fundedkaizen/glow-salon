@@ -64,8 +64,10 @@ anything over 200 KB, so a big message can never take the shared relay down.
 - Rendering a lone Sprite into a RenderTexture ignores the sprite's own position in Pixi v8: put it in a
   container first (`Surface.renderOne`).
 - Canvas textures need mipmaps (`art/tex.ts`) or fine detail shimmers when the camera pulls back.
-- Diffuse skin lighting uses a mip-biased (soft) normal; pore normals only touch the wet shine, or the skin
-  reads as grain.
+- The skin shader derives its normals from the height map (fine ones for the wet shine, soft mip-biased ones
+  for diffuse light, or the skin reads as grain). Do not compute normal maps on the CPU: reading a painted
+  canvas back (getImageData) at treatment start once cost 3.7 s. `TreatmentView.buildMs` reports the art
+  build time (about 0.3 s for a face).
 - In Git Bash, write multi-line edits with files, not heredocs containing backticks.
 
 ## Adding a treatment
