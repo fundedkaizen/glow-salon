@@ -1,6 +1,8 @@
 import { makeRng, type Rng } from '../rng.ts'
 import { FACIAL, FACIAL_STEPS as F } from './facial.ts'
 import { NAILS, NAIL_STEPS as N, repairStep } from './nails.ts'
+import { FEET, FOOT_STEPS as P, FOOT_VARIANTS, type FootVariant } from './feet.ts'
+import { footProfile, type FootProfile } from '../foot.ts'
 import { faceProfile, handProfile, type FaceProfile, type HandProfile } from './profile.ts'
 import { TREATMENTS } from './registry.ts'
 import type { StepDef, TreatmentDef, TreatmentId } from './types.ts'
@@ -14,7 +16,11 @@ import type { StepDef, TreatmentDef, TreatmentId } from './types.ts'
  *   the cleanse, pimples before or after blackheads, toner and extras in any order).
  * - Manicures pick classic (air dry) or gel (UV lamp twice), repair each broken nail, add one or two extras
  *   (hand scrub, cuticle oil, hand massage, gems) and shuffle what can be shuffled.
- * - Disaster cases get their extra steps (a second cleanse, extra repairs).
+ * - Pedicures pick the Classic Pedicure, the Foot Clinic or the Spa Pedicure from the foot's problems (corns,
+ *   an ingrown nail, splinters and fungus call for the clinic), take only the steps the foot needs (no clipping
+ *   for short nails, no antifungal for healthy ones), and shuffle what can be shuffled, including whether the
+ *   sole is done before or after the toenails (the foot turns over between them).
+ * - Disaster cases get their extra steps (a second cleanse, extra repairs, a second scrub and cracked heels).
  *
  * Pure and deterministic from (treatment, seed, disaster): the host, every guest at the station and a
  * resumed treatment all build the same list.
@@ -29,6 +35,8 @@ export type TreatmentPlan = {
   polish: PolishStyle | null
   /** The extras this customer gets, by step id. */
   extras: string[]
+  /** Pedicures: which of the three this customer booked. */
+  variant?: FootVariant
 }
 
 const MASKS: Record<MaskVariant, StepDef[]> = {
@@ -105,6 +113,60 @@ function nailsPlan(seed: number, disaster: boolean): TreatmentPlan {
   return { def: { ...NAILS, steps }, mask: null, polish, extras: [...extras] }
 }
 
+/** The pedicure a foot calls for: the clinic for real problems, the spa for tired but healthy feet. */
+export function footVariantFor(p: FootProfile, disaster: boolean, r: Rng): FootVariant {
+  const fungal = p.fungus.filter(f => f > 0).length
+  const problems = p.corns.length * 0.5 + (p.ingrown ? 1 : 0) + p.splinters.length * 0.45 + fungal * 0.35 + (disaster ? 1.2 : 0)
+  return weighted(r, [
+    ['classic', 1],
+    ['clinic', 0.15 + problems],
+    ['spa', problems < 0.6 ? 0.8 : 0.25],
+  ])
+}
+
+function feetPlan(seed: number, disaster: boolean): TreatmentPlan {
+  const r = makeRng((seed ^ 0x6f00e7) >>> 0)
+  const p = footProfile(seed, disaster)
+  const variant = footVariantFor(p, disaster, r)
+  const fungal = p.fungus.some(f => f > 0)
+  const long = p.grown.some(g => g >= 4)
+  const sore = p.corns.length > 0 || p.ingrown !== 0
+  // Disaster feet: the first scrub only loosens the grime; a second one clears it, and the heels need smoothing.
+  const scrubTop = variant === 'spa' ? P.salt : P.scrub
+  const firstScrub = disaster ? { ...scrubTop, clears: [scrubTop.layer!] } : scrubTop
+  const secondScrub: StepDef[] = disaster ? [{ ...P.scrub, id: 'scrub2', label: 'Scrub again', hint: 'Ground-in grime: one more round of lather' }] : []
+  const scrubSole = variant === 'spa' ? P.saltSole : P.scrubSole
+  const heels = disaster ? [P.smooth] : []
+  // The sole: scrub, then the rasp and the splinters in either order, then the balm.
+  const soleWork = variant === 'clinic'
+    ? shuffled(r, [[P.rasp, ...heels], ...(p.splinters.length ? [[P.splinter, P.plasterSole]] : [])])
+    : [...(p.calluses > 0.05 || disaster ? [P.rasp, ...heels] : [])]
+  const soleBlock = [scrubSole, ...soleWork, ...(variant === 'spa' ? [] : [P.creamSole])]
+  // The toenails: old polish off, clip, file, then the cuticles (before or after the nails).
+  const nails = [...(p.polish ? [P.remove] : []), ...(long || disaster ? [P.clip] : []), ...(variant === 'spa' && !long ? [] : [P.file]), ...(fungal ? [P.fungusFile] : [])]
+  let topBlock: StepDef[]
+  let finish: StepDef[]
+  if (variant === 'clinic') {
+    const fixes = shuffled(r, [...(p.corns.length ? [[P.corn]] : []), ...(p.ingrown ? [[P.ingrown]] : []), ...(fungal ? [[P.fungusCream]] : [])])
+    topBlock = [...shuffled(r, [nails, [P.cuticles]]), ...fixes, P.antiseptic, ...(sore ? [P.plaster] : [])]
+    finish = [P.mask, P.peel]
+  } else if (variant === 'spa') {
+    topBlock = nails
+    finish = [P.mask, P.towel, P.peel, P.massage, P.color, P.top]
+  } else {
+    topBlock = shuffled(r, [nails, [P.cuticles]])
+    // Most want a colour; nearly everyone who came in with old polish does.
+    const colour = r.chance(p.polish ? 0.85 : 0.6)
+    finish = [P.cream, ...(colour ? [P.color] : [])]
+  }
+  // The foot turns over for the sole: straight after the scrub, or after the toenails.
+  const soleFirst = r.chance(0.6)
+  const middle = soleFirst ? [...soleBlock, ...topBlock] : [...topBlock, ...soleBlock]
+  const steps = [P.bath, firstScrub, ...secondScrub, ...middle, ...finish]
+  const v = FOOT_VARIANTS[variant]
+  return { def: { ...FEET, name: v.label, basePrice: Math.round(FEET.basePrice * v.price), parSeconds: v.par, steps }, mask: null, polish: null, extras: [], variant }
+}
+
 const cache = new Map<string, TreatmentPlan>()
 
 /** This customer's treatment. */
@@ -113,7 +175,7 @@ export function planTreatment(treatment: TreatmentId, seed: number, disaster: bo
   let plan = cache.get(key)
   if (!plan) {
     // A treatment without its own planner (a new family) runs its data as written.
-    plan = treatment === 'facial' ? facialPlan(seed, disaster) : treatment === 'nails' ? nailsPlan(seed, disaster) : { def: TREATMENTS[treatment], mask: null, polish: null, extras: [] }
+    plan = treatment === 'facial' ? facialPlan(seed, disaster) : treatment === 'nails' ? nailsPlan(seed, disaster) : treatment === 'feet' ? feetPlan(seed, disaster) : { def: TREATMENTS[treatment], mask: null, polish: null, extras: [] }
     if (cache.size > 300) cache.clear()
     cache.set(key, plan)
   }

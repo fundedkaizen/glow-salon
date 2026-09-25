@@ -1,5 +1,6 @@
 import type { TreatmentId } from './treatments/types.ts'
 import { DECOR_SET_ITEMS, GIFT_ITEMS, setBonus } from './decor.ts'
+import { SLOTS } from './floor.ts'
 
 /**
  * The shop on the salon computer, and every number that turns purchases into income. Linear and readable:
@@ -33,7 +34,10 @@ export type Item = {
   unlockDay?: number
 }
 
-export type StationKind = 'facial' | 'nails'
+export type StationKind = TreatmentId
+
+/** What each kind of station is called in the salon. */
+export const STATION_NAME: Record<StationKind, string> = { facial: 'facial chair', nails: 'nail desk', feet: 'pedicure chair' }
 
 /** Items at or above this price need every player in the salon to agree. */
 export const CONFIRM_PRICE = 200
@@ -49,15 +53,21 @@ export const ITEMS: Item[] = [
   { id: 'nail-kit-2', tab: 'tools', name: 'Pro nail kit', blurb: 'Precision files and brushes. Manicures go 50% faster.', price: 120, needs: ['treat-nails'], unlockDay: 6, effect: { kind: 'toolTier', treatment: 'nails', tier: 2 } },
   { id: 'nail-kit-3', tab: 'tools', name: 'Luxe nail kit', blurb: 'Salon-grade everything. Manicures go twice as fast.', price: 480, needs: ['nail-kit-2'], unlockDay: 18, effect: { kind: 'toolTier', treatment: 'nails', tier: 3 } },
   { id: 'nail-kit-4', tab: 'tools', name: 'Diamond nail kit', blurb: 'Crystal files and a studio lamp. Manicures fly.', price: 1300, needs: ['nail-kit-3'], unlockDay: 30, effect: { kind: 'toolTier', treatment: 'nails', tier: 4 } },
+  { id: 'foot-kit-2', tab: 'tools', name: 'Pro foot kit', blurb: 'A metal rasp and sharp toenail clippers. Pedicures go 50% faster.', price: 150, needs: ['treat-feet'], unlockDay: 8, effect: { kind: 'toolTier', treatment: 'feet', tier: 2 } },
+  { id: 'foot-kit-3', tab: 'tools', name: 'Luxe foot kit', blurb: 'A ceramic file and a bubbling spa bath. Pedicures go twice as fast.', price: 540, needs: ['foot-kit-2'], unlockDay: 19, effect: { kind: 'toolTier', treatment: 'feet', tier: 3 } },
+  { id: 'foot-kit-4', tab: 'tools', name: 'Diamond foot kit', blurb: 'A diamond rasp and a jet bath. The softest heels in town.', price: 1400, needs: ['foot-kit-3'], unlockDay: 25, effect: { kind: 'toolTier', treatment: 'feet', tier: 4 } },
   // Stations.
   { id: 'facial-chair-2', tab: 'stations', name: 'Second facial chair', blurb: 'Two facials at once, or one each in co-op.', price: 300, unlockDay: 4, effect: { kind: 'station', station: 'facial' } },
   { id: 'nail-desk', tab: 'stations', name: 'Nail desk', blurb: 'A pastel desk for manicures.', price: 180, needs: ['treat-nails'], effect: { kind: 'station', station: 'nails' } },
   { id: 'nail-desk-2', tab: 'stations', name: 'Second nail desk', blurb: 'More manicures, shorter waits.', price: 380, needs: ['nail-desk'], unlockDay: 9, effect: { kind: 'station', station: 'nails' } },
   { id: 'facial-chair-3', tab: 'stations', name: 'Third facial chair', blurb: 'For a busy salon.', price: 520, needs: ['facial-chair-2'], unlockDay: 15, effect: { kind: 'station', station: 'facial' } },
   { id: 'nail-desk-3', tab: 'stations', name: 'Third nail desk', blurb: 'A whole nail bar. More regulars, more gems.', price: 820, needs: ['nail-desk-2'], unlockDay: 21, effect: { kind: 'station', station: 'nails' } },
-  { id: 'facial-chair-4', tab: 'stations', name: 'Fourth facial chair', blurb: 'The full spa row, in the front of the salon.', price: 1000, needs: ['facial-chair-3'], unlockDay: 24, effect: { kind: 'station', station: 'facial' } },
+  { id: 'facial-chair-4', tab: 'stations', name: 'Fourth facial chair', blurb: 'The full spa row, in the front of the salon.', price: 1000, needs: ['facial-chair-3'], unlockDay: 22, effect: { kind: 'station', station: 'facial' } },
+  { id: 'pedi-chair', tab: 'stations', name: 'Pedicure chair', blurb: 'A plush chair with a warm, bubbling foot bath.', price: 240, needs: ['treat-feet'], effect: { kind: 'station', station: 'feet' } },
+  { id: 'pedi-chair-2', tab: 'stations', name: 'Second pedicure chair', blurb: 'Two foot baths bubbling side by side.', price: 480, needs: ['pedi-chair'], unlockDay: 24, effect: { kind: 'station', station: 'feet' } },
   // Treatments.
   { id: 'treat-nails', tab: 'treatments', name: 'Nail bar', blurb: 'Manicures, with a pastel nail desk to do them at: soak, clip, file, polish and gems.', price: 200, includes: ['nail-desk'], effect: { kind: 'treatment', treatment: 'nails' } },
+  { id: 'treat-feet', tab: 'treatments', name: 'Foot spa', blurb: 'Pedicures, with a pedicure chair and its foot bath: soak, scrub, rasp, clip and polish. Some feet need the foot clinic.', price: 340, unlockDay: 5, includes: ['pedi-chair'], effect: { kind: 'treatment', treatment: 'feet' } },
   // Decor: ambience stars raise tips.
   { id: 'plant', tab: 'decor', name: 'Monstera plant', blurb: 'A big leafy friend. +1 ambience.', price: 45, effect: { kind: 'decor', ambience: 1, prop: 'plant' } },
   { id: 'candles', tab: 'decor', name: 'Scented candles', blurb: 'Vanilla and fig. +1 ambience.', price: 60, effect: { kind: 'decor', ambience: 1, prop: 'candles' } },
@@ -99,9 +109,15 @@ export function canBuy(owned: Owned, money: number, id: string, day = Infinity):
   if (item.unlockDay && day < item.unlockDay) return { ok: false, reason: `Arrives on day ${item.unlockDay}` }
   const missing = (item.needs ?? []).filter(n => !owns(owned, n))
   if (missing.length) return { ok: false, reason: `Needs ${ITEM_BY_ID[missing[0]].name}` }
+  if (stationsIn(id) && stationCount(owned) + stationsIn(id) > SLOTS.length) return { ok: false, reason: 'No room for another station' }
   if (money < item.price) return { ok: false, reason: `Needs $${item.price - money} more` }
   return { ok: true }
 }
+
+/** How many stations an item brings (a station, or a treatment that comes with its own). */
+function stationsIn(id: string) { return [id, ...(ITEM_BY_ID[id]?.includes ?? [])].filter(i => ITEM_BY_ID[i]?.effect.kind === 'station').length }
+/** Stations the salon has: the first facial chair plus every station bought. */
+export function stationCount(owned: Owned) { return 1 + owned.filter(id => ITEM_BY_ID[id]?.effect.kind === 'station').length }
 
 export function needsConfirm(id: string) { return (ITEM_BY_ID[id]?.price ?? 0) >= CONFIRM_PRICE }
 
@@ -144,6 +160,7 @@ export function toolTier(owned: Owned, treatment: TreatmentId) {
 export function treatmentsUnlocked(owned: Owned): TreatmentId[] {
   const list: TreatmentId[] = ['facial']
   if (owns(owned, 'treat-nails')) list.push('nails')
+  if (owns(owned, 'treat-feet')) list.push('feet')
   return list
 }
 

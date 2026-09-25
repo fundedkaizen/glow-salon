@@ -1,12 +1,12 @@
 import { firstNameOf, planDay, type CustomerPlan } from './customers.ts'
 import { regularChance, setPayMult, setStarBonus, setTipMult, vipBoost } from './decor.ts'
-import { ambienceStars, canBuy, customersPerDay, ITEM_BY_ID, needsConfirm, payFor, START_MONEY, tipFor, treatmentsUnlocked, type StationKind } from './economy.ts'
+import { ambienceStars, canBuy, customersPerDay, ITEM_BY_ID, needsConfirm, payFor, START_MONEY, STATION_NAME, tipFor, treatmentsUnlocked, type StationKind } from './economy.ts'
 import { blockedGrid, DOOR, DOOR_INSIDE, findPath, SLOTS, SOFA_SEATS, spawnPoint, STANDING, stationSeat, walk, type Pt } from './floor.ts'
 import { campaignBias } from './marketing.ts'
 import { addReview, average, starsFor, type Rating, type Review } from './reviews.ts'
 import { ext, extOnClose, extOnStartDay, extraCustomers, extReview, extTick, reduceExt, saveExt, staffAvailableAt, staffShare, type ExtAction, type SalonExt } from './salon-ext.ts'
 import { STAFF_ID_BASE } from './staff.ts'
-import { stepCount } from './treatments/plan.ts'
+import { planTreatment, stepCount } from './treatments/plan.ts'
 import { TREATMENTS } from './treatments/registry.ts'
 import type { TreatmentResult } from './treatments/session.ts'
 import type { TreatmentId } from './treatments/types.ts'
@@ -52,7 +52,7 @@ export type Customer = {
 
 export type Player = { id: number; name: string; x: number; y: number; facing: 1 | -1; moving: boolean; station: string | null }
 
-export type PlayerStats = { name: string; served: number; popped: number; extracted: number; tips: number; foam: number; fastest: number | null; nails: number }
+export type PlayerStats = { name: string; served: number; popped: number; extracted: number; tips: number; foam: number; fastest: number | null; nails: number; feet: number }
 
 export type DayStats = {
   revenue: number
@@ -141,7 +141,7 @@ function buildStations(save: SaveData): Station[] {
   const kinds = stationKinds(save.owned)
   const slots = [...save.slots]
   while (slots.length < kinds.length) slots.push(freeSlot(slots))
-  return kinds.map((kind, i) => ({ id: `s${i}`, kind, slot: slots[i], customer: null, lead: null, helpers: [], step: 0, steps: TREATMENTS[kind === 'facial' ? 'facial' : 'nails'].steps.length, progress: 0 }))
+  return kinds.map((kind, i) => ({ id: `s${i}`, kind, slot: slots[i], customer: null, lead: null, helpers: [], step: 0, steps: TREATMENTS[kind].steps.length, progress: 0 }))
 }
 
 /** Names used in the week before `day`, so no new customer shares a first name with one from this week. */
@@ -156,7 +156,7 @@ function emptyStats(state: { rating: Rating }, players: Player[]): DayStats {
   return { revenue: 0, tips: 0, costs: 0, served: 0, reviews: [], ratingBefore: average(state.rating), reviewsBefore: state.rating.count, byPlayer }
 }
 
-const blankStats = (name: string): PlayerStats => ({ name, served: 0, popped: 0, extracted: 0, tips: 0, foam: 0, fastest: null, nails: 0 })
+const blankStats = (name: string): PlayerStats => ({ name, served: 0, popped: 0, extracted: 0, tips: 0, foam: 0, fastest: null, nails: 0, feet: 0 })
 
 /** Treatments customers can book today: unlocked and with a station to do them. */
 export function bookable(state: Pick<SalonState, 'owned'>): TreatmentId[] {
@@ -312,7 +312,7 @@ export function reduce(state: SalonState, by: number, action: Action): boolean {
       s.slot = action.slot
       state.slots = state.stations.map(st => st.slot)
       const p = SLOTS[action.slot]
-      if (first) event(state, { kind: 'placed', text: `The new ${s.kind === 'facial' ? 'facial chair' : 'nail desk'} is ready`, x: p.x, y: p.y, player: by, item: s.id })
+      if (first) event(state, { kind: 'placed', text: `The new ${STATION_NAME[s.kind]} is ready`, x: p.x, y: p.y, player: by, item: s.id })
       return true
     }
     case 'next': {
@@ -373,7 +373,7 @@ function complete(state: SalonState, id: string, by: number) {
     const kinds = stationKinds(state.owned)
     const kind = kinds[kinds.length - 1]
     const slot = state.phase === 'prep' || state.phase === 'receipt' ? -1 : freeSlot(state.stations.map(s => s.slot))
-    state.stations.push({ id: `s${state.stations.length}`, kind, slot, customer: null, lead: null, helpers: [], step: 0, steps: TREATMENTS[kind === 'facial' ? 'facial' : 'nails'].steps.length, progress: 0 })
+    state.stations.push({ id: `s${state.stations.length}`, kind, slot, customer: null, lead: null, helpers: [], step: 0, steps: TREATMENTS[kind].steps.length, progress: 0 })
     state.slots = state.stations.map(s => s.slot)
   }
   event(state, { kind: 'bought', text: `Bought ${item.name}`, amount: item.price, player: by, item: id })
@@ -384,7 +384,8 @@ function finish(state: SalonState, by: number, stationId: string, result: Treatm
   if (!s || s.lead !== by || s.customer === null) return false
   const c = state.customers.find(cu => cu.id === s.customer)
   if (!c) return false
-  const def = TREATMENTS[c.plan.treatment]
+  // The customer's own treatment: a Foot Clinic pays more than a Classic Pedicure.
+  const def = planTreatment(c.plan.treatment, c.plan.seed, c.plan.disaster).def
   const amb = ambienceStars(state.owned)
   const stars = Math.min(5, starsFor(result, c.mood, amb) + setStarBonus(state.owned, c.plan.treatment))
   let price = Math.round(payFor(def.basePrice, state.owned, c.plan.disaster) * setPayMult(state.owned, state.day))
@@ -414,6 +415,7 @@ function finish(state: SalonState, by: number, stationId: string, result: Treatm
   lead.extracted += result.extracted
   lead.foam += foam
   if (result.treatment === 'nails') lead.nails++
+  if (result.treatment === 'feet') lead.feet = (lead.feet ?? 0) + 1
   if (lead.fastest === null || result.seconds < lead.fastest) lead.fastest = result.seconds
   c.paid = price + tip
   c.stars = stars
@@ -437,7 +439,7 @@ export function tick(state: SalonState, dt: number) {
     c.seat = takeSeat(state)
     c.path = [DOOR_INSIDE, ...pathOnFloor(state, DOOR_INSIDE, seatPoint(c.seat))]
     state.customers.push(c)
-    event(state, { kind: 'arrive', text: `${plan.name} arrived for a ${TREATMENTS[plan.treatment].name}`, x: c.x, y: c.y })
+    event(state, { kind: 'arrive', text: `${plan.name} arrived for a ${planTreatment(plan.treatment, plan.seed, plan.disaster).def.name}`, x: c.x, y: c.y })
   }
   if (state.spawned >= state.schedule.length && state.phase === 'open') {
     state.phase = 'closing'
@@ -507,10 +509,11 @@ export function awards(stats: DayStats): { title: string; name: string; value: s
   const players = Object.values(stats.byPlayer)
   if (!players.length) return []
   const out: { title: string; name: string; value: string }[] = []
-  const best = (key: 'popped' | 'extracted' | 'tips' | 'served' | 'foam' | 'nails') => players.reduce((a, b) => (b[key] > a[key] ? b : a))
-  const add = (title: string, key: 'popped' | 'extracted' | 'tips' | 'served' | 'foam' | 'nails', unit: (n: number) => string) => {
+  type Key = 'popped' | 'extracted' | 'tips' | 'served' | 'foam' | 'nails' | 'feet'
+  const best = (key: Key) => players.reduce((a, b) => ((b[key] ?? 0) > (a[key] ?? 0) ? b : a))
+  const add = (title: string, key: Key, unit: (n: number) => string) => {
     const p = best(key)
-    if (p[key] > 0) out.push({ title, name: p.name, value: unit(p[key]) })
+    if ((p[key] ?? 0) > 0) out.push({ title, name: p.name, value: unit(p[key] ?? 0) })
   }
   add('Most pimples popped', 'popped', n => `${n} popped`)
   add('Blackhead hunter', 'extracted', n => `${n} extracted`)
@@ -518,6 +521,7 @@ export function awards(stats: DayStats): { title: string; name: string; value: s
   add('Busiest hands', 'served', n => `${n} customers`)
   add('Foam artist', 'foam', n => `${Math.round(n)} bubbles`)
   add('Nail artist', 'nails', n => `${n} manicures`)
+  add('Foot whisperer', 'feet', n => `${n} ${n === 1 ? 'pedicure' : 'pedicures'}`)
   const fastest = players.filter(p => p.fastest !== null).sort((a, b) => a.fastest! - b.fastest!)[0]
   if (fastest) out.push({ title: 'Speedy hands', name: fastest.name, value: `${Math.floor(fastest.fastest! / 60)}:${String(fastest.fastest! % 60).padStart(2, '0')}` })
   return out.slice(0, 4)

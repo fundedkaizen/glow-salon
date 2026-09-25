@@ -3,12 +3,12 @@ import { TreatmentSession, regionMask, zonesOf, type Op, type SessionEvent } fro
 import { planTreatment } from '../src/core/treatments/plan.ts'
 import { faceProfile, handProfile } from '../src/core/treatments/profile.ts'
 import { GRID, CELL, stamp, encodeGrid, decodeGrid } from '../src/core/treatments/grid.ts'
-import { REGIONS, HAND, bandEdge, nailOf } from '../src/core/treatments/anatomy.ts'
+import { REGIONS, HAND, bandEdge, nailOf, type RegionId } from '../src/core/treatments/anatomy.ts'
 import { inRegion } from '../src/core/geometry.ts'
 
 /** Every cell centre of a region, for sweeping a brush over all of it. */
-function cellsOf(regionId: keyof typeof REGIONS) {
-  const mask = regionMask(regionId)
+function cellsOf(regionId: RegionId, s?: TreatmentSession) {
+  const mask = s ? s.mask(regionId) : regionMask(regionId)
   const pts: [number, number][] = []
   for (let i = 0; i < mask.length; i++) if (mask[i]) pts.push([(i % GRID + 0.5) * CELL, (Math.floor(i / GRID) + 0.5) * CELL])
   return pts
@@ -41,7 +41,7 @@ function playStep(s: TreatmentSession, ops: Op[] = []): Op[] {
       } else push({ k: 'tap', s: i, x: t.x, y: t.y })
       if (step.optional) break
     } else {
-      const pts = cellsOf(step.region)
+      const pts = cellsOf(step.region, s)
       for (let k = 0; k < pts.length && !s.ready; k += 3) push({ k: 'stroke', s: i, x0: pts[k][0] - 6, y0: pts[k][1], x1: pts[k][0] + 6, y1: pts[k][1] })
     }
   }

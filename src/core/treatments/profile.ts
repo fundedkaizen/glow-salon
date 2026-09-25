@@ -1,4 +1,5 @@
 import { makeRng } from '../rng.ts'
+import { footProfile, type FootProfile } from '../foot.ts'
 import { POLISH_COLORS } from './types.ts'
 
 /**
@@ -55,7 +56,8 @@ export type HandProfile = {
   personality: Personality
 }
 
-export type Profile = FaceProfile | HandProfile
+export type Profile = FaceProfile | HandProfile | FootProfile
+export type { FootProfile }
 
 const PERSONALITIES: Personality[] = ['calm', 'ticklish', 'sensitive']
 
@@ -101,6 +103,6 @@ export function handProfile(seed: number, disaster: boolean): HandProfile {
   }
 }
 
-export function profileFor(bodyPart: 'face' | 'hand', seed: number, disaster: boolean): Profile {
-  return bodyPart === 'face' ? faceProfile(seed, disaster) : handProfile(seed, disaster)
+export function profileFor(bodyPart: 'face' | 'hand' | 'foot', seed: number, disaster: boolean): Profile {
+  return bodyPart === 'face' ? faceProfile(seed, disaster) : bodyPart === 'foot' ? footProfile(seed, disaster) : handProfile(seed, disaster)
 }

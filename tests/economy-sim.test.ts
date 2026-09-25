@@ -6,6 +6,7 @@ import { CAMPAIGNS, canRunCampaign } from '../src/core/marketing.ts'
 import { DECOR_SETS, DECOR_ITEM_BY_ID } from '../src/core/decor.ts'
 import { STAFF_ID_BASE } from '../src/core/staff.ts'
 import type { TreatmentResult } from '../src/core/treatments/session.ts'
+import type { TreatmentId } from '../src/core/treatments/types.ts'
 import type { GoogleReview } from '../src/core/review-writer.ts'
 
 /**
@@ -17,7 +18,7 @@ import type { GoogleReview } from '../src/core/review-writer.ts'
  * three days.
  */
 const DAYS = 30
-const perfect = (treatment: 'facial' | 'nails', seconds: number): TreatmentResult => ({ treatment, seconds, par: treatment === 'facial' ? 170 : 190, required: 12, done: 12, skipped: 0, optionalDone: 1, popped: treatment === 'facial' ? 6 : 0, extracted: treatment === 'facial' ? 11 : 0, fourHands: false, wishMatched: treatment === 'nails' ? true : null, disaster: false, thoroughness: 0.96 })
+const perfect = (treatment: TreatmentId, seconds: number): TreatmentResult => ({ treatment, seconds, par: treatment === 'facial' ? 170 : treatment === 'feet' ? 210 : 190, required: 12, done: 12, skipped: 0, optionalDone: 1, popped: treatment === 'facial' ? 6 : 0, extracted: treatment === 'facial' ? 11 : 0, fourHands: false, wishMatched: treatment === 'nails' ? true : null, disaster: false, thoroughness: 0.96 })
 
 const BIG_TABS = new Set(['tools', 'stations', 'treatments'])
 
@@ -29,6 +30,8 @@ function unlocksFor(s: SalonState, ran: Set<string>): Unlock[] {
   for (const item of ITEMS) {
     if (item.soon || item.gift || !BIG_TABS.has(item.tab) || s.owned.includes(item.id)) continue
     if ((item.needs ?? []).some(n => !s.owned.includes(n)) || (item.unlockDay ?? 0) > s.day) continue
+    // Refused whatever the money (no room left on the floor for another station): not an unlock.
+    if (!canBuy(s.owned, 1e9, item.id, s.day).ok) continue
     out.push({ id: item.id, price: item.price, buy: st => reduce(st, 0, { a: 'buy', item: item.id }) })
   }
   candidates(s).forEach((c, idx) => {

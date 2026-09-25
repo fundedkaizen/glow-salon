@@ -56,12 +56,14 @@ export type ReviewInput = {
 const WORDS: Record<string, { treatment: string; part: string }> = {
   facial: { treatment: 'facial', part: 'skin' },
   nails: { treatment: 'manicure', part: 'nails' },
+  feet: { treatment: 'pedicure', part: 'feet' },
 }
 
 /** The category tags, in the order they are preferred when counts tie. */
 export const TAGS = {
   facial: 'Great for facials',
   nails: 'Great for nails',
+  feet: 'Great for pedicures',
   relaxing: 'Relaxing',
   friendly: 'Friendly staff',
   cat: 'Cat lovers’ spot',
@@ -85,7 +87,10 @@ const staffWord = (staff: string) => (!staff || staff === 'You' ? 'my stylist' :
 
 function fill(text: string, input: ReviewInput) {
   const w = WORDS[input.result.treatment] ?? { treatment: 'treatment', part: 'skin' }
-  return text.replace(/\{salon\}/g, input.salon).replace(/\{staff\}/g, staffWord(input.staff)).replace(/\{treatment\}/g, w.treatment).replace(/\{part\}/g, w.part)
+  // "My {part} has" reads right for skin; nails and feet take the plural verb.
+  const plural = w.part === 'feet' || w.part === 'nails'
+  const agreed = plural ? text.replace(/\{part\} has\b/g, '{part} have').replace(/\{part\} is\b/g, '{part} are').replace(/\{part\} feels\b/g, '{part} feel') : text
+  return agreed.replace(/\{salon\}/g, input.salon).replace(/\{staff\}/g, staffWord(input.staff)).replace(/\{treatment\}/g, w.treatment).replace(/\{part\}/g, w.part)
 }
 
 /** Starter decor and set pieces by what they are, so a review names only what the salon has. */
@@ -129,6 +134,8 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   // Extras: what actually happened, most notable first, at most two. Decor is only praised when it exists.
   const decor = decorOwned(input.owned)
   const extras: ReviewExtra[] = []
+  // A pedicure customer nearly always says something about their feet.
+  if (result.treatment === 'feet' && stars >= 4 && r.chance(0.75)) extras.push('feet')
   if (input.disaster && stars >= 3) extras.push('disaster')
   if (result.fourHands) extras.push('four-hands')
   if (input.regular && stars >= 4) extras.push('regular')
@@ -158,7 +165,7 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   if (input.recent.length > 40) input.recent.splice(0, input.recent.length - 40)
 
   // The categories this review speaks for.
-  if (stars >= 4) tags.push(result.treatment === 'nails' ? TAGS.nails : TAGS.facial)
+  if (stars >= 4) tags.push(result.treatment === 'nails' ? TAGS.nails : result.treatment === 'feet' ? TAGS.feet : TAGS.facial)
   if (stars >= 4 && (voice === 'sleepy' || voice === 'dreamy' || input.mood > 0.85)) tags.push(TAGS.relaxing)
   if (stars >= 4 && input.byStaff && remarks.some(t => t.toLowerCase().includes(staffWord(input.staff).toLowerCase()))) tags.push(TAGS.friendly)
   for (const e of chosen) {

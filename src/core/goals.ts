@@ -5,7 +5,7 @@ import { makeRng } from './rng.ts'
  * its progress, and worth a small cash reward when it is reached. Picked from the salon seed and the day,
  * so every player sees the same one, and sized to the day's customers so it is always within reach.
  */
-export type GoalKind = 'popped' | 'extracted' | 'served' | 'fiveStars' | 'manicures' | 'tips' | 'pets'
+export type GoalKind = 'popped' | 'extracted' | 'served' | 'fiveStars' | 'manicures' | 'pedicures' | 'tips' | 'pets'
 
 export type DailyGoal = { kind: GoalKind; target: number; reward: number; text: string; done: boolean }
 
@@ -24,15 +24,17 @@ export function goalTally(state: {
     served: state.stats.served,
     fiveStars: state.stats.reviews.filter(r => r.stars >= 5).length,
     manicures: state.stats.reviews.filter(r => r.treatment === 'nails').length,
+    pedicures: state.stats.reviews.filter(r => r.treatment === 'feet').length,
     tips: state.stats.tips,
     pets: state.ext?.today.pets ?? 0,
   }
 }
 
-export function goalFor(seed: number, day: number, customers: number, hasNails: boolean): DailyGoal {
+export function goalFor(seed: number, day: number, customers: number, hasNails: boolean, hasFeet = false): DailyGoal {
   const r = makeRng((seed ^ Math.imul(day, 0x2c1b3c6d)) >>> 0)
   const kinds: GoalKind[] = ['popped', 'extracted', 'served', 'fiveStars', 'tips', 'pets']
   if (hasNails) kinds.push('manicures', 'manicures')
+  if (hasFeet) kinds.push('pedicures', 'pedicures')
   // Day 1 keeps it simple: look after everyone.
   const kind: GoalKind = day === 1 ? 'served' : r.pick(kinds)
   const c = Math.max(3, customers)
@@ -41,6 +43,7 @@ export function goalFor(seed: number, day: number, customers: number, hasNails: 
     : kind === 'served' ? c - 1
     : kind === 'fiveStars' ? Math.max(2, Math.round(c * 0.45))
     : kind === 'manicures' ? Math.max(1, Math.round(c * 0.3))
+    : kind === 'pedicures' ? Math.max(1, Math.round(c * 0.2))
     : kind === 'tips' ? Math.round((c * 8) / 5) * 5
     : 3
   const reward = Math.round((20 + 4 * Math.min(20, day)) / 5) * 5
@@ -54,6 +57,7 @@ export function goalText(kind: GoalKind, n: number): string {
     case 'served': return `Pamper ${n} customers`
     case 'fiveStars': return `Earn ${n} five-star reviews`
     case 'manicures': return n === 1 ? 'Paint a manicure' : `Paint ${n} manicures`
+    case 'pedicures': return n === 1 ? 'Pamper a pair of feet' : `Give ${n} pedicures`
     case 'tips': return `Collect $${n} in tips`
     case 'pets': return `Pet the cat ${n} times`
   }

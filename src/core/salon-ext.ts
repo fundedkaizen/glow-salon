@@ -82,7 +82,7 @@ export function validateExt(raw: unknown): SalonExt {
   const str = (v: unknown, fallback: string, max = 20) => (typeof v === 'string' && v.trim() ? v.replace(/[<>&"]/g, '').trim().slice(0, max) : fallback)
   e.salonName = str(d.salonName, DEFAULT_SALON_NAME)
   e.catName = str(d.catName, DEFAULT_CAT_NAME, 12)
-  e.staff = Array.isArray(d.staff) ? d.staff.filter(s => s && typeof s.name === 'string' && Number.isInteger(s.id) && s.skills && s.look).slice(0, MAX_STAFF).map(s => ({ ...s, look: withLookDefaults(s.look), name: cleanStaffName(s.name) || 'Staff', task: null, breakLeft: 0, energy: 1 })) : []
+  e.staff = Array.isArray(d.staff) ? d.staff.filter(s => s && typeof s.name === 'string' && Number.isInteger(s.id) && s.skills && s.look).slice(0, MAX_STAFF).map(s => ({ ...s, skills: { ...s.skills, feet: s.skills.feet ?? 1 }, look: withLookDefaults(s.look), name: cleanStaffName(s.name) || 'Staff', task: null, breakLeft: 0, energy: 1 })) : []
   e.hired = Array.isArray(d.hired) ? d.hired.filter(n => Number.isInteger(n) && n >= 0 && n < 3) : []
   e.week = Number.isInteger(d.week) ? d.week! : -1
   e.campaigns = Array.isArray(d.campaigns) ? d.campaigns.filter(c => c && CAMPAIGN_BY_ID[c.id] && Number.isInteger(c.day) && c.day >= 0) : []
@@ -122,7 +122,7 @@ export function extOnStartDay(state: SalonState) {
   if (week !== e.week) { e.week = week; e.hired = [] }
   // Staff whose station was sold or swapped away go back to reception.
   for (const s of e.staff) if (s.station && !state.stations.some(st => st.id === s.station)) s.station = null
-  e.today.goal = goalFor(state.seed, state.day, state.schedule.length, state.owned.includes('treat-nails'))
+  e.today.goal = goalFor(state.seed, state.day, state.schedule.length, state.owned.includes('treat-nails'), state.owned.includes('treat-feet'))
 }
 
 /** Who a customer is (archetype, voice, traits), the same on every screen. */

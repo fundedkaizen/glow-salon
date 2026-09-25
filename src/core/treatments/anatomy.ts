@@ -1,11 +1,12 @@
 import type { Region, Shape } from '../geometry.ts'
+import type { FootSoleRegion, FootTopRegion } from '../foot.ts'
 
 /**
  * The body parts, as geometry in art space (1024 x 1024). The code-drawn art paints these shapes and the
  * treatment logic measures coverage inside them, so replacing the art with painted images later only
  * needs the images to line up with these shapes.
  */
-export type BodyPartId = 'face' | 'hand'
+export type BodyPartId = 'face' | 'hand' | 'foot'
 
 export type Point = { x: number; y: number }
 
@@ -125,9 +126,18 @@ const cuticleShapes: Shape[] = HAND.fingers.map(f => {
 })
 
 // ---------------------------------------------------------------- regions
-export type RegionId = 'face' | 'skin' | 'nose' | 'tzone' | 'brows' | 'lips' | 'hand' | 'nails' | 'tips' | 'cuticles' | 'nail0' | 'nail1' | 'nail2' | 'nail3' | 'nail4' | 'everywhere'
+export type BaseRegionId = 'face' | 'skin' | 'nose' | 'tzone' | 'brows' | 'lips' | 'hand' | 'nails' | 'tips' | 'cuticles' | 'nail0' | 'nail1' | 'nail2' | 'nail3' | 'nail4' | 'everywhere'
+/**
+ * Feet: a region of one customer's foot (core/foot.ts regions, per view), which the session rasterises for its
+ * seed. Besides the foot's own regions: `top.fungal` (only the fungal nails), `top.fold` (the fold the ingrown
+ * nail digs into) and `top.treated` (where the antiseptic goes: that fold and the lifted corns).
+ */
+export type FootRegionId = `top.${FootTopRegion | 'fungal' | 'fold' | 'treated'}` | `sole.${FootSoleRegion}`
+export type RegionId = BaseRegionId | FootRegionId
 
-export const REGIONS: Record<RegionId, Region> = {
+export const isFootRegion = (id: RegionId): id is FootRegionId => id.startsWith('top.') || id.startsWith('sole.')
+
+export const REGIONS: Record<BaseRegionId, Region> = {
   face: { include: [faceShape], exclude: [FACE.hairCap] },
   skin: { include: [faceShape], exclude: [FACE.hairCap, ...eyeShapes, ...browShapes, lipShape] },
   nose: { include: [noseShape] },

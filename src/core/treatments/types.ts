@@ -5,7 +5,7 @@ import type { BodyPartId, RegionId } from './anatomy.ts'
  * a tool, a gesture, the layer it changes and where it counts. The session (session.ts) runs any treatment
  * from this data, so a new treatment (feet, brows, a shave) is mostly a new data file plus its art.
  */
-export type TreatmentId = 'facial' | 'nails'
+export type TreatmentId = 'facial' | 'nails' | 'feet'
 
 /** How a step is played. */
 export type Gesture =
@@ -29,6 +29,8 @@ export type LayerKind = 'dirt' | 'damage' | 'paint' | 'wet' | 'glow'
 
 /** How the session seeds a layer, scaled by the customer's profile (profile.ts). */
 export type LayerSeed = 'full' | 'empty' | 'grime' | 'grime2' | 'oil' | 'redness' | 'flakes' | 'polish' | 'dirt' | 'cuticle' | 'dry'
+  /** Feet: seeded from the foot's own conditions, by layer (session.ts seedFoot). */
+  | 'foot'
 
 export type LayerDef = {
   id: string
@@ -38,12 +40,16 @@ export type LayerDef = {
 }
 
 export type TargetKind = 'whitehead' | 'blackhead' | 'drop' | 'patch' | 'tip' | 'hangnail' | 'gem'
+  /** Feet: a corn's hard core (lifted with a hold), the ingrown nail's edge (eased out with a hold), a splinter (pulled out with a hold). */
+  | 'corn' | 'ingrown' | 'splinter'
 
 export type Reaction = 'neutral' | 'content' | 'flinch' | 'tickle'
 
 /** Sound families; audio/sfx.ts plays each (recorded clips layered with synthesis). */
 export type ToolSound = 'steam' | 'foam' | 'water' | 'pop' | 'loop' | 'wipe' | 'brush' | 'fan' | 'peel' | 'drip' | 'cream' | 'patch'
   | 'snip' | 'rasp' | 'push' | 'buff' | 'scrub' | 'polish' | 'uv' | 'gem' | 'comb' | 'roll' | 'oil' | 'sheet'
+  /** The foot bath: warm water and rising bubbles. */
+  | 'bath'
 
 export type StepDef = {
   id: string
@@ -99,6 +105,8 @@ export type StepDef = {
    * layer (and the peel flap) with it; without it the layer keeps its own colour.
    */
   tint?: number
+  /** Feet: which side of the foot the step works on (default 'top'); the close-up turns the foot over between them. */
+  view?: 'top' | 'sole'
 }
 
 export type TreatmentDef = {
@@ -106,7 +114,7 @@ export type TreatmentDef = {
   name: string
   bodyPart: BodyPartId
   /** Station kind that runs it. */
-  station: 'facial' | 'nails'
+  station: TreatmentId
   basePrice: number
   productCost: number
   /** Seconds a good, unhurried pass takes; the speed score compares against it. */

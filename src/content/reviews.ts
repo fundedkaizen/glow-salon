@@ -173,6 +173,14 @@ export const REVIEWS_DATA = {
   "bargain": [
    "Amazing value.",
    "Can't believe the price."
+  ],
+  "feet": [
+   "My heels are baby soft now.",
+   "Sandal season, here I come!",
+   "They clipped, filed and polished every single toe.",
+   "I didn't know my feet could feel this light.",
+   "The foot bath alone was worth it.",
+   "My toes have never looked this cute."
   ]
  },
  "closers": {

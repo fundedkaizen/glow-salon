@@ -70,13 +70,16 @@ export function candidatesFor(seed: number, week: number): Candidate[] {
     const lift = Math.min(1, week * 0.15)
     // Each week: one specialist, one all-rounder and one in between, so the choice is a real one.
     const star = i === 1 ? (r.chance(0.5) ? 'facial' : 'nails') : r.chance(0.5) ? 'facial' : 'nails'
-    const skills: Skills = { facial: 1, nails: 1 }
+    const skills: Skills = { facial: 1, nails: 1, feet: 1 }
     const other = star === 'facial' ? 'nails' : 'facial'
     if (i === 0) { skills[star] = Math.min(5, 3 + (r.chance(0.2 + lift * 0.4) ? 1 : 0)); skills[other] = 1 }
     else if (i === 1) { skills[star] = 2 + (r.chance(0.2 + lift * 0.3) ? 1 : 0); skills[other] = 2 }
     else { skills[star] = 2 + (r.chance(0.35 + lift * 0.3) ? 1 : 0); skills[other] = r.chance(0.5) ? 2 : 1 }
+    // Pedicures from their own stream, so the week's people stay who they were before feet arrived.
+    const fr = makeRng((seed ^ Math.imul(week + 1, 0x51ed27) ^ Math.imul(i + 1, 0x2c1b3c6d)) >>> 0)
+    skills.feet = fr.chance(0.3 + lift * 0.2) ? 3 + (fr.chance(0.15 + lift * 0.3) ? 1 : 0) : fr.int(1, 2)
     const total = skills.facial + skills.nails
-    const wage = 10 + total * 5 + (traits.includes('perfectionist') ? 3 : 0) + r.int(0, 3)
+    const wage = 10 + total * 5 + (skills.feet - 1) * 3 + (traits.includes('perfectionist') ? 3 : 0) + r.int(0, 3)
     const gender = genderOfName(first) ?? (r.chance(0.5) ? 'female' : 'male')
     out.push({ name: first, look: randomLook(r, { gender, age: r.chance(0.25) ? 'young' : 'adult' }), traits, skills, wage, fee: Math.round((wage * 4) / 5) * 5, seed: r.seed() })
   }
@@ -96,7 +99,7 @@ export const xpToLevel = (level: number) => 2 + level
 
 /** Real seconds a staff member takes for a treatment: quicker with skill, slower for perfectionists. */
 export function staffDuration(s: StaffMember, treatment: TreatmentId, clock: number): number {
-  let d = 62 - 7 * s.skills[treatment]
+  let d = 62 - 7 * (s.skills[treatment] ?? 1)
   if (has(s, 'perfectionist')) d *= 1.15
   if (has(s, 'night-owl') && clock > 150) d *= 0.85
   if (has(s, 'early-bird') && clock < 90) d *= 0.85
@@ -108,12 +111,12 @@ export function staffResult(s: StaffMember, treatment: TreatmentId, par: number,
   const r = makeRng(seed ^ 0x5eed)
   let thoroughness = 0.62 + 0.065 * s.skills[treatment] + r.range(-0.04, 0.04)
   if (has(s, 'perfectionist')) thoroughness += 0.05
-  if (has(s, 'artist') && treatment === 'nails') thoroughness += 0.04
+  if (has(s, 'artist') && (treatment === 'nails' || treatment === 'feet')) thoroughness += 0.04
   if (has(s, 'gentle-hands') && customerTraits.some(t => t === 'nervous' || t === 'ticklish')) thoroughness += 0.04
   thoroughness = Math.max(0.5, Math.min(0.97, thoroughness))
   const seconds = Math.round(par * (1.25 - 0.08 * s.skills[treatment]))
   const popped = treatment === 'facial' ? r.int(2, 6) : 0
-  return { treatment, seconds, par, required: 10, done: Math.floor(10 * thoroughness), skipped: 0, optionalDone: 0, popped, extracted: treatment === 'facial' ? r.int(4, 12) : 0, fourHands: false, wishMatched: treatment === 'nails' ? r.chance(0.7) : null, disaster: false, thoroughness }
+  return { treatment, seconds, par, required: 10, done: Math.floor(10 * thoroughness), skipped: 0, optionalDone: 0, popped, extracted: treatment === 'facial' ? r.int(4, 12) : 0, fourHands: false, wishMatched: treatment !== 'facial' ? r.chance(0.7) : null, disaster: false, thoroughness }
 }
 
 /** Practice: xp after a treatment, levels, and a skill step every other level. Returns true on a level up. */

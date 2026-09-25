@@ -31,7 +31,7 @@ export const STORY_REGULARS: readonly StoryRegular[] = REGULARS_DATA.regulars
 const STORY_BY_ID: Record<string, StoryRegular> = Object.fromEntries(STORY_REGULARS.map(r => [r.id, r]))
 
 /** Which content families each bookable treatment covers (a regular who loves "hands" books nails). */
-export const FAMILIES_OF: Record<TreatmentId, string[]> = { facial: ['facial'], nails: ['nails', 'hands'] }
+export const FAMILIES_OF: Record<TreatmentId, string[]> = { facial: ['facial'], nails: ['nails', 'hands'], feet: ['feet'] }
 
 /** The bookable treatment for a content family, or null when the salon cannot do it yet. */
 export function treatmentForFamily(family: string): TreatmentId | null {

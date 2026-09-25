@@ -1,9 +1,12 @@
 import { clamp, dist, inRegion } from '../geometry.ts'
 import { makeRng, type Rng } from '../rng.ts'
-import { FACE, HAND, REGIONS, bandEdge, freeEdgeOf, nailOf, type RegionId } from './anatomy.ts'
+import { FACE, HAND, REGIONS, bandEdge, freeEdgeOf, isFootRegion, nailOf, type BaseRegionId, type FootRegionId, type RegionId } from './anatomy.ts'
 import { GRID, decodeGrid, encodeGrid, paintedShare, rasterize, stamp, sumIn } from './grid.ts'
 import { planTreatment, type TreatmentPlan } from './plan.ts'
-import { profileFor, type FaceProfile, type HandProfile, type Profile } from './profile.ts'
+import { profileFor, type FaceProfile, type FootProfile, type HandProfile, type Profile } from './profile.ts'
+import { footAnatomy, ingrownSpot, toeFreeEdge, toeNail, alongToe, type FootAnatomy } from '../foot.ts'
+import type { Region } from '../geometry.ts'
+import { viewOf } from './feet.ts'
 import type { StepDef, TargetKind, TreatmentDef, TreatmentId } from './types.ts'
 
 /**
@@ -31,6 +34,10 @@ export type Target = {
   gripped?: boolean
   /** Which step's targets these are, when two steps share a kind (under-eye patches are 'eye'). */
   tag?: string
+  /** Feet: which side of the foot it is on (splinters are on the sole). */
+  view?: 'top' | 'sole'
+  /** Feet: a splinter's direction (radians), to draw it and pull it out along it. */
+  angle?: number
 }
 
 export type Op =
@@ -53,6 +60,8 @@ export type SessionEvent =
   /** A part of the step's region is finished (one nail, one area of the face): a small cue. */
   | { e: 'zone'; x: number; y: number }
   | { e: 'resolve'; layer: string; to: 0 | 1 }
+  /** A whole layer changed evenly (a soak loosening the grime): the renderer redraws it from the grid. */
+  | { e: 'fade'; layer: string; amount: number }
   | { e: 'peel'; progress: number; tension: number; released: boolean; unstuck: boolean }
   | { e: 'hold'; progress: number }
   | { e: 'choose'; index: number }
@@ -99,27 +108,62 @@ export const TIER_RADIUS = [1, 1.16, 1.32, 1.42]
 export const WET = '$wet'
 /** The peel line runs from the chin (progress 0) to the hairline (1). */
 export const PEEL_FROM = 915, PEEL_TO = 262
+/** A foot mask peels from the toes up to the towel over the ankle. */
+export const FOOT_PEEL_FROM = 955, FOOT_PEEL_TO = 175
 /** The peel's front edge sags a little in the middle, like a real sheet being lifted. */
 export const peelCurve = (x: number) => 26 * (1 - Math.min(1, ((x - 512) / 290) ** 2))
 
 const regionCache = new Map<RegionId, Uint8Array>()
+/** A fixed region's cells (the face and the hand). A foot's regions are the customer's own: see TreatmentSession.mask. */
 export function regionMask(id: RegionId) {
   let mask = regionCache.get(id)
-  if (!mask) { mask = rasterize(REGIONS[id]); regionCache.set(id, mask) }
+  if (!mask) { mask = rasterize(REGIONS[id as BaseRegionId] ?? REGIONS.everywhere); regionCache.set(id, mask) }
   return mask
+}
+
+/** One customer's foot regions, rasterised once per seed (co-op partners and a resumed treatment agree). */
+const footCache = new Map<string, Uint8Array>()
+export function footRegionMask(seed: number, a: FootAnatomy, p: FootProfile, id: FootRegionId): Uint8Array {
+  const key = `${seed}|${id}`
+  let mask = footCache.get(key)
+  if (!mask) {
+    if (footCache.size > 400) footCache.clear()
+    mask = rasterize(footRegion(a, p, id))
+    footCache.set(key, mask)
+  }
+  return mask
+}
+
+/** A foot region by id, including the ones made from this customer's conditions (fungal nails, the sore spots). */
+export function footRegion(a: FootAnatomy, p: FootProfile, id: FootRegionId): Region {
+  const [view, name] = id.split('.') as ['top' | 'sole', string]
+  if (view === 'sole') return (a.regions.sole as Record<string, Region>)[name] ?? a.regions.sole.everywhere
+  const big = a.nails[0]
+  const fold = (side: number): Region['include'][number] => {
+    const nx = -big.dir.y * side, ny = big.dir.x * side, o = big.halfWidth * 0.98
+    return { t: 'capsule', x0: big.base.x + nx * o + big.dir.x * 20, y0: big.base.y + ny * o + big.dir.y * 20, x1: big.tip.x + nx * o * 0.95 - big.dir.x * 8, y1: big.tip.y + ny * o * 0.95 - big.dir.y * 8, r0: 13, r1: 17 }
+  }
+  const folds = p.ingrown ? [fold(p.ingrown)] : [fold(-1), fold(1)]
+  if (name === 'fungal') return { include: a.shapes.nailShapes.filter((_, i) => p.fungus[i] > 0) }
+  if (name === 'fold') return { include: folds }
+  if (name === 'treated') {
+    const spots = p.corns.map(c => ({ t: 'ellipse' as const, cx: c.x, cy: c.y, rx: 30, ry: 30 }))
+    return { include: p.ingrown || !spots.length ? [...folds, ...spots] : spots }
+  }
+  return (a.regions.top as Record<string, Region>)[name] ?? a.regions.top.everywhere
 }
 
 type Zone = { cells: number[]; start: number; done: boolean }
 
-const zoneCache = new Map<RegionId, number[][]>()
+const zoneCache = new Map<string, number[][]>()
 /**
  * A region split into zones that finish one by one: separate pieces (each nail) are their own zones; a big
- * piece (the face) is cut into blocks of about a hand's width.
+ * piece (the face) is cut into blocks of about a hand's width. `mask` and `key` for a customer's own region.
  */
-export function zonesOf(id: RegionId): number[][] {
-  const cached = zoneCache.get(id)
+export function zonesOf(id: RegionId, mask = regionMask(id), key: string = id): number[][] {
+  const cached = zoneCache.get(key)
   if (cached) return cached
-  const mask = regionMask(id)
+  if (zoneCache.size > 400) zoneCache.clear()
   const seen = new Uint8Array(mask.length)
   const pieces: number[][] = []
   for (let i = 0; i < mask.length; i++) {
@@ -150,7 +194,7 @@ export function zonesOf(id: RegionId): number[][] {
     for (const cells of blocks.values()) { const all = carry.concat(cells); if (all.length < 120) { carry = all; continue } zones.push(all); carry = [] }
     if (carry.length && zones.length) zones[zones.length - 1].push(...carry)
   }
-  zoneCache.set(id, zones)
+  zoneCache.set(key, zones)
   return zones
 }
 
@@ -158,6 +202,9 @@ export function zonesOf(id: RegionId): number[][] {
 export function holdTime(target: Target) {
   if (target.kind === 'whitehead') return 0.35 + 0.6 * target.size
   if (target.kind === 'hangnail') return 0.32
+  if (target.kind === 'corn') return 0.45 + 0.35 * target.size
+  if (target.kind === 'ingrown') return 1.1
+  if (target.kind === 'splinter') return 0.55 + 0.25 * target.size
   return 0
 }
 
@@ -167,6 +214,7 @@ export function hitRadius(target: Target) {
   if (target.kind === 'whitehead') return 30 + 22 * target.size
   if (target.kind === 'drop') return 70
   if (target.kind === 'gem' || target.kind === 'tip') return 56
+  if (target.kind === 'corn' || target.kind === 'splinter' || target.kind === 'ingrown') return 46
   return 48
 }
 
@@ -203,6 +251,8 @@ export class TreatmentSession {
   popped = 0
   extracted = 0
   lampAssists = 0
+  /** Feet: the customer's own foot (regions and toes), for both views. */
+  readonly anatomy: FootAnatomy | null = null
   /** Coverage of the step's layer inside its region when the step began (erase steps). */
   private startSum = 0
   /** The step's region split into zones, each finishing on its own. */
@@ -220,8 +270,9 @@ export class TreatmentSession {
     this.wish = options.wish ?? null
     this.rng = makeRng(options.seed)
     this.profile = profileFor(this.def.bodyPart, options.seed, this.disaster)
+    if (this.profile.kind === 'foot') this.anatomy = footAnatomy(options.seed)
     this.status = this.def.steps.map(() => 'todo')
-    for (const layer of this.def.layers) this.layers[layer.id] = this.seedLayer(layer.seed, layer.region)
+    for (const layer of this.def.layers) this.layers[layer.id] = this.seedLayer(layer.seed, layer.region, layer.id)
     this.layers[WET] = new Float32Array(GRID * GRID)
     this.makeTargets()
     const start = clamp(options.startStep ?? 0, 0, this.def.steps.length)
@@ -236,6 +287,18 @@ export class TreatmentSession {
   get current(): StepDef | undefined { return this.def.steps[this.step] }
   get face(): FaceProfile | null { return this.profile.kind === 'face' ? this.profile : null }
   get hand(): HandProfile | null { return this.profile.kind === 'hand' ? this.profile : null }
+  get foot(): FootProfile | null { return this.profile.kind === 'foot' ? this.profile : null }
+  /** Feet: the side of the foot the current step works on. */
+  get view(): 'top' | 'sole' { return viewOf(this.current) }
+
+  /** A region's cells for this customer (a foot's regions are its own; the face's and hand's are shared). */
+  mask(id: RegionId): Uint8Array {
+    if (isFootRegion(id) && this.anatomy && this.foot) return footRegionMask(this.seed, this.anatomy, this.foot, id)
+    return regionMask(id)
+  }
+
+  /** The peel line's start (progress 0) and end (1), in art space. */
+  get peelRange(): [number, number] { return this.foot ? [FOOT_PEEL_FROM, FOOT_PEEL_TO] : [PEEL_FROM, PEEL_TO] }
 
   /** Take the events since the last call. */
   drain(): SessionEvent[] {
@@ -248,9 +311,10 @@ export class TreatmentSession {
 
   // ------------------------------------------------------------------ seeding
 
-  private seedLayer(seed: string, regionId: RegionId): Float32Array {
+  private seedLayer(seed: string, regionId: RegionId, layerId = ''): Float32Array {
     const grid = new Float32Array(GRID * GRID)
-    const region = regionMask(regionId)
+    const region = this.mask(regionId)
+    if (seed === 'foot') { this.seedFoot(grid, region, layerId); return grid }
     const r = this.rng
     const blobs = (count: number, pick: () => [number, number], rMin: number, rMax: number, aMin: number, aMax: number) => {
       for (let i = 0; i < count; i++) {
@@ -306,6 +370,71 @@ export class TreatmentSession {
       }
     }
     return grid
+  }
+
+  /**
+   * A foot's condition layers, from its profile (docs/FEET-WIRING.md): whole shapes for the layers whose art
+   * already scales with severity (fungus, old polish, swelling, calluses, cracks, cuticles, hair), patches for
+   * dirt, dry skin and redness.
+   */
+  private seedFoot(grid: Float32Array, region: Uint8Array, id: string) {
+    const p = this.foot, a = this.anatomy
+    if (!p || !a) return
+    const r = this.rng
+    const fill = (k = 1) => { for (let i = 0; i < grid.length; i++) grid[i] = region[i] * k }
+    const blobs = (count: number, pick: () => { x: number; y: number }, rMin: number, rMax: number, aMin: number, aMax: number) => {
+      for (let i = 0; i < count; i++) { const q = pick(); stamp(grid, q.x, q.y, r.range(rMin, rMax), r.range(aMin, aMax), region) }
+    }
+    const toes = a.shape.toes, soleToes = a.shape.soleToes
+    const w = a.shape.width, sx = (x: number) => 512 + (x - 512) * w
+    switch (id) {
+      case 'top.fungus': if (p.fungus.some(f => f > 0)) fill(); break
+      case 'top.swelling': if (p.ingrown) fill(); break
+      case 'top.callus': case 'sole.callus': if (p.calluses > 0.05) fill(); break
+      case 'sole.cracks': if (p.cracks > 0.05) fill(); break
+      case 'top.hair': if (p.hair > 0.05) fill(); break
+      case 'top.cuticle': fill(p.cuticle); break
+      case 'top.oldPolish': {
+        if (!p.polish) break
+        // No polish left on a crumbling fungal nail.
+        a.shapes.nailShapes.forEach((shape, i) => {
+          if (p.fungus[i] > 0.3) return
+          const only = rasterize({ include: [shape] })
+          for (let k = 0; k < grid.length; k++) if (only[k] && region[k]) grid[k] = 1
+        })
+        break
+      }
+      case 'top.dirt': {
+        if (p.dirt <= 0) break
+        // Grime over the foot, thicker in the toe creases and the clefts.
+        blobs(Math.round(10 + 16 * p.dirt), () => ({ x: r.range(200, 840), y: r.range(200, 880) }), 50, 110, 0.35 * p.dirt, 0.9 * p.dirt + 0.1)
+        blobs(Math.round(8 * p.dirt) + 3, () => { const t = r.pick(toes); return alongToe(t, r.range(0.05, 0.7), r.range(-0.8, 0.8)) }, 26, 50, 0.5, 1)
+        break
+      }
+      case 'sole.dirt': {
+        if (p.dirt <= 0) break
+        // Everything that touches the floor: the heel, the ball, the outer edge and the toe pads; never the arch.
+        const spots = [{ x: sx(552), y: 862 }, { x: sx(520), y: 388 }, { x: sx(690), y: 620 }, ...soleToes.map(t => alongToe(t, 0.75))]
+        blobs(Math.round(12 + 14 * p.dirt), () => { const q = r.pick(spots); return { x: q.x + r.range(-90, 90), y: q.y + r.range(-60, 60) } }, 50, 100, 0.4 * p.dirt, 0.8 * p.dirt + 0.2)
+        break
+      }
+      case 'sole.dry': {
+        if (p.dry <= 0) break
+        blobs(Math.round(6 + 8 * p.dry), () => r.chance(0.6) ? { x: sx(552) + r.range(-110, 110), y: 862 + r.range(-90, 90) } : { x: sx(520) + r.range(-170, 170), y: 388 + r.range(-50, 50) }, 40, 90, 0.4, 0.9)
+        break
+      }
+      case 'top.redness': {
+        // Round sick nails, corns, the ingrown fold, and between the toes.
+        toes.forEach((t, i) => {
+          if (p.fungus[i] <= 0) return
+          const q = toeNail(t).tip
+          blobs(3, () => ({ x: q.x + r.range(-30, 30), y: q.y + r.range(-40, 20) }), 30, 60, 0.35, 0.7)
+        })
+        for (const c of p.corns) blobs(2, () => ({ x: c.x + r.range(-12, 12), y: c.y + r.range(-12, 12) }), 26, 44, 0.4, 0.7)
+        if (p.ingrown) { const q = ingrownSpot(a, p.ingrown); blobs(3, () => ({ x: q.x + r.range(-16, 16), y: q.y + r.range(-40, 30) }), 26, 50, 0.5, 0.9) }
+        break
+      }
+    }
   }
 
   private makeTargets() {
@@ -364,6 +493,17 @@ export class TreatmentSession {
         const n = nailOf(finger)
         add('gem', n.base.x + (n.tip.x - n.base.x) * 0.42, n.base.y + (n.tip.y - n.base.y) * 0.42, 1, i)
       })
+    } else if (this.foot && this.anatomy) {
+      const p = this.foot, a = this.anatomy
+      // Overgrown toenails (the art paints a tip from 4 px on), fungal ones thick and yellow.
+      a.shape.toes.forEach((t, i) => {
+        if (p.grown[i] < 4) return
+        const e = toeFreeEdge(t, p.grown[i])
+        add('tip', e.x, e.y, Math.max(0.5, p.grown[i] / 20), i, { view: 'top' })
+      })
+      for (const c of p.corns) add('corn', c.x, c.y, c.size / 40, c.toe, { view: 'top' })
+      if (p.ingrown) { const q = ingrownSpot(a, p.ingrown); add('ingrown', q.x, q.y, 1, 0, { view: 'top' }) }
+      for (const sp of p.splinters) add('splinter', sp.x, sp.y, sp.size / 36, undefined, { view: 'sole', angle: sp.angle })
     }
   }
 
@@ -374,9 +514,10 @@ export class TreatmentSession {
     if (step.need === 'disaster') return this.disaster
     if (step.need === 'targets') {
       if (step.targets === 'patch' && !step.targetTag) return this.targets.some(t => t.kind === 'whitehead' && t.done)
+      if (step.targets === 'patch' && (step.targetTag === 'top' || step.targetTag === 'sole')) return this.plasterSpots(step.targetTag).length > 0
       return this.targets.some(t => t.kind === step.targets && !t.done)
     }
-    if (step.need === 'layer' && step.layer) return sumIn(this.layers[step.layer], regionMask(step.region)) > 1.5
+    if (step.need === 'layer' && step.layer) return sumIn(this.layers[step.layer], this.mask(step.region)) > 1.5
     return true
   }
 
@@ -394,11 +535,14 @@ export class TreatmentSession {
     this.ready = false
     if (step.targets === 'patch' && !step.targetTag) this.makePatches()
     if (step.targetTag === 'eye') this.makeEyePatches()
+    if (step.targets === 'patch' && (step.targetTag === 'top' || step.targetTag === 'sole')) this.makePlasters(step.targetTag)
+    // A hold step with a layer fills it as it begins (the foot bath's water comes in) and drains it at the end.
+    if (step.gesture === 'hold' && step.layer) this.resolveLayer(step.layer, 1, step.region)
     if (step.id === 'moisturize') {
       for (const [x, y, rr] of [[400, 660, 58], [624, 660, 58], [512, 392, 62]]) this.stampLayer('cream', x, y, rr, 1, 'skin')
     }
-    if (step.gesture === 'erase' && step.layer) this.startSum = sumIn(this.layers[step.layer], regionMask(step.region))
-    this.zones = step.layer && (step.gesture === 'erase' || step.gesture === 'paint' || step.gesture === 'rub') ? zonesOf(step.region).map(cells => ({ cells, start: step.gesture === 'erase' ? cells.reduce((a, i) => a + this.layers[step.layer!][i], 0) : 0, done: false })) : []
+    if (step.gesture === 'erase' && step.layer) this.startSum = sumIn(this.layers[step.layer], this.mask(step.region))
+    this.zones = step.layer && (step.gesture === 'erase' || step.gesture === 'paint' || step.gesture === 'rub') ? zonesOf(step.region, this.mask(step.region), this.foot ? `${this.seed}|${step.region}` : step.region).map(cells => ({ cells, start: step.gesture === 'erase' ? cells.reduce((a, i) => a + this.layers[step.layer!][i], 0) : 0, done: false })) : []
     this.emit({ e: 'setup', step: this.step })
     this.checkReady()
   }
@@ -407,6 +551,16 @@ export class TreatmentSession {
   private makeEyePatches() {
     if (this.targets.some(t => t.tag === 'eye')) return
     for (const e of FACE.eyes) this.targets.push({ id: this.nextTarget++, kind: 'patch', x: e.x, y: e.y + 62, size: 1.3, progress: 0, done: false, tag: 'eye' })
+  }
+
+  /** Feet: where plasters go on one side: the lifted corns and the eased ingrown nail on top, the pulled splinters on the sole. */
+  private plasterSpots(view: 'top' | 'sole'): Target[] {
+    return this.targets.filter(t => t.done && (view === 'top' ? t.kind === 'corn' || t.kind === 'ingrown' : t.kind === 'splinter'))
+  }
+
+  private makePlasters(view: 'top' | 'sole') {
+    if (this.targets.some(t => t.kind === 'patch' && t.tag === view)) return
+    for (const t of this.plasterSpots(view)) this.targets.push({ id: this.nextTarget++, kind: 'patch', x: t.x, y: t.y, size: 1, progress: 0, done: false, tag: view, view, n: t.n })
   }
 
   /** Patches go on the biggest spots that were popped. */
@@ -423,12 +577,12 @@ export class TreatmentSession {
     switch (step.gesture) {
       case 'erase': {
         if (!step.layer || this.startSum < 0.5) return 1
-        return clamp(1 - sumIn(this.layers[step.layer], regionMask(step.region)) / this.startSum)
+        return clamp(1 - sumIn(this.layers[step.layer], this.mask(step.region)) / this.startSum)
       }
       case 'paint':
       case 'rub':
         if (step.choice && this.choices[this.step] === undefined) return 0
-        return step.layer ? paintedShare(this.layers[step.layer], regionMask(step.region)) : 0
+        return step.layer ? paintedShare(this.layers[step.layer], this.mask(step.region)) : 0
       case 'hold': return clamp(this.hold)
       case 'peel': return clamp(this.peel.progress)
       case 'targets':
@@ -492,7 +646,7 @@ export class TreatmentSession {
   private stampLayer(layer: string, x: number, y: number, r: number, amount: number, regionId: RegionId) {
     const grid = this.layers[layer]
     if (!grid) return 0
-    const changed = stamp(grid, x, y, r, amount, regionMask(regionId))
+    const changed = stamp(grid, x, y, r, amount, this.mask(regionId))
     this.emit({ e: 'stamp', layer, x, y, r, amount, changed })
     return changed
   }
@@ -567,9 +721,12 @@ export class TreatmentSession {
   private holdAt(step: StepDef, x: number, y: number, dt: number) {
     dt = clamp(dt, 0, 0.5)
     if (step.gesture === 'hold') {
+      const before = this.hold
       this.hold = clamp(this.hold + (dt * this.speed()) / (step.holdSeconds ?? 3))
       this.emit({ e: 'hold', progress: this.hold })
       if (step.wet) this.stampLayer(WET, x, y, 160, step.wet * dt, 'everywhere')
+      // What the hold loosens (the foot bath softens the grime): the whole change over the full hold, evenly.
+      if (step.also && this.hold > before) for (const also of step.also) this.fadeLayer(also.layer, also.amount * (this.hold - before))
       return
     }
     if (step.gesture !== 'targets') return
@@ -631,7 +788,8 @@ export class TreatmentSession {
       p.progress = Math.min(target, p.progress + dt * 0.55 * this.speed())
     }
     if (p.progress >= 0.8) { p.progress = 1; p.released = true }
-    this.clearMaskBelow(PEEL_FROM + (PEEL_TO - PEEL_FROM) * p.progress)
+    const [from, to] = this.peelRange
+    this.clearMaskBelow(from + (to - from) * p.progress)
     this.emit({ e: 'peel', progress: p.progress, tension, released: p.released, unstuck })
   }
 
@@ -655,9 +813,11 @@ export class TreatmentSession {
     else this.status[this.step] = skip ? 'skipped' : 'done'
     // The last few percent settle by themselves, so nobody hunts for pixels.
     if (step.layer && step.gesture !== 'targets') {
-      const to = step.gesture === 'erase' || step.gesture === 'peel' ? 0 : 1
-      this.resolveLayer(step.layer, to, step.gesture === 'erase' || step.gesture === 'peel' ? 'everywhere' : step.region)
+      const to = step.gesture === 'erase' || step.gesture === 'peel' || step.gesture === 'hold' ? 0 : 1
+      this.resolveLayer(step.layer, to, to === 0 ? 'everywhere' : step.region)
     }
+    // Out of the foot bath (or from under the hot towel), the foot is wet all over.
+    if (this.foot && step.gesture === 'hold' && step.wet) this.stampLayer(WET, 512, 540, 760, step.wet, 'everywhere')
     for (const id of step.clears ?? []) this.resolveLayer(id, 0, 'everywhere')
     if (step.targets && !step.optional) for (const t of this.stepTargets()) if (!t.done) { t.done = true; t.progress = 1 }
     if (step.gesture === 'peel') { this.peel.progress = 1; this.peel.released = true }
@@ -670,9 +830,18 @@ export class TreatmentSession {
   private resolveLayer(id: string, to: 0 | 1, regionId: RegionId) {
     const grid = this.layers[id]
     if (!grid) return
-    const region = regionMask(regionId)
+    const region = this.mask(regionId)
     for (let i = 0; i < grid.length; i++) if (to === 0) grid[i] = 0; else if (region[i]) grid[i] = 1
     this.emit({ e: 'resolve', layer: id, to })
+  }
+
+  /** Change a whole layer evenly by `amount` (a soak loosening the grime everywhere at once). */
+  private fadeLayer(id: string, amount: number) {
+    const grid = this.layers[id]
+    if (!grid || amount === 0) return
+    let changed = 0
+    for (let i = 0; i < grid.length; i++) { if (!grid[i]) continue; const v = clamp(grid[i] + amount); changed += Math.abs(v - grid[i]); grid[i] = v }
+    if (changed > 0) this.emit({ e: 'fade', layer: id, amount })
   }
 
   /** Add real seconds to the treatment's clock (the lead player's session only). */
