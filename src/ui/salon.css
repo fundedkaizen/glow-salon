@@ -181,7 +181,7 @@
 .gs-confetti { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
 
 /* ---------------------------------------------------------------- receipt and reviews */
-.gs-end { width: min(1040px, 100%); height: 100%; display: flex; gap: 22px; align-items: flex-start; justify-content: center; padding: 6px; }
+.gs-end { width: min(1040px, 100%); height: calc(100dvh - 32px); display: flex; gap: 22px; align-items: flex-start; justify-content: center; padding: 6px; }
 .gs-end .gs-reviews { max-height: 100%; overflow-y: auto; padding: 4px 8px 12px 4px; scrollbar-width: thin; scrollbar-color: rgba(233, 138, 168, 0.5) transparent; }
 .gs-receipt { width: 330px; flex: none; background: #fffefb; border-radius: 6px 6px 0 0; padding: 22px 22px 34px; box-shadow: var(--gs-shadow); position: relative; font-family: 'Nunito', system-ui, sans-serif; animation: gs-print 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) both; transform-origin: top; }
 @keyframes gs-print { from { clip-path: inset(0 0 100% 0); transform: translateY(-30px); } to { clip-path: inset(0 0 -20px 0); } }
@@ -320,7 +320,7 @@
   .gs-tab .gs-badge { position: static; }
   .gs-os-main { padding: 14px; }
   .gs-grid { grid-template-columns: 1fr; }
-  .gs-end { flex-direction: column; align-items: center; overflow-y: auto; height: auto; max-height: 100%; }
+  .gs-end { flex-direction: column; align-items: center; overflow-y: auto; height: auto; max-height: calc(100dvh - 32px); }
   .gs-end .gs-reviews { max-height: none; overflow: visible; }
   .gs-receipt { width: 100%; max-width: 360px; }
   .gs-reviews { width: 100%; }
