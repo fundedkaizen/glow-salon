@@ -383,8 +383,9 @@ function complete(state: SalonState, id: string, by: number) {
     state.stations.push({ id: `s${state.stations.length}`, kind, slot, customer: null, lead: null, helpers: [], step: 0, steps: TREATMENTS[kind].steps.length, progress: 0 })
     state.slots = state.stations.map(s => s.slot)
   }
-  // A new treatment bought before opening: today's customers (nobody has arrived yet) can already ask for it.
-  if (state.phase === 'prep' && item.effect.kind === 'treatment') {
+  // A new treatment or station bought before opening: today's customers (nobody has arrived yet) can already
+  // ask for it, and a new station makes room for more of them.
+  if (state.phase === 'prep' && state.spawned === 0 && (item.effect.kind === 'treatment' || item.effect.kind === 'station')) {
     planSchedule(state)
     const e = ext(state)
     if (e.today.goal && !e.today.goal.done) e.today.goal = goalFor(state.seed, state.day, state.schedule.length, state.owned.includes('treat-nails'), state.owned.includes('treat-feet'))
