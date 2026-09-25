@@ -131,7 +131,7 @@ export function run() {
   check('names, gender and age agree with the archetype', mismatched === 0, mismatched)
   check('no first name twice in a week', repeats === 0, repeats)
   check(`about ${DISASTER_CHANCE * 100}% disaster cases`, disasters / total > 0.08 && disasters / total < 0.24, disasters / total)
-  check('every look has a gender and an age', planDay({ day: 3, seed: 5, count: 10, treatments: ['facial'], met: [] }).every(p => (p.look.gender === 'female' || p.look.gender === 'male') && ['young', 'adult', 'older'].includes(p.look.age)))
+  check('every look has a gender and an age', planDay({ day: 3, seed: 5, count: 10, treatments: ['facial'], met: [] }).every(p => (p.look.gender === 'female' || p.look.gender === 'male') && ['young', 'adult', 'older'].includes(p.look.age ?? '') && !!p.look.figure && p.look.figure.masc === (p.look.gender === 'male')))
   const withRegulars = Array.from({ length: 20 }, (_, d) => planDay({ day: d + 2, seed: 3, count: 8, treatments: ['facial', 'nails'], met: ['rosa', 'jade', 'maya'], rating: 4.6 })).flat()
   check('met regulars come back, with their own name', withRegulars.some(p => p.regular === 'rosa' && p.name === 'Nonna Rosa'))
   check('regulars only book what the salon offers', withRegulars.filter(p => p.regular).every(p => p.treatment === 'facial' || p.treatment === 'nails'))

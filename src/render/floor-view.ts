@@ -12,6 +12,7 @@ import { DECOR_ITEM_BY_ID, DECOR_SLOTS, GIFT_BY_ID, GIFT_SLOTS, placeDecor } fro
 import { canBuy, ITEM_BY_ID, ITEMS } from '../core/economy.ts'
 import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA_SEATS, stationRect, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
 import { personaFor, storyBeat } from '../core/persona.ts'
+import { withFigure } from '../core/figure.ts'
 import { hashString, makeRng } from '../core/rng.ts'
 import type { Action, Customer, DayStats, GameEvent, Pending, Phase, Player, Station } from '../core/salon.ts'
 import type { SalonExt } from '../core/salon-ext.ts'
@@ -484,7 +485,8 @@ export class FloorView {
       seen.add(c.id)
       let v = this.customers.get(c.id)
       if (!v) {
-        const person = new Person(c.plan.look, 'customer')
+        const persona = personaFor(c.plan, { rating: state.stats.ratingBefore, bias: state.ext?.today.bias })
+        const person = new Person(withFigure(c.plan.look, c.plan.name, persona.archetype, c.plan.seed), 'customer')
         const bubble = new Container()
         const bg = new Graphics()
         bg.roundRect(-19, -19, 38, 34, 15).fill({ color: 0xffffff }).stroke({ width: 1.4, color: 0xe9c2d0 })

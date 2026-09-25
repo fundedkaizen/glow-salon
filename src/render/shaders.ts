@@ -67,7 +67,7 @@ void main() {
   // Tiny glints where pores catch the light through a film of water.
   float sparkleSeed = hash(floor(vUV * 700.0));
   float glint = step(0.9975, sparkleSeed) * pow(ndhSoft, 20.0) * smoothstep(0.5, 1.0, wet) * (0.5 + 0.5 * sin(uSkin.z * 3.0 + sparkleSeed * 40.0));
-  float dewy = pow(ndhSoft, 30.0) * uSkin.w * 0.32;
+  float dewy = pow(ndhSoft, 30.0) * uSkin.w * 0.2;
   col *= mix(vec3(1.0), vec3(1.07, 0.95, 0.94), uSkin.x);
   // Wet skin reads a touch deeper and richer under the shine.
   col = mix(col, col * col * 1.18, wet * 0.18);
@@ -75,7 +75,13 @@ void main() {
   // the sharp wet highlight stays white.
   float lum = dot(base, vec3(0.3, 0.5, 0.2));
   vec3 sheenCol = mix(base * 1.8 + 0.06, vec3(1.0, 0.985, 0.97), smoothstep(0.35, 0.85, lum));
-  col += sheenCol * (drySheen + dewy) + vec3(1.0, 0.985, 0.97) * wetSpec;
+  // Natural shine where the gloss map says the skin is oilier (T-zone, cheekbones, chin, knuckles): a broad
+  // soft highlight on the form plus a fine sparkle from the pores inside it. It follows the light, which
+  // sways a little with the customer's breathing.
+  float gloss = texture(uHeight, vUV).g;
+  // (The pore sparkle is kept faint and only where the gloss is strong: on a hand's deep bump it read as a rash.)
+  float shine = pow(ndhSoft, 70.0) * 0.34 * gloss + pow(ndh, 140.0) * 0.05 * gloss * gloss;
+  col += sheenCol * (drySheen + dewy + shine) + vec3(1.0, 0.985, 0.97) * wetSpec;
   col += vec3(glint) * 0.0;
   float a = alb.a * uColor.a;
   finalColor = vec4(col * a, a);
@@ -103,7 +109,11 @@ void main() {
   float alpha = art.a * m * uP.w * uColor.a;
   if (alpha < 0.002) discard;
   vec3 col = art.rgb / max(art.a, 0.001);
-  col = mix(col, col * uTint.rgb, uTint.a);
+  // Tinted layers (polish) are painted at 90% grey: that maps to the chosen colour, darker greys shade it
+  // (the thicker edge), and pure white stays a white gloss highlight.
+  float hl = smoothstep(0.93, 0.99, dot(col, vec3(0.333)));
+  vec3 tinted = mix(min(col / 0.9, vec3(1.0)) * uTint.rgb, vec3(1.0), hl);
+  col = mix(col, tinted, uTint.a);
   vec2 dx = vec2(uTexel.x * 1.5, 0.0), dy = vec2(0.0, uTexel.y * 1.5);
   float mx = cover(vUV + dx) - cover(vUV - dx);
   float my = cover(vUV + dy) - cover(vUV - dy);

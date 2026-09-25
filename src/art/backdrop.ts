@@ -12,7 +12,7 @@ import { blob, blurred, canvas, hex, rgba, shade, terry, type Ctx } from './pain
 export const BACKDROP = 1600
 export const BACKDROP_OFFSET = (BACKDROP - 1024) / 2
 
-export function paintBackdrop(kind: 'facial' | 'nails', look: Look): HTMLCanvasElement {
+export function paintBackdrop(kind: 'facial' | 'nails' | 'feet' | 'sole', look: Look): HTMLCanvasElement {
   const [c, ctx] = canvas(BACKDROP)
   const r = makeRng(look.outfit * 31 + look.hair + 5)
   const o = BACKDROP_OFFSET
@@ -32,8 +32,20 @@ export function paintBackdrop(kind: 'facial' | 'nails', look: Look): HTMLCanvasE
       rctx.beginPath(); rctx.moveTo(40 + i * 140, 0); rctx.lineTo(160 + i * 140, 0); rctx.lineTo(620 + i * 180, 1600); rctx.lineTo(420 + i * 180, 1600); rctx.closePath(); rctx.fill()
     }
     rctx.restore()
-    // Shelves with jars and bottles, left and right.
-    for (const [sx, sy, w] of [[40, 300, 360], [1200, 260, 380], [60, 760, 300], [1260, 820, 320]] as const) {
+    // The salon beside the bed (out of focus): a vanity mirror ringed with warm bulbs on the left, open
+    // shelves of pastel bottles and a flower vase on the right, a big leafy plant at each foot.
+    // Vanity: the mirror's pale glass reflecting the room, a cream frame, bulbs down its inner edge.
+    rctx.fillStyle = '#fbf1ea'; rctx.beginPath(); rctx.roundRect(-150, 120, 260, 1080, 60); rctx.fill()
+    const mg = rctx.createLinearGradient(-130, 0, 80, 0)
+    mg.addColorStop(0, '#e6eef4'); mg.addColorStop(0.6, '#f6f1f4'); mg.addColorStop(1, '#dde4ee')
+    rctx.fillStyle = mg; rctx.beginPath(); rctx.roundRect(-130, 150, 210, 1020, 44); rctx.fill()
+    rctx.fillStyle = 'rgba(255,255,255,0.5)'; rctx.beginPath(); rctx.moveTo(0, 170); rctx.lineTo(60, 170); rctx.lineTo(-30, 700); rctx.lineTo(-40, 520); rctx.closePath(); rctx.fill()
+    for (let y = 190; y < 1160; y += 120) {
+      blob(rctx, 96, y, 70, 70, [255, 226, 180], 0.5)
+      blob(rctx, 96, y, 26, 26, [255, 250, 236], 1, 0.6)
+    }
+    // Shelves on the right with bottles, jars and a vase of flowers.
+    for (const [sx, sy, w] of [[1400, 330, 260], [1420, 760, 240], [1400, 1180, 260], [-20, 1320, 220]] as const) {
       rctx.fillStyle = '#fff6f9'; rctx.fillRect(sx, sy, w, 18)
       rctx.fillStyle = 'rgba(190,140,160,0.4)'; rctx.fillRect(sx, sy + 18, w, 8)
       let x = sx + 14
@@ -46,18 +58,27 @@ export function paintBackdrop(kind: 'facial' | 'nails', look: Look): HTMLCanvasE
         x += bw + r.range(8, 20)
       }
     }
-    // A big leafy plant at the left.
-    for (let i = 0; i < 16; i++) {
-      const a = -Math.PI / 2 + r.range(-1.2, 1.2), len = r.range(160, 300)
-      const bx = 150, by = 1250
-      const tx = bx + Math.cos(a) * len, ty = by + Math.sin(a) * len
-      rctx.fillStyle = rgba(shade([120, 190, 150], r.range(-0.2, 0.2)))
-      rctx.beginPath(); rctx.ellipse((bx + tx) / 2 + (tx - bx) * 0.2, (by + ty) / 2 + (ty - by) * 0.2, len * 0.32, len * 0.16, a, 0, Math.PI * 2); rctx.fill()
+    // Flowers in a vase on the top shelf.
+    rctx.fillStyle = '#cfe6f2'; rctx.beginPath(); rctx.roundRect(1440, 700, 70, 60, 20); rctx.fill()
+    for (let i = 0; i < 9; i++) {
+      const fx = 1475 + r.range(-70, 70), fy = 600 + r.range(-60, 40)
+      rctx.strokeStyle = '#8cc49e'; rctx.lineWidth = 5; rctx.beginPath(); rctx.moveTo(1475, 700); rctx.quadraticCurveTo(1475 + (fx - 1475) * 0.3, 660, fx, fy); rctx.stroke()
+      blob(rctx, fx, fy, 30, 30, r.pick([[247, 170, 196], [255, 220, 150], [240, 240, 255]] as const) as unknown as [number, number, number], 0.95, 0.6)
     }
-    rctx.fillStyle = '#f3e4dc'; rctx.beginPath(); rctx.roundRect(70, 1240, 170, 150, 30); rctx.fill()
+    // Leafy plants at the feet of the walls.
+    for (const bx of [110, 1500]) {
+      const by = 1500
+      for (let i = 0; i < 16; i++) {
+        const a = -Math.PI / 2 + r.range(-1.2, 1.2), len = r.range(160, 300)
+        const tx = bx + Math.cos(a) * len, ty = by + Math.sin(a) * len
+        rctx.fillStyle = rgba(shade([120, 190, 150], r.range(-0.2, 0.2)))
+        rctx.beginPath(); rctx.ellipse((bx + tx) / 2 + (tx - bx) * 0.2, (by + ty) / 2 + (ty - by) * 0.2, len * 0.32, len * 0.16, a, 0, Math.PI * 2); rctx.fill()
+      }
+      rctx.fillStyle = '#f3e4dc'; rctx.beginPath(); rctx.roundRect(bx - 85, by - 10, 170, 150, 30); rctx.fill()
+    }
     // Bokeh: fairy lights and glints, out of focus.
     for (let i = 0; i < 40; i++) {
-      const x = r() < 0.5 ? r.range(0, 360) : r.range(1240, 1600), y = r.range(0, 1600)
+      const x = r() < 0.5 ? r.range(0, 260) : r.range(1340, 1600), y = r.range(0, 1600)
       const rad = r.range(14, 46)
       const col = r.pick([[255, 240, 210], [255, 200, 220], [255, 255, 255], [220, 200, 255]] as const)
       blob(rctx, x, y, rad, rad, [col[0], col[1], col[2]], r.range(0.35, 0.8), 0.7)
@@ -66,15 +87,15 @@ export function paintBackdrop(kind: 'facial' | 'nails', look: Look): HTMLCanvasE
     // The spa bed's blush cushion around the pillow, a little soft.
     const [bed, bctx] = canvas(BACKDROP)
     bctx.fillStyle = '#eeb3c7'
-    bctx.beginPath(); bctx.roundRect(o - 330, o - 250, 1024 + 660, 1024 + 600, 220); bctx.fill()
-    const bg = bctx.createLinearGradient(o - 330, 0, o + 1350, 0)
+    bctx.beginPath(); bctx.roundRect(o - 150, o - 250, 1024 + 300, 1024 + 600, 170); bctx.fill()
+    const bg = bctx.createLinearGradient(o - 150, 0, o + 1174, 0)
     bg.addColorStop(0, 'rgba(255,230,238,0.7)'); bg.addColorStop(0.5, 'rgba(255,255,255,0)'); bg.addColorStop(1, 'rgba(160,80,110,0.35)')
     bctx.fillStyle = bg
-    bctx.beginPath(); bctx.roundRect(o - 330, o - 250, 1024 + 660, 1024 + 600, 220); bctx.fill()
+    bctx.beginPath(); bctx.roundRect(o - 150, o - 250, 1024 + 300, 1024 + 600, 170); bctx.fill()
     ctx.save(); ctx.filter = 'blur(5px)'; ctx.drawImage(bed, 0, 0); ctx.restore()
     // The pillow under the head: a wide, puffy cotton cushion with pinched corners and a piped seam.
     // It sits behind the head, so the hair covers most of it; only its shoulders show around the hair.
-    const L = o - 190, R = o + 1214, T = o - 30, B = o + 860
+    const L = o - 90, R = o + 1114, T = o - 30, B = o + 860
     const cushion = (inset: number) => {
       const l = L + inset, rr = R - inset, t = T + inset, b = B - inset, dip = 34 - inset * 0.3
       ctx.beginPath()
@@ -125,17 +146,8 @@ export function paintBackdrop(kind: 'facial' | 'nails', look: Look): HTMLCanvasE
       ctx.strokeStyle = 'rgba(190,150,166,0.55)'; ctx.lineWidth = 3; cushion(26); ctx.stroke()
       ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2; ctx.translate(-1.5, -2); cushion(26); ctx.stroke()
     })
-    // A folded towel under the neck, in the customer's colour.
-    const towel = shade(hex(OUTFIT[(look.outfit + 3) % OUTFIT.length]), 0.3)
-    ctx.save()
-    ctx.beginPath(); ctx.roundRect(o + 60, o + 860, 904, 240, 70)
-    const tg = ctx.createLinearGradient(0, o + 860, 0, o + 1100)
-    tg.addColorStop(0, rgba(shade(towel, 0.3))); tg.addColorStop(1, rgba(shade(towel, -0.05)))
-    ctx.fillStyle = tg
-    ctx.fill()
-    ctx.clip()
-    terry(ctx, o + 60, o + 860, 904, 240, towel, 91, 0.014)
-    ctx.restore()
+  } else if (kind === 'feet' || kind === 'sole') {
+    paintFootTowel(ctx, look, kind === 'feet')
   } else {
     // The far end of the room, out of focus: a pastel wall with a shelf of polish bottles and warm light.
     const [room, rctx] = canvas(BACKDROP)
@@ -191,6 +203,72 @@ export function paintBackdrop(kind: 'facial' | 'nails', look: Look): HTMLCanvasE
   }
   vignette(ctx)
   return c
+}
+
+/**
+ * The pedicure: a big, soft terry towel filling the view, folded over at the top with a rolled edge, its pile
+ * catching the key light, deep soft folds and a warm shadow toward the far side. Under the top view's toes, the
+ * rim of the foot bath shows at the bottom: a glazed ceramic lip and a sliver of water.
+ */
+function paintFootTowel(ctx: Ctx, look: Look, basin: boolean) {
+  const r = makeRng(look.outfit * 13 + 7)
+  const towel = shade(hex([0xd9ccf5, 0xf7c6d4, 0xbfeadb, 0xcdbdf2][look.outfit % 4]), 0.08)
+  const W = BACKDROP
+  const g = ctx.createLinearGradient(0, 0, W, W)
+  g.addColorStop(0, rgba(shade(towel, 0.28))); g.addColorStop(0.5, rgba(towel)); g.addColorStop(1, rgba(shade(towel, -0.14)))
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, W, W)
+  terry(ctx, 0, 0, W, W, towel, 21, 0.018)
+  // Deep soft folds running across, each a shaded valley beside a lit ridge.
+  blurred(ctx, 26, () => {
+    for (let i = 0; i < 7; i++) {
+      const x = r.range(0, W), y0 = r.range(-100, 300), bend = r.range(-160, 160)
+      ctx.strokeStyle = rgba(shade(towel, -0.22), 0.45); ctx.lineWidth = r.range(26, 50)
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.quadraticCurveTo(x + bend, W / 2, x + r.range(-200, 200), W + 100); ctx.stroke()
+      ctx.strokeStyle = rgba(shade(towel, 0.35), 0.5); ctx.lineWidth = r.range(18, 34)
+      ctx.beginPath(); ctx.moveTo(x - 40, y0); ctx.quadraticCurveTo(x + bend - 40, W / 2, x + r.range(-200, 200) - 40, W + 100); ctx.stroke()
+    }
+  })
+  // Folded over at the top: a thick rolled edge and the doubled layer above it.
+  const fy = 150
+  blurred(ctx, 18, () => { ctx.fillStyle = 'rgba(110,70,120,0.35)'; ctx.fillRect(-20, fy - 10, W + 40, 60) })
+  ctx.save()
+  ctx.beginPath(); ctx.rect(0, 0, W, fy)
+  ctx.fillStyle = rgba(shade(towel, 0.12)); ctx.fill()
+  ctx.clip()
+  terry(ctx, 0, 0, W, fy, towel, 22, 0.02)
+  ctx.restore()
+  blurred(ctx, 4, () => {
+    ctx.strokeStyle = rgba(shade(towel, 0.5), 0.9); ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(-10, fy - 12); ctx.lineTo(W + 10, fy - 8); ctx.stroke()
+    ctx.strokeStyle = rgba(shade(towel, -0.3), 0.5); ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(-10, fy + 6); ctx.lineTo(W + 10, fy + 10); ctx.stroke()
+  })
+  // A stitched hem stripe across the fold.
+  ctx.strokeStyle = rgba(shade(towel, -0.12), 0.6); ctx.lineWidth = 3; ctx.setLineDash([10, 8])
+  ctx.beginPath(); ctx.moveTo(0, fy - 50); ctx.lineTo(W, fy - 46); ctx.stroke(); ctx.setLineDash([])
+  // Warm light pooling top left, shade toward the far side.
+  blob(ctx, 420, 520, 700, 600, [255, 246, 236], 0.22)
+  blob(ctx, 1400, 1300, 700, 600, [90, 50, 100], 0.12)
+  if (!basin) return
+  // The foot bath's rim at the bottom: glazed ceramic curving away, a lip of light and a sliver of water.
+  const cx = W / 2, cy = W + 620, R = 900
+  blurred(ctx, 20, () => { ctx.fillStyle = 'rgba(100,60,100,0.35)'; ctx.beginPath(); ctx.arc(cx + 10, cy - 30, R + 16, 0, Math.PI * 2); ctx.fill() })
+  ctx.save()
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2)
+  const rim = ctx.createRadialGradient(cx, cy, R - 70, cx, cy, R)
+  rim.addColorStop(0, '#e7d9c8'); rim.addColorStop(0.5, '#fbf3ea'); rim.addColorStop(0.8, '#fffaf4'); rim.addColorStop(1, '#d9c2ae')
+  ctx.fillStyle = rim
+  ctx.fill()
+  ctx.clip()
+  // The water inside the rim: aqua, lighter toward the near edge, with a line of light.
+  ctx.beginPath(); ctx.arc(cx, cy, R - 60, 0, Math.PI * 2)
+  const wg = ctx.createLinearGradient(0, cy - R, 0, cy - R + 200)
+  wg.addColorStop(0, '#9fd9df'); wg.addColorStop(1, '#c4ecef')
+  ctx.fillStyle = wg
+  ctx.fill()
+  blurred(ctx, 3, () => { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, R - 74, Math.PI * 1.3, Math.PI * 1.7); ctx.stroke() })
+  for (let i = 0; i < 26; i++) { const a = r.range(Math.PI * 1.25, Math.PI * 1.75), d = r.range(R - 200, R - 70); blob(ctx, cx + Math.cos(a) * d, cy + Math.sin(a) * d, r.range(3, 9), r.range(3, 9), [255, 255, 255], 0.7, 0.5) }
+  ctx.restore()
+  blurred(ctx, 2, () => { ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(cx, cy, R - 8, Math.PI * 1.32, Math.PI * 1.62); ctx.stroke() })
 }
 
 function vignette(ctx: Ctx) {

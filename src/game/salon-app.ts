@@ -13,6 +13,7 @@ import type { Op, SessionSnapshot, TreatmentResult } from '../core/treatments/se
 import { CoopLink, type CoopStatus } from '../net/coop-link.ts'
 import { FloorView, type FloorCustomer, type FloorState } from '../render/floor-view.ts'
 import { openTreatment } from './treatment-glue.ts'
+import { warmCloseUps } from '../render/warmup.ts'
 import { Computer } from '../ui/computer.ts'
 import { FloorHud } from '../ui/floor-hud.ts'
 import { Lobby, openSettings } from '../ui/lobby.ts'
@@ -157,6 +158,7 @@ export class SalonGame {
     this.demo = makeDemo(this.app)
     this.app.stage.addChild(this.demo.view.root)
     this.lobby.showTitle()
+    warmCloseUps(this.app.renderer)
   }
 
   private enterFloor() {
@@ -374,7 +376,7 @@ export class SalonGame {
     // A guest's copy of the salon has not heard back yet: take the lead we just asked for.
     const stations = s.stations.map(st => (st.id === h.stationId && st.lead === null ? { ...st, lead: this.me } : st))
     return openTreatment({
-      app: this.app, overlay: this.ui, state: { stations, customers: s.customers as SalonState['customers'], players: s.players, owned: s.owned },
+      app: this.app, overlay: this.ui, state: { stations, customers: s.customers as SalonState['customers'], players: s.players, owned: s.owned, stats: s.stats, ext: s.ext },
       stationId: h.stationId, me: this.me,
       net: { sendOps: (_st, ops) => h.sendOps(ops), requestSync: () => h.requestSync() },
       onProgress: h.progress, onFinish: h.finish, onLeave: h.leave,

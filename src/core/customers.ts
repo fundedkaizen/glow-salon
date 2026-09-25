@@ -20,20 +20,25 @@ export type Look = {
   /** A headband, a clip, glasses...: 0 is none. */
   accessory: number
   freckles: boolean
-  /** 'female' or 'male': the art picks a face, hair and outfit variant to match. */
-  gender: Gender
-  /** 'young' (teens, students), 'adult' or 'older' (grandparents): the art adds age to match. */
-  age: AgeGroup
+  /** 'female' or 'male'. Every customer, regular and staff member has it (art-only looks may leave it out). */
+  gender?: Gender
+  /** 'young' (teens, students), 'adult' or 'older' (grandparents). Set with gender. */
+  age?: AgeGroup
+  /**
+   * The same, as the art reads it: masculine or not, and age from 0 to 1 (see core/figure.ts). Looks made
+   * here carry it (from gender and age); withFigure fills it from the name for older looks.
+   */
+  figure?: import('./figure.ts').Figure
 }
 
 export const LOOK_SIZES = { skin: 6, hair: 8, hairStyle: 6, outfit: 8, accessory: 4 }
 
 const AGES: readonly AgeGroup[] = ['young', 'adult', 'older']
 /** A look from an older save or message: fill in who they are when it is missing. */
-export function withLookDefaults(look: Partial<Look> & Omit<Look, 'gender' | 'age'>): Look {
+export function withLookDefaults(look: Look): Look {
   const gender: Gender = look.gender === 'male' ? 'male' : 'female'
   const age: AgeGroup = AGES.includes(look.age as AgeGroup) ? (look.age as AgeGroup) : 'adult'
-  return { ...look, gender, age }
+  return { ...look, gender, age, figure: look.figure ?? figureFor(gender, age) }
 }
 
 /**
@@ -44,7 +49,13 @@ export function randomLook(r: Rng, who: { gender?: Gender; age?: AgeGroup } = {}
   const look = { skin: r.int(0, LOOK_SIZES.skin - 1), hair: r.int(0, LOOK_SIZES.hair - 1), hairStyle: r.int(0, LOOK_SIZES.hairStyle - 1), outfit: r.int(0, LOOK_SIZES.outfit - 1), accessory: r.chance(0.5) ? r.int(1, LOOK_SIZES.accessory - 1) : 0, freckles: r.chance(0.2) }
   const gender = who.gender ?? (r.chance(0.62) ? 'female' : 'male')
   const age = who.age ?? r.pick(['young', 'adult', 'adult', 'older'] as const)
-  return { ...look, gender, age }
+  return { ...look, gender, age, figure: figureFor(gender, age, r()) }
+}
+
+/** The art's figure for a gender and age group: young 0.1 to 0.25, adult 0.3 to 0.6, older 0.85 to 1. */
+export function figureFor(gender: Gender, age: AgeGroup, k = 0.5): import('./figure.ts').Figure {
+  const [lo, hi] = age === 'young' ? [0.1, 0.25] : age === 'older' ? [0.85, 1] : [0.3, 0.6]
+  return { masc: gender === 'male', age: Math.round((lo + (hi - lo) * k) * 100) / 100 }
 }
 
 /** A named regular from the story content: always the same look. */

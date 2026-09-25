@@ -7,6 +7,8 @@ import { TreatmentView } from './render/treatment-view.ts'
 import { sfx, Sfx } from './audio/sfx.ts'
 import { CoopLink } from './net/coop-link.ts'
 import { startGame } from './game/game.ts'
+import { warmCloseUps } from './render/warmup.ts'
+import { footPreview } from './render/foot-preview.ts'
 
 /**
  * Boot: one WebGL canvas for the salon and the close-ups, a DOM layer on top for the UI.
@@ -14,6 +16,7 @@ import { startGame } from './game/game.ts'
  * Checks and screenshots: `?view=facial` or `?view=nails` (with `&seed=`, `&step=`, `&tier=`, `&disaster`)
  * opens a close-up directly. Add `&coop=host` in one tab and `&coop=<CODE>` in another to try four hands
  * through the relay: the host leads, the guest helps (the magnifier lamp on extraction steps).
+ * `?view=feet` previews the pedicure art (see render/foot-preview.ts for its options).
  */
 async function boot() {
   const app = new Application()
@@ -22,15 +25,20 @@ async function boot() {
   const ui = document.getElementById('ui')!
   const params = new URLSearchParams(location.search)
   const view = params.get('view')
-  if (view === 'facial' || view === 'nails') closeUp(app, ui, view, params)
+  if (view === 'facial' || view === 'nails') {
+    // `&warm`: warm the close-ups first, as the title screen does, to measure a treatment opened from the game.
+    if (params.has('warm')) { warmCloseUps(app.renderer); await new Promise(r => setTimeout(r, 1500)) }
+    closeUp(app, ui, view, params)
+  } else if (view === 'feet') footPreview(app, debugLook(randomLook(makeRng(Number(params.get('seed') ?? 7))), params), params)
   else await startGame(app, ui)
   document.getElementById('boot')?.classList.add('done')
 }
 
-/** `&skin=N&hair=N&style=N` pin parts of the look (for side-by-side checks of every tone). */
+/** `&skin=N&hair=N&style=N` pin parts of the look (for side-by-side checks of every tone); `&masc`, `&age=0.9` the figure. */
 function debugLook(look: Look, params: URLSearchParams): Look {
   const pin = (k: string) => (params.has(k) ? Number(params.get(k)) : undefined)
-  return { ...look, skin: pin('skin') ?? look.skin, hair: pin('hair') ?? look.hair, hairStyle: pin('style') ?? look.hairStyle }
+  const figure = params.has('masc') || params.has('age') ? { masc: params.has('masc'), age: pin('age') ?? 0.35 } : undefined
+  return { ...look, skin: pin('skin') ?? look.skin, hair: pin('hair') ?? look.hair, hairStyle: pin('style') ?? look.hairStyle, figure }
 }
 
 type DebugMsg = { t: 'ops'; ops: Op[]; from?: number } | { t: 'syncReq'; from?: number } | { t: 'sync'; snap: SessionSnapshot; from?: number }

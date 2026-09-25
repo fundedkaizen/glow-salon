@@ -1,6 +1,8 @@
 import { Texture } from 'pixi.js'
 import type { Look } from '../../core/customers.ts'
 import { HAIR, OUTFIT, SKIN } from '../palette.ts'
+import { hairPalette } from '../hair.ts'
+import { SENIOR_AGE } from '../../core/figure.ts'
 import { blob, blurred, rgba, shade, type Ctx, type RGB } from '../paint.ts'
 import { hexRGB } from './furniture.ts'
 import { canvasTexture, worldCanvas } from './room.ts'
@@ -48,14 +50,14 @@ export const ANCHOR = {
   hairBack: { w: 70, h: 90, x: 35, y: 44 },
 }
 
-const lookKey = (l: Look) => `${l.skin}.${l.hair}.${l.hairStyle}.${l.outfit}.${l.accessory}.${l.freckles ? 1 : 0}`
+const lookKey = (l: Look) => `${l.skin}.${l.hair}.${l.hairStyle}.${l.outfit}.${l.accessory}.${l.freckles ? 1 : 0}.${l.figure ? `${l.figure.masc ? 1 : 0}${l.figure.age >= SENIOR_AGE ? 1 : 0}` : ''}`
 
 export function outfitStyle(l: Look) { return l.outfit % 3 }
 
 export function personTextures(look: Look, role: Role = 'customer', tint = 0xe7799c): PersonTextures {
   const key = `${lookKey(look)}|${role}|${tint}`
   const skin = SKIN[look.skin % SKIN.length]
-  const hair = HAIR[look.hair % HAIR.length]
+  const hair = hairPalette(HAIR[look.hair % HAIR.length], look.figure ?? { masc: false, age: 0.35 })
   const outfit = hexRGB(OUTFIT[look.outfit % OUTFIT.length])
   const style = outfitStyle(look)
   const pants: RGB = style === 1 ? shade(hexRGB(OUTFIT[(look.outfit + 3) % OUTFIT.length]), -0.18) : style === 2 ? [120, 150, 200] : skin.base
@@ -99,7 +101,8 @@ function paintHead(ctx: Ctx, look: Look, skin: SkinT, hair: HairT, e: Expr) {
   if (look.freckles) { ctx.fillStyle = rgba(skin.deep, 0.5); for (const [fx, fy] of [[-14, 3], [-10, 5], [-12, 8], [12, 3], [15, 5], [11, 8]]) { ctx.beginPath(); ctx.arc(cx + fx, cy + fy, 0.8, 0, Math.PI * 2); ctx.fill() } }
   paintFace(ctx, cx + 1.5, cy, e, skin)
   paintHairFront(ctx, look, hair, cx, cy)
-  paintAccessory(ctx, look, cx, cy)
+  // No bow for masculine customers (glasses and flower clips stay).
+  paintAccessory(ctx, look.figure?.masc && look.accessory === 1 ? { ...look, accessory: 0 } : look, cx, cy)
 }
 
 function paintFace(ctx: Ctx, cx: number, cy: number, e: Expr, skin: SkinT) {
@@ -362,7 +365,7 @@ export function portrait(look: Look, size = 96, bg = '#fbe0e8', role: Role = 'cu
   ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2); ctx.fill()
   ctx.save()
   ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2); ctx.clip()
-  const skin = SKIN[look.skin % SKIN.length], hair = HAIR[look.hair % HAIR.length], outfit = hexRGB(OUTFIT[look.outfit % OUTFIT.length])
+  const skin = SKIN[look.skin % SKIN.length], hair = hairPalette(HAIR[look.hair % HAIR.length], look.figure ?? { masc: false, age: 0.35 }), outfit = hexRGB(OUTFIT[look.outfit % OUTFIT.length])
   ctx.scale(s, s)
   ctx.translate(0, -6)
   if (look.hairStyle === 0 || look.hairStyle === 5) paintHairBack(ctx, look, hair)

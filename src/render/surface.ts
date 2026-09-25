@@ -67,7 +67,8 @@ export type SurfaceArt = {
   height: Texture
   bump?: number
   sss: [number, number, number]
-  layers: Record<string, { art: Texture; art2?: Texture; style: LayerStyle }>
+  /** A layer's art, or a painter for it (lazy) that the surface calls when the layer is first needed. */
+  layers: Record<string, { art?: Texture; art2?: Texture; lazy?: () => { art: Texture; art2?: Texture }; style: LayerStyle }>
   /** Bottom to top. */
   order: string[]
 }
@@ -85,8 +86,10 @@ export class Surface {
   time = 0
 
   private renderer: Renderer
+  private art: SurfaceArt
   constructor(renderer: Renderer, art: SurfaceArt, flipMask = 0) {
     this.renderer = renderer
+    this.art = art
     this.wet = RenderTexture.create({ width: MASK_SIZE, height: MASK_SIZE })
     this.skin = skinMesh(art.base, art.height, this.wet.source, art.sss, flipMask, art.bump)
     this.root.addChild(this.skin.mesh)
@@ -94,12 +97,32 @@ export class Surface {
       const def = art.layers[id]
       if (!def) continue
       const rt = RenderTexture.create({ width: MASK_SIZE, height: MASK_SIZE })
-      const { mesh, uniforms } = layerMesh(def.art, def.art2 ?? def.art, rt.source, def.style, MASK_SIZE, flipMask)
+      const art0 = def.art ?? Texture.EMPTY
+      const { mesh, uniforms } = layerMesh(art0, def.art2 ?? art0, rt.source, def.style, MASK_SIZE, flipMask)
       mesh.visible = false
       this.root.addChild(mesh)
       this.layers.set(id, { id, mesh, rt, uniforms, style: def.style, pending: [], resolving: null, hasPaint: false })
     }
     this.stampSprite = new Sprite(Texture.WHITE)
+  }
+
+  /** Paint a lazy layer's art now (its first stamp, or a quiet frame) and bind it. */
+  ensure(id: string) {
+    const def = this.art.layers[id], layer = this.layers.get(id)
+    if (!def?.lazy || !layer) return
+    const made = def.lazy()
+    def.lazy = undefined
+    def.art = made.art
+    def.art2 = made.art2
+    const res = layer.mesh.shader!.resources as Record<string, unknown>
+    res.uArt = made.art.source
+    res.uArt2 = (made.art2 ?? made.art).source
+  }
+
+  /** Paint the next lazy layer, if any (one per call, to spread the work over frames). */
+  warmOne() {
+    for (const id of this.layers.keys()) if (this.art.layers[id]?.lazy) { this.ensure(id); return true }
+    return false
   }
 
   /** Start a layer from the session's coverage grid (seeded grime, a resumed treatment...). */
@@ -133,7 +156,7 @@ export class Surface {
     const sprite = new Sprite(tex)
     this.renderer.render({ container: sprite, target, clear: true })
     tex.destroy(true)
-    if (layer) { layer.hasPaint = any; layer.mesh.visible = any }
+    if (layer) { if (any) this.ensure(id); layer.hasPaint = any; layer.mesh.visible = any }
   }
 
   /** Queue a brush stamp in art space: amount > 0 paints, < 0 erases. */
@@ -142,7 +165,7 @@ export class Surface {
     const layer = this.layers.get(id)
     if (!layer) return
     layer.pending.push({ x, y, r, a: amount })
-    if (amount > 0) { layer.hasPaint = true; layer.mesh.visible = true }
+    if (amount > 0) { this.ensure(id); layer.hasPaint = true; layer.mesh.visible = true }
   }
 
   /** Settle a layer: fade it fully in (1) or out (0). */
@@ -150,7 +173,7 @@ export class Surface {
     const layer = this.layers.get(id)
     if (!layer) return
     layer.resolving = { to, t: 0 }
-    if (to === 1) { layer.hasPaint = true; layer.mesh.visible = true }
+    if (to === 1) { this.ensure(id); layer.hasPaint = true; layer.mesh.visible = true }
   }
 
   /** Remove a layer below a line (the peel). */
@@ -194,6 +217,13 @@ export class Surface {
 
   /** Dry the skin at once (before the reveal photo). */
   dryAll() { this.renderer.render({ container: new Container(), target: this.wet, clear: true }); this.wetPending.length = 0 }
+
+  /** Move the key light (the skin and every layer), for the breathing sway of the highlights. */
+  setLight(x: number, y: number, z: number) {
+    const set = (u: Float32Array) => { u[0] = x; u[1] = y; u[2] = z }
+    set(this.skin.uniforms.uniforms.uLight)
+    for (const l of this.layers.values()) set(l.uniforms.uniforms.uLight)
+  }
 
   setLayerMix(id: string, mix: number) { const l = this.layers.get(id); if (l) l.uniforms.uniforms.uP[0] = mix }
   setLayerTint(id: string, color: number, amount = 1) {

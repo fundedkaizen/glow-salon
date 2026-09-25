@@ -3,6 +3,8 @@ import { ambienceStars, toolTier } from '../core/economy.ts'
 import type { SalonState } from '../core/salon.ts'
 import type { Op, TreatmentResult } from '../core/treatments/session.ts'
 import { TreatmentView } from '../render/treatment-view.ts'
+import { withFigure } from '../core/figure.ts'
+import { personaFor } from '../core/persona.ts'
 
 /**
  * The thin glue between the salon and a treatment close-up. The floor code calls openTreatment() when a
@@ -25,7 +27,7 @@ export type TreatmentNet = {
 export type OpenTreatment = {
   app: Application
   overlay: HTMLElement
-  state: Pick<SalonState, 'stations' | 'customers' | 'players' | 'owned'>
+  state: Pick<SalonState, 'stations' | 'customers' | 'players' | 'owned'> & Partial<Pick<SalonState, 'stats' | 'ext'>>
   stationId: string
   /** This player's number. */
   me: number
@@ -45,7 +47,7 @@ export function openTreatment(o: OpenTreatment): TreatmentView | null {
     app: o.app,
     overlay: o.overlay,
     treatment: customer.plan.treatment,
-    customer: { name: customer.plan.name, look: customer.plan.look, seed: customer.plan.seed, disaster: customer.plan.disaster, wish: customer.plan.wish },
+    customer: { name: customer.plan.name, look: withFigure(customer.plan.look, customer.plan.name, personaFor(customer.plan, { rating: o.state.stats?.ratingBefore ?? 0, bias: o.state.ext?.today.bias }).archetype, customer.plan.seed), seed: customer.plan.seed, disaster: customer.plan.disaster, wish: customer.plan.wish },
     tier: toolTier(o.state.owned, customer.plan.treatment),
     startStep: station.step,
     role,
