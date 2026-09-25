@@ -9,7 +9,7 @@ import { purr, softPop } from '../audio/salon-sfx.ts'
 import { sfx } from '../audio/sfx.ts'
 import { randomLook, type Look } from '../core/customers.ts'
 import { DECOR_ITEM_BY_ID, DECOR_SLOTS, GIFT_BY_ID, GIFT_SLOTS, placeDecor } from '../core/decor.ts'
-import { ITEM_BY_ID } from '../core/economy.ts'
+import { canBuy, ITEM_BY_ID, ITEMS } from '../core/economy.ts'
 import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA_SEATS, stationRect, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
 import { personaFor, storyBeat } from '../core/persona.ts'
 import { hashString, makeRng } from '../core/rng.ts'
@@ -34,6 +34,7 @@ export type FloorCustomer = Omit<Customer, 'path'>
 export type FloorState = {
   phase: Phase
   day: number
+  money?: number
   clock: number
   customers: FloorCustomer[]
   stations: Station[]
@@ -52,8 +53,8 @@ export type FloorHooks = {
   onBoughtHere?: (item: string) => void
   /** The local player starts (or joins) the treatment at a station. */
   onStartTreatment: (stationId: string, customer: FloorCustomer) => void
-  /** The local player sits down at the salon computer. */
-  onOpenComputer: () => void
+  /** The local player sits down at the salon computer (on a given shop tab, when they came from an empty slot). */
+  onOpenComputer: (tab?: 'stations') => void
 }
 
 type Target = { kind: 'station'; id: string; x: number; y: number } | { kind: 'computer'; x: number; y: number } | { kind: 'cat'; x: number; y: number }
@@ -134,6 +135,11 @@ export class FloorView {
   private markerT = 0
   /** Empty slots glowing while a new station waits to be placed. */
   private ghosts: { slot: number; root: Container; ph: number }[] = []
+  /** Empty slots waiting for a future station: a soft plus, brighter when one is affordable. */
+  private spares: { slot: number; root: Container; ph: number }[] = []
+  private sparesLit = false
+  /** The shop tab to open when the player reaches the computer (they tapped an empty slot). */
+  private nextTab: 'stations' | undefined
   private ghostLabel: Container | null = null
   /** A short camera move to something new (a purchase, a placed station). */
   private focus: { x: number; y: number; t: number; dur: number } | null = null
@@ -281,6 +287,7 @@ export class FloorView {
     this.twinkles = []
     this.fish = []
     this.ghosts = []
+    this.spares = []
     this.ghostLabel = null
     const add = (layer: Container, s: Container, x: number, y: number, z = y) => { s.position.set(x, y); s.zIndex = z; layer.addChild(s); this.furniture.push(s); return s }
     /** Decor reads at a glance: nothing smaller than about 56 px. */
@@ -296,6 +303,13 @@ export class FloorView {
     add(this.sortLayer, spriteOf(cached('welcome', paintWelcomeSign)), 118, 704)
     add(this.sortLayer, spriteOf(cached('magazines', paintMagazineTable)), 352, 258)
     add(this.sortLayer, spriteOf(cached('tea', paintTeaCorner)), 54, 334)
+    // Cozy touches in the front of the salon, so it never feels bare: a long soft runner, a reading lamp
+    // and a magazine table in the corner.
+    const runner = spriteOf(cached('baseRug', paintBaseRug))
+    runner.scale.set(0.62, 0.42); runner.tint = 0xd8f3e8; runner.alpha = 0.85
+    add(this.rugLayer, runner, 440, 700)
+    add(this.sortLayer, spriteOf(cached('lamp', paintFloorLamp)), 652, 792)
+    add(this.sortLayer, spriteOf(cached('magazines', paintMagazineTable)), 1228, 770)
     // Empty station slots wait behind a soft folding screen: more room is coming. While a new station waits
     // to be placed, every empty slot glows instead, with a plus to tap.
     const usedSlots = new Set(state.stations.map(s => s.slot))
@@ -315,7 +329,17 @@ export class FloorView {
         continue
       }
       if (firstEmpty && i < 6) add(this.sortLayer, spriteOf(cached('soon', paintSoonScreen)), SLOTS[i].x, SLOTS[i].y + 55, SLOTS[i].y)
-      else { const g = new Graphics().roundRect(-75, -26, 150, 52, 18).stroke({ width: 2, color: 0xd696ac, alpha: 0.28 }); add(this.rugLayer, g, SLOTS[i].x, SLOTS[i].y + 36) }
+      else if (!this.demo) {
+        // A spot for a future station: a soft outline with a plus. Tapping it goes to the shop's stations.
+        const spare = new Container()
+        const g = new Graphics()
+        g.roundRect(-75, -46, 150, 92, 22).fill({ color: 0xffffff, alpha: 0.16 }).stroke({ width: 2, color: 0xd696ac, alpha: 0.45 })
+        g.circle(0, 0, 15).fill({ color: 0xe98aa8, alpha: 0.55 })
+        g.roundRect(-2.5, -8, 5, 16, 2.5).fill({ color: 0xffffff }).roundRect(-8, -2.5, 16, 5, 2.5).fill({ color: 0xffffff })
+        spare.addChild(g)
+        add(this.rugLayer, spare, SLOTS[i].x, SLOTS[i].y)
+        this.spares.push({ slot: i, root: spare, ph: i })
+      }
       firstEmpty = false
     }
     if (unplaced && this.ghosts.length) {
@@ -539,7 +563,9 @@ export class FloorView {
       this.lastSeq = e.seq
       if (e.kind === 'arrive') { sfx.door(); this.doorOpen = Math.max(this.doorOpen, 0.2); this.bellSwing = 1 }
       else if (e.kind === 'bought' && e.item) {
-        const spot = this.itemSpot(e.item)
+        // A new station has no spot yet: look at the glowing empty slots waiting for it.
+        const ghost = state.stations.some(st => st.slot < 0) ? SLOTS[state.stations.find(st => st.slot < 0) ? SLOTS.findIndex((_, i) => !state.stations.some(st => st.slot === i)) : 0] : null
+        const spot = this.itemSpot(e.item) ?? (ghost ? { x: ghost.x, y: ghost.y } : null)
         if (!spot) continue
         const mine = e.player === this.playerId
         if (mine) this.hooks.onBoughtHere?.(e.item)
@@ -583,6 +609,10 @@ export class FloorView {
       const at = SLOTS[g.slot]
       if (Math.abs(p.x - at.x) < 80 && Math.abs(p.y - at.y) < 60) { sfx.click(); this.hooks.onAction({ a: 'place', station: unplaced.id, slot: g.slot }); return }
     }
+    for (const g of this.spares) {
+      const at = SLOTS[g.slot]
+      if (Math.abs(p.x - at.x) < 80 && Math.abs(p.y - at.y) < 50) { sfx.click(); this.nextTab = 'stations'; this.goTo({ kind: 'computer', ...COMPUTER_SPOT }); return }
+    }
     const catPos = this.cat.pos
     if (Math.hypot(p.x - catPos.x, p.y - (catPos.y - 16)) < 34) { this.goTo({ kind: 'cat', x: this.cat.x, y: this.cat.y }); return }
     if (p.x > DESK.x - 10 && p.x < DESK.x + DESK.w + 10 && p.y > DESK.y - 60 && p.y < DESK.y + DESK.h + 10) { this.goTo({ kind: 'computer', ...COMPUTER_SPOT }); return }
@@ -615,7 +645,7 @@ export class FloorView {
   private interactWith(t: Target) {
     if (!this.state) return
     sfx.unlock()
-    if (t.kind === 'computer') { sfx.click(); this.hooks.onOpenComputer(); return }
+    if (t.kind === 'computer') { sfx.click(); const tab = this.nextTab; this.nextTab = undefined; this.hooks.onOpenComputer(tab); return }
     if (t.kind === 'cat') {
       this.cat.pet()
       purr()
@@ -649,6 +679,12 @@ export class FloorView {
       this.updatePrompt(state, dt)
     }
     for (const g of this.ghosts) { g.ph += dt; const k = 1 + Math.sin(g.ph * 3) * 0.035; g.root.scale.set(k); g.root.alpha = 0.75 + 0.25 * Math.sin(g.ph * 3) }
+    // Spare slots glow a little when a new station is affordable today.
+    if (state) {
+      const money = state.money ?? 0
+      this.sparesLit = ITEMS.some(i => i.effect.kind === 'station' && canBuy(state.owned, money, i.id, state.day).ok)
+    }
+    for (const g of this.spares) { g.ph += dt; g.root.alpha = this.sparesLit ? 0.7 + 0.3 * Math.sin(g.ph * 2.4) : 0.45; g.root.scale.set(this.sparesLit ? 1 + Math.sin(g.ph * 2.4) * 0.02 : 1) }
     if (this.ghostLabel) this.ghostLabel.y += Math.sin(this.t * 2.2) * 0.12
     this.updateDoor(dt)
     this.updateAmbient(dt)
@@ -845,7 +881,7 @@ export class FloorView {
         const icon = v.tool.children[1] as Sprite
         const nails = c?.plan.treatment === 'nails'
         icon.texture = nails ? icons.nails() : icons.facial()
-        v.tool.position.set(v.x - 30, v.y - HEAD_TOP - 18 + Math.sin(this.t * 2.6) * 2.5)
+        v.tool.position.set(v.x - 40, v.y - 96 + Math.sin(this.t * 2.6) * 2.5)
         v.tool.rotation = Math.sin(this.t * 3) * 0.06
         v.puff -= dt
         if (v.puff <= 0 && c) {
@@ -1035,7 +1071,9 @@ export class FloorView {
       f.t += dt
       const k = f.t < 0.6 ? easeInOut(f.t / 0.6) : f.t > f.dur - 0.7 ? easeInOut(Math.max(0, (f.dur - f.t) / 0.7)) : 1
       const zs = s * (1 + 0.45 * k)
-      const tx = w / 2 - f.x * zs, ty = h / 2 - f.y * zs
+      // Centre on it, but never show past the room's walls.
+      const tx = Math.min(OUTSIDE_W * zs * 0.3, Math.max(w - FLOOR_W * zs, w / 2 - f.x * zs))
+      const ty = Math.min(0, Math.max(h - FLOOR_H * zs, h / 2 - f.y * zs))
       this.world.scale.set(zs)
       this.world.x += (tx - this.world.x) * k
       this.world.y += (ty - this.world.y) * k

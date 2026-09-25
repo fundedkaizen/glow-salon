@@ -51,7 +51,7 @@
   window.__serve = id => { window.__serving = true; window.__serveLog = ''; serve(id).then(r => { window.__serveLog = r; window.__serving = false }, e => { window.__serveLog = 'ERR ' + e; window.__serving = false }); return 'started' }
   window.__serveNext = () => {
     const s = view()
-    const st = s.stations.find(x => x.lead === null && x.customer !== null && s.customers.find(c => c.id === x.customer)?.state === 'seated' && x.slot >= 0)
+    const st = s.stations.find(x => (!window.__only || x.id === window.__only) && x.id !== window.__skip && x.lead === null && x.customer !== null && s.customers.find(c => c.id === x.customer)?.state === 'seated' && x.slot >= 0)
     if (!st) return ''
     window.__serve(st.id)
     return st.id

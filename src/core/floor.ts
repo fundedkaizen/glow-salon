@@ -31,9 +31,12 @@ export const SLOTS: Pt[] = [
   { x: 330, y: 690 }, { x: 540, y: 690 },
 ]
 
-/** Where a player appears at the start of a day: in front of the reception desk, side by side. */
+/**
+ * Where a player appears at the start of a day: in front of the reception desk, side by side. Far enough
+ * down that the whole figure and its name tag stand clear of the desk (the tag sits about 60 px below it).
+ */
 export function spawnPoint(id: number): Pt {
-  return { x: 150 + (Math.max(0, id) % 4) * 56, y: DESK_BOTTOM + 60 }
+  return { x: 180 + (Math.max(0, id) % 4) * 60, y: DESK_BOTTOM + 192 }
 }
 export const STATION_W = 150
 export const STATION_H = 110

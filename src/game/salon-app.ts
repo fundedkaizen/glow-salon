@@ -163,7 +163,7 @@ export class SalonGame {
     this.floor = new FloorView(this.app, this.me, {
       onAction: a => this.act(a),
       onStartTreatment: (st, c) => this.startTreatment(st, c),
-      onOpenComputer: () => this.openComputer(),
+      onOpenComputer: tab => this.openComputer(tab),
       // Something that stands in the salon was bought here: close the shop so the camera can show it.
       onBoughtHere: item => { const e = ITEM_BY_ID[item]?.effect; if (e && (e.kind === 'decor' || e.kind === 'station' || e.kind === 'treatment')) setTimeout(() => this.computer?.close(), 350) },
     })
@@ -330,11 +330,11 @@ export class SalonGame {
 
   // ------------------------------------------------------------------ the computer
 
-  private openComputer() {
+  private openComputer(tab?: 'stations') {
     const s = this.view()
     if (!s || this.computer) return
     this.floor!.inputEnabled = false
-    this.computer = new Computer(this.ui, { onAction: a => this.act(a), onClose: () => { this.computer = null; if (this.floor) this.floor.inputEnabled = true } })
+    this.computer = new Computer(this.ui, { onAction: a => this.act(a), onClose: () => { this.computer = null; if (this.floor) this.floor.inputEnabled = true } }, tab)
     this.computer.update(s)
   }
 
@@ -418,7 +418,8 @@ export class SalonGame {
       reviewsTotal: s.rating.count, histBefore: histBefore(s), reviews: st.reviews, allReviews: s.reviews, awards: awards(st), players: s.players, owned: s.owned, money: s.money, news,
       goal: goal ? { text: goal.text, reward: goal.reward, done: goal.done } : null,
     }
-    this.receipt = new Receipt(this.ui, data, { onNext: () => { this.receipt = null; this.act({ a: 'next' }); const at = spawnPoint(this.me); this.floor?.placeMe(at.x, at.y); this.newInShop(s.day + 1) } })
+    const tomorrow = s.day + 1
+    this.receipt = new Receipt(this.ui, data, { onNext: () => { this.receipt = null; this.act({ a: 'next' }); const at = spawnPoint(this.me); this.floor?.placeMe(at.x, at.y); this.newInShop(tomorrow) } })
     this.save()
   }
 
