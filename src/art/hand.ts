@@ -8,6 +8,7 @@ import { SKIN, type SkinTone } from './palette.ts'
 import { blob, blurred, canvas, dots, fbm, hex, mixRGB, packHeight, rgba, shade, smoothPath, softBatch, tintedByNoise, warm, type Ctx, type RGB } from './paint.ts'
 import { makeRng as rng2 } from '../core/rng.ts'
 import type { Crop } from './face.ts'
+import { SENIOR_AGE, lookFigure } from '../core/figure.ts'
 
 /**
  * The hand close-up for the manicure, painted in code on the anatomy in core/treatments/anatomy.ts: the
@@ -46,6 +47,13 @@ function fillShapes(ctx: Ctx, shapes: Shape[], style: string) {
  * A finger's outline: it tapers from the knuckle to the tip, bulges a little at each joint and bows
  * slightly, ending in a round pad. The tip stays where the anatomy puts it, so the nail lines up.
  */
+/**
+ * How much wider this hand is painted than the shared geometry (masculine hands: broader fingers and palm, about
+ * the same centre lines). The nails and every logic region stay where anatomy.ts puts them; only the painted
+ * skin reaches a little past the 'hand' region. Set while a hand is painted, like face.ts's OUTLINE.
+ */
+let WIDE = 1
+
 export function fingerOutline(f: Finger, bow = 0): number[] {
   const d = fingerDir(f), n = { x: -d.y, y: d.x }
   const len = Math.hypot(f.tip.x - f.base.x, f.tip.y - f.base.y)
@@ -54,7 +62,7 @@ export function fingerOutline(f: Finger, bow = 0): number[] {
     let w = f.r0 + (f.r1 - f.r0) * Math.pow(Math.max(0, t), 0.9) + (t < 0 ? -t * 30 : 0)
     for (const j of joints) w += 3.2 * Math.exp(-(((t - j) / 0.05) ** 2))
     w -= 2.2 * Math.exp(-(((t - 0.58) / 0.08) ** 2))
-    return w
+    return w * WIDE
   }
   const center = (t: number) => {
     const off = bow * Math.sin(Math.PI * t) * (1 - t)
@@ -74,7 +82,7 @@ export function fingerOutline(f: Finger, bow = 0): number[] {
   const a0 = Math.atan2(n.y, n.x)
   for (let k = 1; k < 8; k++) {
     const a = a0 - (k / 8) * Math.PI
-    cap.push(tip.x + Math.cos(a) * f.r1 * 1.02, tip.y + Math.sin(a) * f.r1 * 1.02)
+    cap.push(tip.x + Math.cos(a) * f.r1 * 1.02 * WIDE, tip.y + Math.sin(a) * f.r1 * 1.02 * WIDE)
   }
   const pts = [...left, ...cap]
   for (let k = right.length - 2; k >= 0; k -= 2) pts.push(right[k], right[k + 1])
@@ -87,7 +95,8 @@ const BOW: Record<string, number> = { thumb: -6, index: 5, middle: 2, ring: -4, 
 function silhouette(): HTMLCanvasElement {
   const [c, ctx] = canvas(S)
   ctx.fillStyle = '#fff'
-  ctx.beginPath(); smoothPath(ctx, HAND.palm); ctx.fill()
+  // The palm, widened about its middle for a broader hand.
+  ctx.beginPath(); smoothPath(ctx, HAND.palm.map((v, i) => (i % 2 ? v : 530 + (v - 530) * WIDE))); ctx.fill()
   for (const f of HAND.fingers) { ctx.beginPath(); smoothPath(ctx, fingerOutline(f, BOW[f.name])); ctx.fill() }
   // The web of skin between the thumb and the index finger.
   ctx.beginPath(); ctx.moveTo(336, 800); ctx.quadraticCurveTo(330, 660, 410, 620); ctx.lineTo(420, 720); ctx.closePath(); ctx.fill()
@@ -107,7 +116,89 @@ function clipTo(ctx: Ctx, mask: HTMLCanvasElement) {
 
 function shapesCanvas(shapes: Shape[]) { const [c, ctx] = canvas(S); fillShapes(ctx, shapes, '#fff'); return c }
 
+/**
+ * A customer's hand. Masculine hands are broader; older hands get deeper knuckle creases and a few soft age
+ * spots; a disaster hand (very dirty, overgrown cuticles) gets yellowed nails under its dark, chipped old polish,
+ * red, sore cuticles and grime in the knuckle creases, all inside the layers the steps clear.
+ */
 export function paintHand(look: Look, seed: number, profile: HandProfile): HandArt {
+  const fig = lookFigure(look)
+  WIDE = fig.masc ? 1.13 : 1
+  try {
+    const art = paintHandArt(look, seed, profile, fig.masc)
+    const skin = SKIN[look.skin % SKIN.length]
+    if (fig.age >= SENIOR_AGE) ageHand(art.base, skin, seed)
+    if (profile.dirt >= 0.7 && profile.cuticle >= 0.8) roughHand(art, skin, seed)
+    return art
+  } finally { WIDE = 1 }
+}
+
+/** Older hands: deeper creases across the knuckles and a few soft brown age spots on the back of the hand. */
+function ageHand(base: HTMLCanvasElement, skin: SkinTone, seed: number) {
+  const ctx = base.getContext('2d')!
+  const r = rng2(seed + 905)
+  softBatch(ctx, 0.8, c => {
+    c.strokeStyle = rgba(mixRGB(skin.shadow, skin.deep, 0.5), 0.45); c.lineWidth = 1.6; c.lineCap = 'round'
+    for (const f of HAND.fingers) for (const t of f.name === 'thumb' ? [0.5] : [0.42, 0.7]) {
+      const d = fingerDir(f), n = { x: -d.y, y: d.x }, w = (f.r0 + (f.r1 - f.r0) * t) * WIDE * 0.7
+      const jx = f.base.x + (f.tip.x - f.base.x) * t, jy = f.base.y + (f.tip.y - f.base.y) * t
+      for (let k = -1; k <= 1; k++) { const o = k * 5; c.beginPath(); c.moveTo(jx - n.x * w + d.x * o, jy - n.y * w + d.y * o); c.quadraticCurveTo(jx + d.x * (o - 5), jy + d.y * (o - 5), jx + n.x * w + d.x * o, jy + n.y * w + d.y * o); c.stroke() }
+    }
+  }, 'multiply')
+  softBatch(ctx, 3, c => { for (let i = 0; i < 9; i++) { c.fillStyle = rgba(mixRGB(skin.deep, [150, 100, 60], 0.3), r.range(0.12, 0.24)); c.beginPath(); c.ellipse(r.range(410, 650), r.range(700, 930), r.range(5, 11), r.range(4, 9), r(), 0, Math.PI * 2); c.fill() } }, 'multiply')
+}
+
+/** A disaster hand, in its layers: yellowed nails, sore red cuticles, darker chipped polish, grimy creases. */
+function roughHand(art: HandArt, skin: SkinTone, seed: number) {
+  const r = rng2(seed + 906)
+  const onTop = (canvasEl: HTMLCanvasElement | undefined, draw: (c: Ctx) => void, op: GlobalCompositeOperation = 'source-atop') => {
+    if (!canvasEl) return
+    const c = canvasEl.getContext('2d')!
+    c.save(); c.globalCompositeOperation = op; draw(c); c.restore()
+  }
+  // Two or three nails yellowed under the polish, darkest at the free edge (the buffer takes it off).
+  const stained = [0, 1, 2, 3, 4].sort(() => r() - 0.5).slice(0, 2 + (r() < 0.5 ? 1 : 0))
+  onTop(art.layers.dull, c => {
+    for (const i of stained) {
+      const nl = nailOf(HAND.fingers[i])
+      const g = c.createLinearGradient(nl.base.x, nl.base.y, nl.tip.x, nl.tip.y)
+      g.addColorStop(0, 'rgba(214,176,92,0.15)'); g.addColorStop(0.55, 'rgba(206,160,70,0.7)'); g.addColorStop(1, 'rgba(160,112,44,0.9)')
+      c.fillStyle = g
+      c.beginPath(); shapePath(c, SHAPES.nailShapes[i]); c.fill()
+      c.strokeStyle = 'rgba(120,80,30,0.4)'; c.lineWidth = 1.2
+      for (let k = 0; k < 4; k++) { const sd = r.range(-0.7, 0.7) * nl.halfWidth; c.beginPath(); c.moveTo(nl.base.x + (nl.tip.x - nl.base.x) * 0.3 - nl.dir.y * sd, nl.base.y + (nl.tip.y - nl.base.y) * 0.3 + nl.dir.x * sd); c.lineTo(nl.tip.x - nl.dir.y * sd, nl.tip.y + nl.dir.x * sd); c.stroke() }
+    }
+  })
+  // Sore cuticles: an angry red flush round each nail's base (the pusher clears it with the cuticle).
+  onTop(art.layers.cuticle, c => {
+    for (const f of HAND.fingers) {
+      const nl = nailOf(f)
+      const g = c.createRadialGradient(nl.base.x, nl.base.y, 2, nl.base.x, nl.base.y, nl.halfWidth * 1.5)
+      g.addColorStop(0, 'rgba(214,72,84,0.75)'); g.addColorStop(1, 'rgba(214,72,84,0)')
+      c.fillStyle = g
+      c.fillRect(nl.base.x - 60, nl.base.y - 60, 120, 120)
+    }
+  })
+  // The old polish, darker and scuffed.
+  onTop(art.layers.oldPolish, c => {
+    c.globalCompositeOperation = 'multiply'
+    c.fillStyle = 'rgba(150,120,120,1)'; c.fillRect(0, 0, S, S)
+    c.globalCompositeOperation = 'source-atop'
+    c.strokeStyle = 'rgba(255,255,255,0.3)'; c.lineWidth = 1.4
+    for (let i = 0; i < 140; i++) { const x = r.range(180, 760), y = r.range(220, 700); c.beginPath(); c.moveTo(x, y); c.lineTo(x + r.range(-16, 16), y + r.range(-6, 6)); c.stroke() }
+  })
+  // Grime ground into the knuckle creases (the scrub and the massage clear the dry skin it sits in).
+  onTop(art.layers.dry, c => {
+    c.strokeStyle = rgba(mixRGB(skin.deep, [70, 52, 36], 0.6), 0.6); c.lineWidth = 2.2; c.lineCap = 'round'
+    for (const f of HAND.fingers) for (const t of f.name === 'thumb' ? [0.5, -0.1] : [0.42, 0.7, -0.08]) {
+      const d = fingerDir(f), n = { x: -d.y, y: d.x }, w = f.r0 * 0.6
+      const jx = f.base.x + (f.tip.x - f.base.x) * t, jy = f.base.y + (f.tip.y - f.base.y) * t + (t < 0 ? 30 : 0)
+      for (let k = 0; k < 2; k++) { const o = k * 6 - 3; c.beginPath(); c.moveTo(jx - n.x * w + d.x * o, jy - n.y * w + d.y * o); c.quadraticCurveTo(jx + d.x * (o - 4), jy + d.y * (o - 4), jx + n.x * w + d.x * o, jy + n.y * w + d.y * o); c.stroke() }
+    }
+  }, 'source-over')
+}
+
+function paintHandArt(look: Look, seed: number, profile: HandProfile, masc: boolean): HandArt {
   const grown = profile.grown
   const skin = SKIN[look.skin % SKIN.length]
   const r = makeRng(seed + 400)
@@ -342,7 +433,7 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
     })
   }
 
-  const jewel = paintJewellery(ctx, skin, seed)
+  const jewel = paintJewellery(ctx, skin, seed, masc)
 
   // ---------------------------------------------------------------- height
   const [height, hctx] = canvas(S)
@@ -653,11 +744,12 @@ const GEMS: RGB[] = [[120, 190, 240], [240, 110, 150], [150, 220, 170], [190, 15
  * Returns their silhouette (white), which lifts them in the height map, makes them shine, and keeps the
  * treatment layers off them.
  */
-function paintJewellery(ctx: Ctx, skin: SkinTone, seed: number): HTMLCanvasElement {
+function paintJewellery(ctx: Ctx, skin: SkinTone, seed: number, masc = false): HTMLCanvasElement {
   const r = rng2(seed + 777)
   const [sil, sctx] = canvas(S)
   const metal = r.pick(METALS)
-  const rings = r.pick([0, 1, 1, 2, 2])
+  // About half the hands wear a ring (fewer men); a few wear two.
+  const rings = r.pick(masc ? [0, 0, 0, 0, 1] : [0, 0, 0, 1, 1, 2])
   const fingers = [2, 3, 1, 4].slice(0, rings)
   for (const fi of fingers) {
     const f = HAND.fingers[fi], d = fingerDir(f), n = { x: -d.y, y: d.x }
@@ -695,9 +787,9 @@ function paintJewellery(ctx: Ctx, skin: SkinTone, seed: number): HTMLCanvasEleme
       sctx.fillStyle = '#fff'; sctx.beginPath(); sctx.arc(gx, gy, 10, 0, Math.PI * 2); sctx.fill()
     }
   }
-  if (r() < 0.55) {
-    // A bracelet across the wrist, sagging a little in the middle.
-    const pearls = r() < 0.5
+  if (r() < (masc ? 0.15 : 0.55)) {
+    // A bracelet across the wrist, sagging a little in the middle (on a man, gold beads, not pearls).
+    const pearls = r() < 0.5 && !masc
     const beads: { x: number; y: number }[] = []
     for (let x = 372; x <= 676; x += pearls ? 17 : 14) beads.push({ x, y: 902 + 12 * Math.sin(((x - 372) / 304) * Math.PI) })
     softBatch(ctx, 4, k => { k.fillStyle = rgba(skin.deep, 0.4); for (const b of beads) { k.beginPath(); k.arc(b.x + 2, b.y + 6, pearls ? 9 : 7.5, 0, Math.PI * 2); k.fill() } }, 'multiply')
