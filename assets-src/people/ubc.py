@@ -210,7 +210,7 @@ def materials(kind):
     gs.mat('Skin', 0xffffff, rough=0.55, image=image(f'skin_{kind}.jpg'), sheen=0.3)
     eye = image('eye.jpg')
     gs.mat('Eyes', 0x6a9fd0, rough=0.08, image=eye)
-    gs.mat('EyeWhite', 0xffffff, rough=0.08, image=eye)
+    gs.mat('EyeWhite', 0xf8f4f2, rough=0.08, emit=0x2a2828)
     _multiply(bpy.data.materials['Eyes'])
     gs.mat('EyeShine', 0xffffff, rough=0.2, emit=0xffffff)
     gs.mat('Lashes', 0x2e2228, rough=0.5)
@@ -247,16 +247,48 @@ def _normal(m, img):
 
 
 def assign_eyes(eyes):
-    """Iris and pupil (the middle of the eye texture) get 'Eyes', tinted with the Look's eye colour; the white of
-    the eye gets 'EyeWhite', left as it is."""
+    """The eyeball is a plain warm white (EyeWhite); the iris is a separate disc on its front (see iris_discs) with the
+    iris texture and the Eyes material, which the Look's eye colour tints, so the tint never reaches the white."""
     eyes.data.materials.clear()
     eyes.data.materials.append(bpy.data.materials['EyeWhite'])
-    eyes.data.materials.append(bpy.data.materials['Eyes'])
-    uv = eyes.data.uv_layers.active
     for p in eyes.data.polygons:
-        u = sum(uv.data[i].uv.x for i in p.loop_indices) / p.loop_total
-        v = sum(uv.data[i].uv.y for i in p.loop_indices) / p.loop_total
-        p.material_index = 1 if ((u - 0.5) ** 2 + (v - 0.5) ** 2) ** 0.5 < 0.215 else 0
+        p.material_index = 0
+
+
+def iris_discs(eyes, frac=0.47):
+    """A slightly domed iris disc on the front of each eyeball, frac of the eyeball's width across, facing forward."""
+    out = []
+    for c, r, s in eye_centres(eyes):
+        # the eyeball's own centre and front: the front is its most forward point
+        side = [v.co for v in eyes.data.vertices if v.co.x * s > 0]
+        front = min(side, key=lambda p: p.y)
+        ctr = sum(side, Vector()) / len(side)
+        rad = (front - ctr).length
+        # look up a little, toward the high floor camera
+        n = ((front - ctr).normalized() + Vector((0, 0, 0.1))).normalized()
+        R = r * frac
+        bm = bmesh.new()
+        bmesh.ops.create_circle(bm, cap_ends=True, segments=24, radius=R)
+        bmesh.ops.triangulate(bm, faces=bm.faces[:])
+        bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=1, use_grid_fill=True)
+        uv = bm.loops.layers.uv.new('UVMap')
+        for f in bm.faces:
+            for l in f.loops:
+                x, y = l.vert.co.x, l.vert.co.y
+                l[uv].uv = (0.5 + x / R * 0.115, 0.5 + y / R * 0.115)
+        for v in bm.verts:
+            d2 = (v.co.x ** 2 + v.co.y ** 2) / (R * R)
+            v.co.z = 0.18 * R * (1 - d2)  # a gentle dome
+        o = gs.mesh_obj('iris', bm)
+        q = n.to_track_quat('Z', 'Y')
+        o.rotation_mode = 'QUATERNION'
+        o.rotation_quaternion = q
+        o.location = ctr + n * (rad - 0.12 * R)
+        gs.apply_all(o)
+        gs.set_mats(o, ['Eyes'])
+        gs.shade_smooth(o)
+        out.append(o)
+    return out
 
 
 def assign(o, mat_name):
@@ -359,7 +391,7 @@ def eye_extras(eyes, lashes=True):
     for c, r, s in eye_centres(eyes):
         # the catchlight: up and to the viewer's left on both eyes, on the eyeball's surface
         dx, dz = -0.32 * r, 0.34 * r
-        dy = -math.sqrt(max(0.0, (r * 1.02) ** 2 - dx * dx - dz * dz))
+        dy = -math.sqrt(max(0.0, (r * 1.08) ** 2 - dx * dx - dz * dz))
         bm = bmesh.new()
         bmesh.ops.create_circle(bm, cap_ends=True, segments=10, radius=r * 0.17)
         o = gs.mesh_obj('shine', bm)
@@ -435,6 +467,62 @@ def soften_brows(brows, lift=0.007, thin=0.65):
         if not vs:
             continue
         cz = sum(v.co.z for v in vs) / len(vs)
+        xs = [abs(v.co.x) for v in vs]
+        x0, x1 = min(xs), max(xs)
         for v in vs:
-            v.co.z = cz + (v.co.z - cz) * thin + lift
+            # a friendly arch: the inner ends up (a frown is the inner ends down), the middle a touch higher
+            u = (abs(v.co.x) - x0) / max(x1 - x0, 1e-4)
+            v.co.z = cz + (v.co.z - cz) * thin + lift + 0.009 * (1 - u) ** 1.5 + 0.003 * math.sin(u * math.pi)
     brows.data.update()
+
+
+def cartoonify(body, eyes, brows, jaw=0.82, cheeks=1.07, tilt=6.0, smile=0.005):
+    """From realistic toward Serenity's cartoon faces: a shorter lower face (the jaw and chin pulled up toward the eyes),
+    fuller cheeks, eyes tilted level to slightly upturned at the outer corners, and the mouth's corners lifted."""
+    cs = eye_centres(eyes)
+    eye_z = sum(c.z for c, r, s in cs) / 2
+    er = cs[0][1]
+    hg = body.vertex_groups.get('Head')
+    hid = hg.index if hg else -1
+    def head_w(v):
+        return sum(g.weight for g in v.groups if g.group == hid)
+    front_y = min(v.co.y for v in body.data.vertices if head_w(v) > 0.5)
+    chin_z = min(v.co.z for v in body.data.vertices if head_w(v) > 0.5 and v.co.y < front_y + 0.05)
+    lower = eye_z - chin_z
+    mouth_z = eye_z - 0.62 * lower
+    mouth_hw = abs(cs[0][0].x) * 0.55
+    t = math.tan(math.radians(tilt))
+
+    def warp(p, w, is_eye=False, tilt_on=True):
+        q = p.copy()
+        # eyes: tilt the outer corners up (a shear about each eye's centre); never the brows (that makes a frown)
+        for c, r, s in (cs if tilt_on else ()):
+            d = (p - c).length
+            R = r * 2.4
+            if d < R:
+                k = 1.0 if is_eye else (1 - (d / R) ** 2) ** 2
+                q.z += t * (p.x - c.x) * (1 if c.x > 0 else -1) * k
+        if w <= 0 or is_eye:
+            return q
+        # the lower face: pulled up toward the eye line, fuller at the cheeks
+        if p.z < eye_z:
+            f = (eye_z - p.z) / max(lower, 1e-4)
+            q.z = eye_z - (eye_z - p.z) * (1 - (1 - jaw) * min(1.0, f) * w)
+            band = max(0.0, 1 - abs(f - 0.45) / 0.45)
+            q.x = p.x * (1 + (cheeks - 1) * band * w)
+        # the smile: the mouth's corners up
+        if p.y < front_y + 0.04 and abs(p.z - mouth_z) < 0.018 and abs(p.x) < mouth_hw * 1.4:
+            u = abs(p.x) / mouth_hw
+            q.z += smile * max(0.0, min(1.0, u)) ** 2 * (1 - abs(p.z - mouth_z) / 0.018) * w
+        return q
+
+    for v in eyes.data.vertices:
+        v.co = warp(v.co, 1.0, True)
+    for o in (body, brows):
+        g = o.vertex_groups.get('Head')
+        gi = g.index if g else -1
+        for v in o.data.vertices:
+            w = sum(x.weight for x in v.groups if x.group == gi) if o is body else 1.0
+            v.co = warp(v.co, w, tilt_on=o is body)
+    for o in (body, eyes, brows):
+        o.data.update()

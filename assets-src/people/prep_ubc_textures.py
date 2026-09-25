@@ -46,7 +46,17 @@ def skin(src, dst, size=1024):
                 op[x, y] = (v, v, v)
                 continue
             op[x, y] = (min(255, int(r / mr * k * 255)), min(255, int(g / mg * k * 255)), min(255, int(b / mb * k * 255)))
-    out.save(dst, quality=88, optimize=True)
+    # flatten the broad tone (the face region is paler than the body in the source): divide by a heavy blur, so one
+    # Skin tint matches everywhere while lips, blush and lids keep their local detail
+    from PIL import ImageFilter
+    import numpy as np
+    a = np.asarray(out, dtype=np.float32)
+    grey = np.asarray(out.filter(ImageFilter.GaussianBlur(size / 24)), dtype=np.float32)
+    flat = a / np.maximum(grey, 1.0) * (k * 255)
+    mask = np.asarray(im, dtype=np.int16)
+    skinmask = (mask[:, :, 0] > mask[:, :, 1] + 6) & (mask[:, :, 1] >= mask[:, :, 2] - 4)
+    a[skinmask] = flat[skinmask]
+    Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)).save(dst, quality=88, optimize=True)
     return (mr, mg, mb)
 
 
@@ -59,13 +69,13 @@ def hair(src, dst, size=512):
     Image.merge('RGB', (g, g, g)).save(dst, quality=88, optimize=True)
 
 
-def eye(src, dst, size=256, iris=0.21):
+def eye(src, dst, size=256, iris=0.115):
     """A cartoon eye for the eyeball's front (its UV centre): a white sclera and a big iris, dark at the top and light
     at the bottom, a dark ring at its rim and a pupil. Grey, so the Eyes material's colour tints it; the catchlight is
     a separate white card in front of the eye (the tint would colour a painted one)."""
     ss = 4
     W = size * ss
-    im = Image.new('RGB', (W, W), (248, 246, 244))
+    im = Image.new('RGB', (W, W), (248, 244, 242))
     d = ImageDraw.Draw(im)
     cx = cy = W / 2
     R = iris * W

@@ -132,7 +132,8 @@ def build(kind):
     ubc.smooth_muscles(body, ubc.PROFILE[kind]['smooth'])
     for o in (body, eyes, brows):
         unskin(o)
-    ubc.enlarge_eyes(body, eyes, brows, 1.5, open_lids=1.5)
+    ubc.enlarge_eyes(body, eyes, brows, 1.7, open_lids=1.5)
+    ubc.cartoonify(body, eyes, brows)
     ubc.soften_brows(brows)
     rig.load_mocap(arm)
     J = rig.joints(arm)
@@ -152,7 +153,8 @@ def build(kind):
     head.name = head.data.name = f'head_{kind}'
     ubc.lighten_sockets(head, eyes, kind)
     shine, lash = ubc.eye_extras(eyes, lashes=kind == 'fem')
-    eyes = gs.join([eyes, *shine], 'eyes')
+    irises = ubc.iris_discs(eyes)
+    eyes = gs.join([eyes, *irises, *shine], 'eyes')
     if lash:
         brows = gs.join([brows, *lash], 'brows')
     eyes.name = eyes.data.name = 'eyes'
