@@ -6,7 +6,6 @@ import type { Profile } from '../core/treatments/profile.ts'
 import type { LayerStyle, SurfaceArt } from '../render/surface.ts'
 import { paintFace, type Crop } from './face.ts'
 import { paintHand } from './hand.ts'
-import { normalFromHeight } from './normal.ts'
 import { paintBackdrop } from './backdrop.ts'
 import { paintSteamTowel } from './props.ts'
 import { paintPimples } from './pimples.ts'
@@ -16,7 +15,7 @@ import { paintPimples } from './pimples.ts'
  * (face.ts, hand.ts); a painted image can replace any of them later without touching the game logic, as
  * long as it lines up with core/treatments/anatomy.ts on a 1024 x 1024 sheet:
  *
- *   base    the body part itself (albedo)        height  greyscale bumps (pores, form) for the lighting
+ *   base    the body part itself (albedo)        height  greyscale bumps (pores, form); the shader lights it
  *   layers  one sheet per treatment layer (grime, foam, clay, polish...), shown where the tools put it
  *   overlays  expression crops (eyes, brows, mouth) at fixed positions
  */
@@ -78,7 +77,7 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
       layers[id] = { art: tex(canvas), art2: id === 'mask' ? tex(art.maskDry) : undefined, style: FACE_STYLES[id] ?? { gloss: 0.2, relief: 0.5 } }
     }
     return {
-      surface: { base: tex(art.base), normal: tex(normalFromHeight(art.height, 2.4)), sss: [0.95, 0.32, 0.26], layers, order },
+      surface: { base: tex(art.base), height: tex(art.height), bump: 2.4, sss: [0.95, 0.32, 0.26], layers, order },
       backdrop: tex(paintBackdrop('facial', look)),
       features: { eyes: toTex(art.eyes), brows: toTex(art.brows), mouth: toTex(art.mouth) },
       towel: tex(paintSteamTowel(seed)),
@@ -95,7 +94,7 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
     layers[id] = { art: tex(canvas), style: HAND_STYLES[id] ?? { gloss: 0.2, relief: 0.5 } }
   }
   return {
-    surface: { base: tex(art.base), normal: tex(normalFromHeight(art.height, 4)), sss: [0.95, 0.35, 0.28], layers, order },
+    surface: { base: tex(art.base), height: tex(art.height), bump: 4, sss: [0.95, 0.35, 0.28], layers, order },
     backdrop: tex(paintBackdrop('nails', look)),
     tips: art.tips.map(cropTex),
     skinRGB: art.skin.base,

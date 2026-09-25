@@ -23,8 +23,9 @@ const skinFragment = /* glsl */ `
 in vec2 vUV;
 out vec4 finalColor;
 uniform sampler2D uAlbedo;
-uniform sampler2D uNormal;
+uniform sampler2D uHeight;
 uniform sampler2D uWet;
+uniform vec3 uBump;   // x texel size, y fine strength, z soft strength
 uniform vec3 uLight;
 uniform vec4 uSkin;   // x steam flush, y wet everywhere, z time, w dewy sheen after moisturiser
 uniform vec3 uSss;
@@ -33,12 +34,20 @@ uniform float uFlipMask;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
+// Normals straight from the height map: fine ones (pores) and soft ones (the form, from a blurrier mip).
+vec3 normalAt(vec2 uv, float spread, float bias, float strength) {
+  vec2 dx = vec2(uBump.x * spread, 0.0), dy = vec2(0.0, uBump.x * spread);
+  float hx = texture(uHeight, uv + dx, bias).r - texture(uHeight, uv - dx, bias).r;
+  float hy = texture(uHeight, uv + dy, bias).r - texture(uHeight, uv - dy, bias).r;
+  return normalize(vec3(-hx * strength, -hy * strength, 1.0));
+}
+
 void main() {
   vec4 alb = texture(uAlbedo, vUV);
   if (alb.a < 0.003) discard;
   vec3 base = alb.rgb / alb.a;
-  vec3 n = normalize(texture(uNormal, vUV).xyz * 2.0 - 1.0);
-  vec3 nSoft = normalize(texture(uNormal, vUV, 3.5).xyz * 2.0 - 1.0);
+  vec3 n = normalAt(vUV, 1.0, 0.0, uBump.y);
+  vec3 nSoft = normalAt(vUV, 10.0, 3.0, uBump.z);
   vec3 L = normalize(uLight);
   float ndl = dot(nSoft, L);
   float wrap = clamp((ndl + 0.5) / 1.5, 0.0, 1.0);
@@ -119,18 +128,18 @@ export function artQuad(size = 1024) {
 /** Light from the top left, a little in front: the same for every close-up so they match. */
 export const LIGHT: [number, number, number] = [-0.32, -0.5, 0.8]
 
-export type SkinUniforms = UniformGroup<{ uLight: { value: Float32Array; type: 'vec3<f32>' }; uSkin: { value: Float32Array; type: 'vec4<f32>' }; uSss: { value: Float32Array; type: 'vec3<f32>' }; uFlipMask: { value: number; type: 'f32' } }>
-
-export function skinMesh(albedo: Texture, normal: Texture, wet: TextureSource, sss: [number, number, number], flipMask: number) {
+/** `height` is a greyscale height map (the form and the pores); the shader derives the normals from it. */
+export function skinMesh(albedo: Texture, height: Texture, wet: TextureSource, sss: [number, number, number], flipMask: number, bump = 2.4) {
   const uniforms = new UniformGroup({
     uLight: { value: new Float32Array(LIGHT), type: 'vec3<f32>' },
     uSkin: { value: new Float32Array([0, 0, 0, 0]), type: 'vec4<f32>' },
     uSss: { value: new Float32Array(sss), type: 'vec3<f32>' },
     uFlipMask: { value: flipMask, type: 'f32' },
+    uBump: { value: new Float32Array([1 / height.width, bump * 4, bump * 0.6]), type: 'vec3<f32>' },
   })
   const shader = new Shader({
     glProgram: GlProgram.from({ vertex, fragment: skinFragment, name: 'glow-skin' }),
-    resources: { uAlbedo: albedo.source, uNormal: normal.source, uWet: wet, skinUniforms: uniforms },
+    resources: { uAlbedo: albedo.source, uHeight: height.source, uWet: wet, skinUniforms: uniforms },
   })
   const mesh = new Mesh({ geometry: artQuad(), shader })
   return { mesh, uniforms }

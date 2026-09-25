@@ -63,7 +63,9 @@ function brushes() {
 
 export type SurfaceArt = {
   base: Texture
-  normal: Texture
+  /** Greyscale height (form and pores); the skin shader lights it. */
+  height: Texture
+  bump?: number
   sss: [number, number, number]
   layers: Record<string, { art: Texture; art2?: Texture; style: LayerStyle }>
   /** Bottom to top. */
@@ -86,7 +88,7 @@ export class Surface {
   constructor(renderer: Renderer, art: SurfaceArt, flipMask = 0) {
     this.renderer = renderer
     this.wet = RenderTexture.create({ width: MASK_SIZE, height: MASK_SIZE })
-    this.skin = skinMesh(art.base, art.normal, this.wet.source, art.sss, flipMask)
+    this.skin = skinMesh(art.base, art.height, this.wet.source, art.sss, flipMask, art.bump)
     this.root.addChild(this.skin.mesh)
     for (const id of art.order) {
       const def = art.layers[id]

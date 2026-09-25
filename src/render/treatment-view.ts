@@ -125,7 +125,9 @@ export class TreatmentView {
     const { app, treatment, customer } = opts
     this.session = new TreatmentSession({ treatment, seed: customer.seed, disaster: customer.disaster, tier: opts.tier, wish: treatment === 'nails' ? customer.wish : undefined, startStep: opts.startStep })
     const order = this.session.def.layers.map(l => l.id)
+    const t0 = performance.now()
     this.assets = assetsFor(treatment, customer.look, customer.seed, order, this.session.profile)
+    this.buildMs = Math.round(performance.now() - t0)
     this.surface = new Surface(app.renderer, this.assets.surface, 0)
     this.foam = new FoamField(this.fx, (x, y) => this.coverage('foam', x, y))
 
@@ -1152,6 +1154,8 @@ export class TreatmentView {
     }
   }
   private cardShown = false
+  /** How long painting this customer's art took (ms), for performance checks. */
+  buildMs = 0
 
   private savePhoto() {
     sfx.shutter()
