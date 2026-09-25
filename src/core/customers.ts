@@ -31,7 +31,7 @@ export type Look = {
   figure?: import('./figure.ts').Figure
 }
 
-export const LOOK_SIZES = { skin: 6, hair: 8, hairStyle: 6, outfit: 8, accessory: 4 }
+export const LOOK_SIZES = { skin: 6, hair: 8, hairStyle: 7, outfit: 8, accessory: 4 }
 
 const AGES: readonly AgeGroup[] = ['young', 'adult', 'older']
 /** A look from an older save or message: fill in who they are when it is missing. */

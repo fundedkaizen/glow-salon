@@ -61,7 +61,7 @@ export function personTextures(look: Look, role: Role = 'customer', tint = 0xe77
   const outfit = hexRGB(OUTFIT[look.outfit % OUTFIT.length])
   const style = outfitStyle(look)
   const pants: RGB = style === 1 ? shade(hexRGB(OUTFIT[(look.outfit + 3) % OUTFIT.length]), -0.18) : style === 2 ? [120, 150, 200] : skin.base
-  const long = look.hairStyle === 0 || look.hairStyle === 5
+  const long = look.hairStyle === 0 || look.hairStyle === 5 || look.hairStyle === 6
   return {
     hairBack: long ? tex(`hb|${key}`, ANCHOR.hairBack.w, ANCHOR.hairBack.h, ctx => paintHairBack(ctx, look, hair)) : null,
     body: tex(`b|${key}`, ANCHOR.body.w, ANCHOR.body.h, ctx => paintBody(ctx, look, outfit, skin.base, role, tint)),
@@ -168,7 +168,7 @@ function sheen(ctx: Ctx, hair: HairT, cx: number, cy: number, r: number) {
 
 function paintHairFront(ctx: Ctx, look: Look, hair: HairT, cx: number, cy: number) {
   const R = P.headR
-  const style = look.hairStyle % 6
+  const style = look.hairStyle % 7
   ctx.fillStyle = hairFill(ctx, hair, cx - R, cy - R - 6, cx + R, cy + 6)
   ctx.beginPath()
   if (style === 3) {
@@ -209,6 +209,11 @@ function paintHairFront(ctx: Ctx, look: Look, hair: HairT, cx: number, cy: numbe
   ctx.strokeStyle = rgba(hair.dark, 0.35); ctx.lineWidth = 0.9
   for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(cx + i * 5, cy - R - 2); ctx.quadraticCurveTo(cx + i * 6 + 3, cy - 12, cx + i * 7, cy - 6); ctx.stroke() }
   sheen(ctx, hair, cx, cy - 4, R - 1)
+  if (style === 6) {
+    // Braids: a clean centre parting.
+    ctx.strokeStyle = rgba(shade(hair.dark, -0.2), 0.7); ctx.lineWidth = 1.2
+    ctx.beginPath(); ctx.moveTo(cx, cy - R - 1); ctx.quadraticCurveTo(cx + 1, cy - R * 0.6, cx, cy - 10); ctx.stroke()
+  }
   if (style === 2) {
     // Top bun.
     ctx.fillStyle = hairFill(ctx, hair, cx - 10, cy - R - 20, cx + 10, cy - R)
@@ -222,6 +227,24 @@ function paintHairBack(ctx: Ctx, look: Look, hair: HairT) {
   const cx = ANCHOR.hairBack.x, cy = ANCHOR.hairBack.y, R = P.headR
   ctx.fillStyle = hairFill(ctx, hair, cx - R, cy - R, cx + R, cy + 40)
   ctx.beginPath()
+  if (look.hairStyle === 6) {
+    // Two plaits hanging down behind the shoulders: a chain of little lobes each side, and a tie.
+    ctx.arc(cx, cy - 4, R + 1, 0, Math.PI * 2)
+    ctx.fill()
+    outline(ctx, hair.dark, 0.55, 1.1)
+    for (const sd of [-1, 1]) {
+      for (let k = 0; k < 6; k++) {
+        const x = cx + sd * (R - 3 + k * 0.6) + (k % 2 ? sd * 1.5 : -sd * 1.5), y = cy + 4 + k * 6.5
+        ctx.fillStyle = hairFill(ctx, hair, x - 5, y - 5, x + 5, y + 5)
+        ctx.beginPath(); ctx.ellipse(x, y, 5.2 - k * 0.3, 4.2, sd * (k % 2 ? 0.5 : -0.5), 0, Math.PI * 2); ctx.fill()
+        outline(ctx, hair.dark, 0.5, 0.9)
+        blob(ctx, x - 1.5, y - 1.5, 2, 1.2, hair.light, 0.6)
+      }
+      ctx.fillStyle = rgba(hexRGB(OUTFIT[(look.outfit + 5) % OUTFIT.length]))
+      ctx.beginPath(); ctx.roundRect(cx + sd * (R + 1) - 3, cy + 41, 6, 3, 1.5); ctx.fill()
+    }
+    return
+  }
   if (look.hairStyle === 5) {
     // A ponytail swinging to the side.
     ctx.arc(cx, cy - 4, R + 1, 0, Math.PI * 2)
@@ -368,7 +391,7 @@ export function portrait(look: Look, size = 96, bg = '#fbe0e8', role: Role = 'cu
   const skin = SKIN[look.skin % SKIN.length], hair = hairPalette(HAIR[look.hair % HAIR.length], lookFigure(look)), outfit = hexRGB(OUTFIT[look.outfit % OUTFIT.length])
   ctx.scale(s, s)
   ctx.translate(0, -6)
-  if (look.hairStyle === 0 || look.hairStyle === 5) paintHairBack(ctx, look, hair)
+  if (look.hairStyle === 0 || look.hairStyle === 5 || look.hairStyle === 6) paintHairBack(ctx, look, hair)
   ctx.save(); ctx.translate(35 - ANCHOR.body.x, 58); paintBody(ctx, look, outfit, skin.base, role, tint); ctx.restore()
   paintHead(ctx, look, skin, hair, 'happy')
   ctx.restore()

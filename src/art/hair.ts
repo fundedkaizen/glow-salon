@@ -7,7 +7,7 @@ import { blob, mixRGB, rgba, shade, smoothPath, softBatch, type Ctx, type RGB } 
 /**
  * Hair for the face close-up (the customer lies face up on a pillow, a spa band holding the hair back). One
  * style per floor-sprite style, so the close-up matches the person who walked in: long, bob, bun, curls,
- * crop, ponytail (Look.hairStyle 0 to 5).
+ * crop, ponytail, braids (Look.hairStyle 0 to 6).
  *
  * Hair is painted as clumps (tapered locks, each shaded across its width) with hundreds of fine strands
  * following them, and an anisotropic sheen: a ring of light around the crown where the strands turn toward
@@ -15,9 +15,9 @@ import { blob, mixRGB, rgba, shade, smoothPath, softBatch, type Ctx, type RGB } 
  * every soft pass is a single blur, so a full head costs a few tens of milliseconds.
  */
 export type HairPal = { base: RGB; light: RGB; dark: RGB }
-export type HairStyle = 'long' | 'bob' | 'bun' | 'curly' | 'crop' | 'pony'
-export const HAIR_STYLES: HairStyle[] = ['long', 'bob', 'bun', 'curly', 'crop', 'pony']
-export const styleOf = (n: number): HairStyle => HAIR_STYLES[((n % 6) + 6) % 6]
+export type HairStyle = 'long' | 'bob' | 'bun' | 'curly' | 'crop' | 'pony' | 'braids'
+export const HAIR_STYLES: HairStyle[] = ['long', 'bob', 'bun', 'curly', 'crop', 'pony', 'braids']
+export const styleOf = (n: number): HairStyle => HAIR_STYLES[((n % HAIR_STYLES.length) + HAIR_STYLES.length) % HAIR_STYLES.length]
 
 type P = { x: number; y: number }
 
@@ -177,45 +177,187 @@ function flyaways(ctx: Ctx, pal: HairPal, r: Rng, at: () => { p: P; dir: number 
   S.flush(ctx)
 }
 
+// ---------------------------------------------------------------- flow
+
+/**
+ * Fine strands filling an area, each flowing toward a target (the crown, a bun, a tie) with a gentle bend:
+ * the texture that stops a cap of hair reading as a smooth helmet. Mostly the darker tones, so the locks on
+ * top stand out; the sheen still catches them.
+ */
+function flowStrands(ctx: Ctx, pal: HairPal, r: Rng, count: number, place: () => P, target: P, sheen: Sheen, len: [number, number] = [60, 150]) {
+  const T = tones(pal)
+  const S = new Strands()
+  for (let i = 0; i < count; i++) {
+    let p = place()
+    const pts: P[] = [p]
+    const bend = r.range(-0.35, 0.35), L = r.range(len[0], len[1])
+    for (let run = 0; run < L;) {
+      const dx = target.x - p.x, dy = target.y - p.y, d = Math.hypot(dx, dy)
+      if (d < 24) break
+      const a = Math.atan2(dy, dx) + bend * (1 - run / L)
+      p = { x: p.x + Math.cos(a) * 9, y: p.y + Math.sin(a) * 9 }
+      pts.push(p)
+      run += 9
+    }
+    const own = r() < 0.45 ? 0 : r() < 0.6 ? 1 : r() < 0.8 ? 2 : 3
+    strand(S, pts, own, T, WIDTHS[r.int(0, 1)], sheen, r.range(-20, 20))
+  }
+  S.flush(ctx)
+}
+
 // ---------------------------------------------------------------- curls
 
 /**
- * A cloud of coils: each curl a spiral of hair (a turn and a half), dark in its hollow, with the part of the
- * spiral facing the key light lit, lighter where the sheen ring passes. Batched by tone.
+ * Curls the way a painter draws them: clumps of springy crescents. Each curl is a thick "C" of hair turned
+ * its own way, with a soft shadow tucked under it, a body in the hair's colour and a lit rim on the side
+ * facing the light (brighter where the sheen ring passes). Clumps get soft volume first (light on top, shade
+ * underneath), so the cloud has form and the curls sit on it. Batched by tone.
  */
-function paintCurls(ctx: Ctx, pal: HairPal, r: Rng, count: number, place: () => P, size: [number, number], sheen: Sheen) {
-  const hollows = new Path2D()
-  const coils = [new Path2D(), new Path2D()]
-  const lit = [new Path2D(), new Path2D(), new Path2D()]
-  const curls: { p: P; s: number }[] = []
-  for (let i = 0; i < count; i++) curls.push({ p: place(), s: r.range(size[0], size[1]) })
+function paintCurls(ctx: Ctx, pal: HairPal, r: Rng, count: number, place: () => P, size: [number, number], sheen: Sheen, from: P = { x: 512, y: 420 }) {
+  const curls: { p: P; s: number; a0: number; sweep: number }[] = []
+  for (let i = 0; i < count; i++) curls.push({ p: place(), s: r.range(size[0], size[1]), a0: r() * Math.PI * 2, sweep: r.range(1.2, 1.7) * Math.PI })
   curls.sort((a, b) => a.p.y - b.p.y)
-  for (const { p, s } of curls) {
-    hollows.moveTo(p.x + s * 0.7, p.y + 2)
-    hollows.arc(p.x, p.y + 2, s * 0.7, 0, Math.PI * 2)
-    const a0 = r() * Math.PI * 2, turn = r() < 0.5 ? 1 : -1
-    const c = coils[r.int(0, 1)]
-    const k = sheen(p.x, p.y, r.range(-20, 20))
-    const hl = lit[k > 0.5 ? 2 : k > 0.22 ? 1 : 0]
-    let first = true, inLit = false
-    for (let j = 0; j <= 22; j++) {
-      const t = j / 22, a = a0 + turn * t * Math.PI * 3, rad = s * (0.35 + 0.65 * t)
-      const x = p.x + Math.cos(a) * rad, y = p.y + Math.sin(a) * rad * 0.85
-      if (first) { c.moveTo(x, y); first = false } else c.lineTo(x, y)
-      // The stretch of the spiral facing up-left catches the light.
-      const facing = Math.cos(a + 2.3) > 0.45 && t > 0.3
-      if (facing && !inLit) { hl.moveTo(x, y); inLit = true } else if (facing) hl.lineTo(x, y); else inLit = false
+  // Clump volume: soft light blobs on the upper side of the cloud's lumps, shade between them.
+  softBatch(ctx, 14, c => {
+    for (let i = 0; i < count / 6; i++) {
+      const q = curls[r.int(0, curls.length - 1)].p
+      c.fillStyle = rgba(pal.dark, 0.35); c.beginPath(); c.ellipse(q.x + 6, q.y + 12, size[1] * 2.2, size[1] * 1.6, 0, 0, Math.PI * 2); c.fill()
+      c.fillStyle = rgba(mixRGB(pal.base, pal.light, 0.3), 0.35); c.beginPath(); c.ellipse(q.x - 6, q.y - 8, size[1] * 1.6, size[1] * 1.1, 0, 0, Math.PI * 2); c.fill()
     }
+  })
+  const shadow = new Path2D(), body = [new Path2D(), new Path2D()], rim = [new Path2D(), new Path2D(), new Path2D()]
+  for (const cu of curls) {
+    const { p, s: rad, a0, sweep } = cu
+    shadow.moveTo(p.x + Math.cos(a0) * rad + 2, p.y + Math.sin(a0) * rad + 4); shadow.arc(p.x + 2, p.y + 4, rad, a0, a0 + sweep)
+    const bp = body[r() < 0.5 ? 0 : 1]
+    bp.moveTo(p.x + Math.cos(a0) * rad, p.y + Math.sin(a0) * rad); bp.arc(p.x, p.y, rad, a0, a0 + sweep)
+    // The lit rim: the part of the curl facing up and left (around 225 degrees), where the arc covers it.
+    const litA = Math.PI * 1.25
+    let d = ((litA - a0) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)
+    if (d > sweep) continue
+    const k = sheen(p.x, p.y, r.range(-20, 20))
+    const rp = rim[k > 0.5 ? 2 : k > 0.22 ? 1 : 0]
+    const from0 = a0 + Math.max(0, d - 0.55), to0 = a0 + Math.min(sweep, d + 0.55)
+    rp.moveTo(p.x + Math.cos(from0) * rad * 0.92, p.y + Math.sin(from0) * rad * 0.92); rp.arc(p.x, p.y, rad * 0.92, from0, to0)
+    void from
   }
+  const w = (size[0] + size[1]) / 2
   ctx.save()
   ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.fillStyle = rgba(shade(pal.dark, -0.35), 0.55)
-  ctx.fill(hollows)
-  ctx.strokeStyle = rgba(pal.dark); ctx.lineWidth = 5.5; ctx.stroke(coils[0])
-  ctx.strokeStyle = rgba(mixRGB(pal.dark, pal.base, 0.5)); ctx.lineWidth = 4.5; ctx.stroke(coils[1])
-  const litCol = [rgba(pal.base, 0.9), rgba(mixRGB(pal.base, pal.light, 0.6), 0.95), rgba(mixRGB(pal.light, [255, 250, 244], 0.35), 1)]
-  lit.forEach((path, i) => { ctx.strokeStyle = litCol[i]; ctx.lineWidth = 2.4; ctx.stroke(path) })
+  ctx.strokeStyle = rgba(shade(pal.dark, -0.3), 0.55); ctx.lineWidth = w * 0.6; ctx.stroke(shadow)
+  ctx.strokeStyle = rgba(mixRGB(pal.dark, pal.base, 0.55)); ctx.lineWidth = w * 0.55; ctx.stroke(body[0])
+  ctx.strokeStyle = rgba(pal.base); ctx.lineWidth = w * 0.5; ctx.stroke(body[1])
+  const cols = [rgba(mixRGB(pal.base, pal.light, 0.35)), rgba(mixRGB(pal.base, pal.light, 0.7)), rgba(mixRGB(pal.light, [255, 250, 244], 0.4))]
+  rim.forEach((path, i) => { ctx.strokeStyle = cols[i]; ctx.lineWidth = w * (i === 2 ? 0.2 : 0.24); ctx.stroke(path) })
+  ctx.restore()
+}
+
+/**
+ * A ponytail: one thick, rounded tail of hair, not a flat sweep. It leaves the tie, arcs out over the pillow and
+ * falls beside the head, thickest in the middle and tapering to wispy ends. Shaded across its width like a tube
+ * (lit edge toward the light, dark underside), strands running along it, the sheen crossing it where it bends.
+ */
+function paintTail(ctx: Ctx, pal: HairPal, r: Rng, side: number, tie: P) {
+  const spine: P[] = []
+  const c0 = tie, c1 = { x: 512 + side * 240, y: 20 }, c2 = { x: 512 + side * 470, y: 150 }, c3 = { x: 512 + side * 430, y: 640 }
+  for (let k = 0; k <= 40; k++) {
+    const t = k / 40, v = 1 - t
+    spine.push({ x: v ** 3 * c0.x + 3 * v * v * t * c1.x + 3 * v * t * t * c2.x + t ** 3 * c3.x, y: v ** 3 * c0.y + 3 * v * v * t * c1.y + 3 * v * t * t * c2.y + t ** 3 * c3.y })
+  }
+  const width = (t: number) => (t < 0.12 ? 34 + t * 280 : 68 * (1 - Math.max(0, t - 0.55) / 0.45) ** 0.8 + 6) * (0.95 + 0.1 * Math.sin(t * 9))
+  const edge = (sideK: number) => spine.map((p, k) => {
+    const q = spine[Math.min(40, k + 1)], o = spine[Math.max(0, k - 1)], dx = q.x - o.x, dy = q.y - o.y, l = Math.hypot(dx, dy) || 1
+    const w = width(k / 40) * sideK
+    return { x: p.x - (dy / l) * w, y: p.y + (dx / l) * w }
+  })
+  const L = edge(1), R = edge(-1)
+  const outline = (c: Ctx) => { c.beginPath(); c.moveTo(L[0].x, L[0].y); for (const q of L) c.lineTo(q.x, q.y); for (let k = R.length - 1; k >= 0; k--) c.lineTo(R[k].x, R[k].y); c.closePath() }
+  // Its soft shadow on the pillow.
+  softBatch(ctx, 18, c => { c.translate(14, 22); c.fillStyle = 'rgba(96,52,70,0.34)'; outline(c) ; c.fill() })
+  ctx.save()
+  outline(ctx)
+  ctx.fillStyle = rgba(pal.base)
+  ctx.fill()
+  ctx.clip()
+  // Across the width: which edge faces the light depends on the side the tail falls to.
+  softBatch(ctx, 14, c => {
+    c.lineCap = 'round'; c.lineJoin = 'round'
+    const band = (off: number, col: RGB, a: number, w: number) => { c.strokeStyle = rgba(col, a); c.lineWidth = w; c.beginPath(); spine.forEach((p, k) => { const q = L[k], m = R[k]; const x = p.x + (off > 0 ? q.x - p.x : m.x - p.x) * Math.abs(off), y = p.y + (off > 0 ? q.y - p.y : m.y - p.y) * Math.abs(off); if (k === 0) c.moveTo(x, y); else c.lineTo(x, y) }); c.stroke() }
+    band(side > 0 ? 0.55 : -0.55, pal.light, 0.55, 26)
+    band(side > 0 ? -0.75 : 0.75, pal.dark, 0.85, 36)
+  })
+  // Strands along the tail.
+  const T = tones(pal)
+  const S = new Strands()
+  const sheen = sheenFn([{ cx: 512 + side * 380, cy: 170, r: 110, w: 46 }])
+  for (let i = 0; i < 90; i++) {
+    const off = r.range(-1, 1), t0 = r.range(0, 0.15), t1 = r.range(0.7, 1)
+    const pts: P[] = []
+    for (let k = Math.round(t0 * 40); k <= Math.round(t1 * 40); k++) { const a = L[k], b = R[k], u = (off + 1) / 2; pts.push({ x: b.x + (a.x - b.x) * u, y: b.y + (a.y - b.y) * u }) }
+    const own = Math.abs(off) > 0.7 ? 0 : r.int(1, 3)
+    strand(S, pts, own, T, WIDTHS[r.int(0, 2)], sheen, r.range(-20, 20))
+  }
+  S.flush(ctx)
+  ctx.restore()
+  // Wispy ends past the tip.
+  const tip = spine[40], pre = spine[36]
+  const ang = Math.atan2(tip.y - pre.y, tip.x - pre.x)
+  flyaways(ctx, pal, r, () => ({ p: { x: tip.x + r.range(-10, 10), y: tip.y + r.range(-14, 0) }, dir: ang + r.range(-0.5, 0.5) }), 7)
+}
+
+/**
+ * A plait: three strands crossed over and over, drawn as a chain of plump lobes leaning left and right in turn
+ * (a herringbone), each lobe shaded round, a dark notch between, the sheen catching the lobes it crosses,
+ * ending in a soft tie and a little brush of loose hair.
+ */
+function paintPlait(ctx: Ctx, pal: HairPal, r: Rng, spine: P[], w0: number, tie: RGB) {
+  const n = spine.length
+  const at = (t: number) => { const f = t * (n - 1), k = Math.min(n - 2, Math.floor(f)), u = f - k; return { x: spine[k].x + (spine[k + 1].x - spine[k].x) * u, y: spine[k].y + (spine[k + 1].y - spine[k].y) * u } }
+  const dirAt = (t: number) => { const a = at(Math.max(0, t - 0.01)), b = at(Math.min(1, t + 0.01)); return Math.atan2(b.y - a.y, b.x - a.x) }
+  let len = 0
+  for (let k = 1; k < n; k++) len += Math.hypot(spine[k].x - spine[k - 1].x, spine[k].y - spine[k - 1].y)
+  const endT = 0.9
+  // Its shadow on the pillow.
+  softBatch(ctx, 12, c => { c.strokeStyle = 'rgba(96,52,70,0.32)'; c.lineWidth = w0 * 1.9; c.lineCap = 'round'; c.beginPath(); spine.forEach((p, k) => (k ? c.lineTo(p.x + 10, p.y + 16) : c.moveTo(p.x + 10, p.y + 16))); c.stroke() })
+  const lobeLen = w0 * 1.15
+  const count = Math.floor((len * endT) / (lobeLen * 0.62))
+  const sheen = sheenFn([{ cx: at(0.3).x, cy: at(0.3).y, r: 30, w: 70 }])
+  for (let i = 0; i < count; i++) {
+    const t = (i / count) * endT
+    const p = at(t), a = dirAt(t), w = w0 * (1 - t * 0.35)
+    const lean = i % 2 ? 1 : -1
+    ctx.save()
+    ctx.translate(p.x, p.y); ctx.rotate(a)
+    // A lobe: an egg leaning across the plait.
+    ctx.rotate(lean * 0.55)
+    ctx.translate(lean * w * 0.18, 0)
+    const g = ctx.createLinearGradient(0, -w * 0.5, 0, w * 0.5)
+    const lit = sheen(p.x, p.y, 0) > 0.4
+    g.addColorStop(0, rgba(lit ? mixRGB(pal.light, [255, 250, 244], 0.2) : mixRGB(pal.base, pal.light, 0.5))); g.addColorStop(0.5, rgba(pal.base)); g.addColorStop(1, rgba(pal.dark))
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.ellipse(0, 0, lobeLen * 0.62, w * 0.46, 0, 0, Math.PI * 2); ctx.fill()
+    // Strands along the lobe, and its dark notch.
+    ctx.strokeStyle = rgba(pal.dark, 0.55); ctx.lineWidth = 1
+    for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(-lobeLen * 0.5, k * w * 0.08); ctx.quadraticCurveTo(0, k * w * 0.1 - 2, lobeLen * 0.5, k * w * 0.08); ctx.stroke() }
+    ctx.strokeStyle = rgba(mixRGB(pal.light, [255, 250, 244], 0.3), lit ? 0.7 : 0.35); ctx.lineWidth = 1.2
+    ctx.beginPath(); ctx.moveTo(-lobeLen * 0.35, -w * 0.22); ctx.quadraticCurveTo(0, -w * 0.3, lobeLen * 0.35, -w * 0.2); ctx.stroke()
+    ctx.fillStyle = rgba(shade(pal.dark, -0.3), 0.6)
+    ctx.beginPath(); ctx.ellipse(-lobeLen * 0.55, 0, 3, w * 0.3, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
+  }
+  // The tie and the brush of loose ends.
+  const e = at(endT), ea = dirAt(endT)
+  const brush: Lock[] = []
+  for (let k = 0; k < 5; k++) {
+    const sp = (k - 2) * 0.18
+    brush.push({ c: [e, { x: e.x + Math.cos(ea + sp) * 16, y: e.y + Math.sin(ea + sp) * 16 }, { x: e.x + Math.cos(ea + sp * 1.6) * 34, y: e.y + Math.sin(ea + sp * 1.6) * 34 }, { x: e.x + Math.cos(ea + sp * 2) * 52, y: e.y + Math.sin(ea + sp * 2) * 52 }], width: w0 * 0.35, wave: 0.1, phase: k, side: 1, end: 0.5 })
+  }
+  paintLocks(ctx, brush, pal, sheenFn([]), r, 4)
+  ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(ea)
+  const tg = ctx.createLinearGradient(0, -w0 * 0.4, 0, w0 * 0.4)
+  tg.addColorStop(0, rgba(shade(tie, 0.4))); tg.addColorStop(1, rgba(shade(tie, -0.2)))
+  ctx.fillStyle = tg
+  ctx.beginPath(); ctx.roundRect(-6, -w0 * 0.38, 12, w0 * 0.76, 5); ctx.fill()
   ctx.restore()
 }
 
@@ -288,13 +430,14 @@ export function paintHairBack(ctx: Ctx, hair: HairPal, styleIndex: number, seed:
     locks.sort((a, b) => Math.abs(b.c[3].x - 512) - Math.abs(a.c[3].x - 512))
     paintLocks(ctx, locks, pal, sheen, r)
   } else if (style === 'curly') {
-    paintCurls(ctx, pal, r, 520, () => {
+    // Deep inside the cloud first, then the curls on top, densest toward the outside.
+    paintCurls(ctx, pal, r, 900, () => {
       const a = r() * Math.PI * 2, d = Math.sqrt(r())
       return { x: soft(512 + Math.cos(a) * 420 * d, 30, 994), y: Math.min(890, 430 + Math.sin(a) * 390 * d) }
-    }, [14, 26], sheen)
+    }, [11, 19], sheen)
   } else {
     // Sleek: the hair lies close over the scalp, drawn toward the bun, the ponytail tie, or (a crop) back and down.
-    const target: P = style === 'bun' ? { x: 512, y: 110 } : style === 'pony' ? { x: 512 + ponySide * 20, y: 96 } : { x: 512, y: 60 }
+    const target: P = style === 'bun' ? { x: 512, y: 110 } : style === 'pony' ? { x: 512 + ponySide * 20, y: 96 } : style === 'braids' ? { x: 512, y: 70 } : { x: 512, y: 60 }
     const locks: Lock[] = []
     for (let i = 0; i < 22; i++) {
       const side = i % 2 ? 1 : -1
@@ -308,6 +451,15 @@ export function paintHairBack(ctx: Ctx, hair: HairPal, styleIndex: number, seed:
     paintLocks(ctx, locks, pal, sheen, r, 10)
     if (style === 'bun') paintBun(ctx, pal, r, sheen)
     if (style === 'pony') paintPony(ctx, pal, r, ponySide, sheen)
+    if (style === 'braids') {
+      // Two plaits from behind the ears, lying out over the pillow.
+      const tieCol: RGB = r.pick([[246, 196, 214], [198, 226, 246], [250, 226, 170]] as const) as unknown as RGB
+      for (const sd of [-1, 1]) {
+        const spine: P[] = []
+        for (let k = 0; k <= 12; k++) { const t = k / 12; spine.push({ x: 512 + sd * (318 + 70 * Math.sin(t * 1.4) + r.range(-2, 2)), y: 470 + t * 470 }) }
+        paintPlait(ctx, pal, r, spine, 78, tieCol)
+      }
+    }
   }
   // Soft light across the crown, one blur.
   ctx.save()
@@ -351,21 +503,8 @@ function paintBun(ctx: Ctx, pal: HairPal, r: Rng, sheen: Sheen) {
 
 function paintPony(ctx: Ctx, pal: HairPal, r: Rng, side: number, sheen: Sheen) {
   const tie = { x: 512 + side * 20, y: 96 }
-  // The tail sweeps out over the pillow and falls down beside the head: a thick bundle of locks.
-  const locks: Lock[] = []
-  for (let i = 0; i < 16; i++) {
-    const t = i / 15, j = r.range(-1, 1)
-    locks.push({
-      c: [{ x: tie.x, y: tie.y }, { x: 512 + side * (190 + t * 50), y: 44 + t * 30 }, { x: 512 + side * (420 + t * 40 + j * 12), y: 130 + t * 60 }, { x: 512 + side * (390 + t * 80 + j * 20), y: 520 + t * 150 }],
-      width: r.range(44, 66), wave: 0.25, phase: t * 5, side, end: 0.78,
-    })
-  }
-  // One even shadow for the whole tail on the pillow (drawn opaque, laid down at a third).
-  softBatch(ctx, 16, c => {
-    c.strokeStyle = 'rgb(96,52,70)'; c.lineCap = 'round'
-    for (const L of locks) { c.beginPath(); for (let k = 0; k <= 10; k++) { const p = lockAt(L, k / 12); if (k === 0) c.moveTo(p.x + 12, p.y + 20); else c.lineTo(p.x + 12, p.y + 20) } c.lineWidth = L.width * 0.6; c.stroke() }
-  }, 'source-over', 0.3)
-  paintLocks(ctx, locks, pal, sheenFn([{ cx: 512 + side * 300, cy: 260, r: 170, w: 40 }]), r, 12)
+  // The tail: one thick, rounded tube of hair arcing out over the pillow and falling beside the head.
+  paintTail(ctx, pal, r, side, tie)
   void sheen
   // A soft scrunchie around the tie.
   const col: RGB = [246, 196, 214]
@@ -404,11 +543,30 @@ export function paintHairCap(ctx: Ctx, hair: HairPal, styleIndex: number, seed: 
   ctx.fill()
   ctx.restore()
   if (style === 'curly') {
-    paintCurls(ctx, pal, r, 330, () => ({ x: r.range(150, 874), y: r.range(50, 350) }), [10, 17], sheen)
+    paintCurls(ctx, pal, r, 520, () => ({ x: r.range(150, 874), y: r.range(40, 380) }), [9, 16], sheen, { x: 512, y: 320 })
     return
   }
-  const target: P = style === 'bun' ? { x: 512, y: 110 } : style === 'pony' ? { x: 512, y: 96 } : { x: 512, y: 40 }
+  const target: P = style === 'bun' ? { x: 512, y: 110 } : style === 'pony' ? { x: 512, y: 96 } : style === 'braids' ? { x: 512, y: 70 } : { x: 512, y: 40 }
   const part = 512 + (r() < 0.5 ? -1 : 1) * r.range(40, 90)
+  // Texture first: fine strands over the whole cap, flowing toward the crown (or the part, for a crop).
+  const inCap = () => {
+    for (let k = 0; k < 12; k++) {
+      const x = r.range(160, 864), y = r.range(30, 470)
+      const band = bandEdge('top', (x - 176) / 672).y + 10
+      if (y < band && ((x - SCALP.cx) / SCALP.rx) ** 2 + ((y - SCALP.cy) / SCALP.ry) ** 2 < 1) return { x, y }
+    }
+    return { x: 512, y: 200 }
+  }
+  ctx.save()
+  clipFace(ctx)
+  flowStrands(ctx, pal, r, style === 'crop' ? 700 : 520, inCap, style === 'crop' ? { x: part, y: 20 } : target, sheen, style === 'crop' ? [40, 90] : [70, 170])
+  ctx.restore()
+  if (style === 'braids') {
+    // A clean centre parting down to the band, the scalp just showing.
+    ctx.save(); clipFace(ctx)
+    softBatch(ctx, 1.5, c => { c.strokeStyle = rgba(mixRGB(pal.dark, [236, 196, 180], 0.35), 0.8); c.lineWidth = 4; c.beginPath(); c.moveTo(512, 60); c.quadraticCurveTo(514, 150, 512, bandEdge('top', 0.5).y + 4); c.stroke() })
+    ctx.restore()
+  }
   const locks: Lock[] = []
   for (let i = 0; i < 26; i++) {
     const x = r.range(170, 854)

@@ -4,7 +4,8 @@ how much each tile differs from the first (so a layer that does not show is caug
     python scripts/sheet.py OUT.png COLS W H "label|/?view=feet&..." "label|..." ...
 
 Needs the dev (5195) or preview (4195) server running; BASE picks it (default http://127.0.0.1:5195).
-Uses the agent-browser session "art1". Each tile is shot at W x H after the page has settled.
+Uses the agent-browser session "art1". Each tile is shot at W x H after the page has settled (SETTLE seconds);
+HIDE_UI=1 hides the HUD first.
 """
 import os
 import subprocess
@@ -44,6 +45,9 @@ def main():
     for label, url in items:
         ab('open', BASE + url)
         time.sleep(float(os.environ.get('SETTLE', '3.2')))
+        if os.environ.get('HIDE_UI'):
+            ab('eval', "document.getElementById('ui').style.display='none'; 1")
+            time.sleep(0.2)
         ab('screenshot', tmp)
         tiles.append((label, Image.open(tmp).convert('RGB').resize((w, h))))
     os.remove(tmp)
