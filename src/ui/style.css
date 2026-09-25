@@ -82,7 +82,12 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .tool { flex: 0 0 auto; position: relative; width: 70px; height: 70px; border-radius: 50%; background: linear-gradient(180deg, #fff, #fbeef3); display: grid; place-items: center; box-shadow: inset 0 -3px 0 rgba(160, 110, 140, 0.12); transition: transform 0.25s cubic-bezier(.3, 1.6, .5, 1), opacity 0.3s, width 0.3s, margin 0.3s; scroll-snap-align: center; }
 .tool img { width: 58px; height: 58px; object-fit: contain; filter: saturate(1.45) contrast(1.06) drop-shadow(0 3px 3px rgba(120, 60, 90, 0.25)); }
 .tool-name { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.8); opacity: 0; background: var(--ink); color: #fff; font: 800 12px var(--font); padding: 4px 10px; border-radius: 999px; white-space: nowrap; pointer-events: none; transition: opacity 0.2s, transform 0.2s; }
-.tool.current .tool-name, .tool:hover .tool-name { opacity: 1; transform: translateX(-50%) scale(1); }
+/* The name shows on the current tool, and on hover only where there is a real hover (a tap leaves :hover stuck on phones). */
+.tool.current .tool-name { opacity: 1; transform: translateX(-50%) scale(1); }
+@media (hover: hover) { .tool:hover .tool-name { opacity: 1; transform: translateX(-50%) scale(1); } }
+/* The tool in your hand is drawn under the page; the tray fades while it passes behind. */
+.thud-tray { transition: opacity 0.2s; }
+.thud-tray.under-tool { opacity: 0.4; }
 .tool.current .tool-name { background: var(--rose); }
 .tool.future { opacity: 0.5; filter: saturate(0.5); }
 .tool.done:not(.current) { opacity: 0.8; }
@@ -224,7 +229,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   .thud-side { order: 2; flex: 1 1 100%; flex-direction: row; justify-content: space-between; align-items: center; }
   .thud-chip { padding: 7px 12px; font-size: 13px; }
   .thud-skip { min-height: 40px; font-size: 13px; }
-  .tool { width: 60px; height: 60px; }
-  .tool img { width: 50px; height: 50px; }
-  .thud-tray { padding: 42px 12px 10px; gap: 8px; }
+  .tool { width: 54px; height: 54px; }
+  .tool img { width: 46px; height: 46px; }
+  .thud-tray { padding: 40px 10px 10px; gap: 6px; }
 }

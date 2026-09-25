@@ -323,8 +323,10 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
     })
   }
   ctx.restore()
-  // A thin, warm contour: darker than the skin, never black, heavier on the shadow side.
+  // A thin, warm contour: darker than the skin, never black, heavier on the shadow side (only below the
+  // band: above it, its outer half would show over the hair).
   ctx.save()
+  ctx.beginPath(); ctx.rect(0, 440, S, S); ctx.clip()
   ctx.lineJoin = 'round'
   blurred(ctx, 1.2, () => {
     ctx.strokeStyle = rgba(mixRGB(skin.deep, skin.shadow, 0.4), 0.38)
@@ -334,10 +336,7 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   ctx.restore()
 
   // Hair above the band: swept back to the crown, bun or tie (or short, or curls), inside the face's top.
-  ctx.save()
-  faceClip(ctx)
-  paintHairCap(ctx, hair, look.hairStyle, seed, fig)
-  ctx.restore()
+  paintHairCap(ctx, hair, look.hairStyle, seed, fig, faceClip)
 
   // The band wraps around the head: keep it inside the round of the skull so its ends never stick out.
   ctx.save()

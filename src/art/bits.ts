@@ -94,6 +94,15 @@ export const bits = {
     ctx.beginPath(); ctx.ellipse(17, 16, 6, 4, -0.6, 0, Math.PI * 2); ctx.fill()
   }),
   steam: () => make('steam', 128, 128, ctx => blurred(ctx, 14, () => blob(ctx, 64, 64, 44, 44, [255, 255, 255], 0.9))),
+  /** A curling wisp of steam: a soft S of vapour, thicker at the bottom, fading as it rises. */
+  wisp: () => make('wisp', 96, 192, ctx => blurred(ctx, 6, () => {
+    for (let k = 0; k < 3; k++) {
+      const g = ctx.createLinearGradient(0, 190, 0, 0)
+      g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(255,255,255,0)')
+      ctx.strokeStyle = g; ctx.lineWidth = 16 - k * 5; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(48 + k * 3, 184); ctx.bezierCurveTo(10, 140, 86, 90, 48, 50); ctx.quadraticCurveTo(26, 26, 44, 8); ctx.stroke()
+    }
+  })),
   flake: () => make('flake', 48, 48, ctx => {
     ctx.fillStyle = '#d6f0e4'
     ctx.beginPath(); ctx.moveTo(6, 20); ctx.lineTo(22, 4); ctx.lineTo(42, 12); ctx.lineTo(40, 34); ctx.lineTo(20, 44); ctx.lineTo(8, 34); ctx.closePath(); ctx.fill()

@@ -126,6 +126,11 @@ export class TreatmentHud {
   }
 
   hideControls() { this.el.classList.add('revealing') }
+  /** Fade the tray while the tool in hand passes behind it (screen y of the tool's lowest point, CSS px). */
+  toolAt(bottom: number | null) {
+    const top = bottom === null ? Infinity : this.tray.getBoundingClientRect().top
+    this.tray.classList.toggle('under-tool', bottom !== null && bottom > top + 6)
+  }
 
   /** A helper who takes over becomes the lead: they get Skip, Finish and the choices. */
   setRole(role: 'lead' | 'helper') {

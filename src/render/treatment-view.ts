@@ -1131,6 +1131,10 @@ export class TreatmentView {
       this.towel.alpha += ((on ? 1 : 0) - this.towel.alpha) * Math.min(1, dt * 7)
       const settle = holding ? 1 : 1.03
       this.towel.scale.set(this.towel.scale.x + (settle - this.towel.scale.x) * Math.min(1, dt * 10))
+      // It drops the last little way onto the face as it appears.
+      this.towel.y = 512 - (1 - this.towel.alpha) * 26
+      // Wisps curl up off the warm cloth.
+      if (on && Math.random() < dt * (holding ? 9 : 3)) this.fx.spawn({ texture: bits.wisp(), x: 300 + Math.random() * 430, y: 600 + Math.random() * 180, vx: (Math.random() - 0.5) * 30, vy: -60 - Math.random() * 50, life: 2.2, scale: 0.8 + Math.random() * 0.5, scaleEnd: 1.8, alpha: 0.45, alphaEnd: 0, fadeIn: 0.4, spin: (Math.random() - 0.5) * 0.3 })
       skinU[0] = Math.max(skinU[0], this.session.hold * 1.2)
       if (on && Math.random() < dt * (holding ? 26 : 8)) this.fx.spawn({ texture: bits.steam(), x: 260 + Math.random() * 500, y: 380 + Math.random() * 480, vx: (Math.random() - 0.5) * 50, vy: -90 - Math.random() * 90, life: 2, scale: 0.8, scaleEnd: 2.8, alpha: 0.5, alphaEnd: 0, fadeIn: 0.25, spin: (Math.random() - 0.5) * 0.6 })
     }
@@ -1199,6 +1203,7 @@ export class TreatmentView {
     const hideFor = step?.gesture === 'hold' && (step.tool === 'towel' || step.tool === 'uvLamp')
     const show = !!step && !this.reveal && !this.session.finished && !hideFor && !this.lampRole && (this.down || this.hovering)
     this.tool.visible = show
+    this.hud.toolAt(show ? this.world.y + (this.toolPos.y + 140) * this.world.scale.x : null)
     if (!show) return
     const k = 1 - Math.exp(-dt * 30)
     const nx = this.toolPos.x + (this.pos.x - this.toolPos.x) * k

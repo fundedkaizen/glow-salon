@@ -379,13 +379,17 @@ function paintPony(ctx: Ctx, pal: HairPal, r: Rng, side: number, sheen: Sheen) {
  * The hair above the band (swept back from the hairline toward the crown, the bun or the tie; short and
  * textured for a crop; curls for curly hair), clipped to the face's top by the caller.
  */
-export function paintHairCap(ctx: Ctx, hair: HairPal, styleIndex: number, seed: number, figure: Figure) {
+export function paintHairCap(ctx: Ctx, hair: HairPal, styleIndex: number, seed: number, figure: Figure, clipFace: (c: Ctx) => void) {
   const style = styleOf(styleIndex)
   const pal = hairPalette(hair, figure)
   const r = makeRng(seed + 950)
   const sheen = sheenFn([{ cx: 512, cy: 330, r: 205, w: 30 }])
-  const cg = ctx.createLinearGradient(0, 60, 0, 330)
-  cg.addColorStop(0, rgba(pal.dark)); cg.addColorStop(0.6, rgba(pal.base)); cg.addColorStop(1, rgba(mixRGB(pal.base, pal.dark, 0.4)))
+  // The base fill covers the top of the face in the same gradient as the mass behind, so no seam shows where
+  // they meet; the locks and curls on top cross that line freely.
+  ctx.save()
+  clipFace(ctx)
+  const cg = ctx.createRadialGradient(512, 360, 120, 512, 480, 620)
+  cg.addColorStop(0, rgba(mixRGB(pal.base, pal.dark, 0.3))); cg.addColorStop(1, rgba(pal.dark))
   ctx.fillStyle = cg
   ctx.beginPath()
   ctx.moveTo(0, 0); ctx.lineTo(1024, 0)
@@ -393,8 +397,9 @@ export function paintHairCap(ctx: Ctx, hair: HairPal, styleIndex: number, seed: 
   ctx.lineTo(0, 470)
   ctx.closePath()
   ctx.fill()
+  ctx.restore()
   if (style === 'curly') {
-    paintCurls(ctx, pal, r, 170, () => ({ x: r.range(150, 874), y: r.range(60, 340) }), [12, 20], sheen)
+    paintCurls(ctx, pal, r, 330, () => ({ x: r.range(150, 874), y: r.range(50, 350) }), [10, 17], sheen)
     return
   }
   const target: P = style === 'bun' ? { x: 512, y: 110 } : style === 'pony' ? { x: 512, y: 96 } : { x: 512, y: 40 }
