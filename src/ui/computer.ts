@@ -9,10 +9,10 @@ import { CAMPAIGNS, canRunCampaign, CAMPAIGN_BY_ID } from '../core/marketing.ts'
 import type { Action, Pending, Player, Station } from '../core/salon.ts'
 import type { SalonExt } from '../core/salon-ext.ts'
 import { candidatesFor, levelName, MAX_STAFF, STAFF_TRAIT_BY_ID, traitLabel, weekOf, xpToLevel, type Candidate, type StaffMember } from '../core/staff.ts'
-import { COMING_SOON } from '../core/treatments/registry.ts'
+import { COMING_SOON, COMING_SOON_TEASER } from '../core/treatments/registry.ts'
 import { confetti } from './confetti.ts'
 import { esc, h, money } from './dom.ts'
-import { ICON, SHOP_ICON } from './salon-icons.ts'
+import { COMING_ICON, ICON, SHOP_ICON } from './salon-icons.ts'
 import './salon.css'
 
 /**
@@ -197,10 +197,14 @@ export class Computer {
     else if (this.tab === 'staff') this.renderStaff()
     else this.renderItems(ITEMS.filter(i => i.tab === this.tab && !i.soon))
     if (this.tab === 'treatments') {
+      // What comes next: the next few, each its own card, and a count of the rest (no wall of look-alikes).
       this.main.append(h('div', 'gs-section', 'Coming to the salon'))
       const grid = h('div', 'gs-grid')
-      for (const name of COMING_SOON) grid.append(h('div', 'gs-card soon', `<div class="gs-card-art">${ICON.sparkle}</div><h3>${esc(name)}</h3><p>A whole new treatment family.</p><div class="gs-card-foot"><span class="gs-tagline">Coming soon</span></div>`))
+      const next = COMING_SOON.slice(0, 3)
+      for (const name of next) grid.append(h('div', 'gs-card soon', `<div class="gs-card-art">${COMING_ICON[name] ?? ICON.sparkle}</div><h3>${esc(name)}</h3><p>${esc(COMING_SOON_TEASER[name])}</p><div class="gs-card-foot"><span class="gs-tagline">In a coming update</span></div>`))
       this.main.append(grid)
+      const more = COMING_SOON.length - next.length
+      if (more > 0) this.main.append(h('div', 'gs-soon-more', `${ICON.sparkle}<span>And ${more} more treatments to discover: ${esc(COMING_SOON.slice(3).join(', ').toLowerCase())}.</span>`))
     }
   }
 

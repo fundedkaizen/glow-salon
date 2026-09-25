@@ -1,5 +1,5 @@
 import { check } from './harness.ts'
-import { newSave, startDay, reduce, tick } from '../src/core/salon.ts'
+import { MAX_CATCH_UP, newSave, startDay, reduce, runFor, tick } from '../src/core/salon.ts'
 import { handleGuestMessage, parseGuestMessage, publicState, routeOps, stationCrew } from '../src/core/coop/protocol.ts'
 
 export function run() {
@@ -77,4 +77,21 @@ export function run() {
   // Parsing is defensive.
   check('parse hello', parseGuestMessage({ t: 'hello', name: 'A' })?.t === 'hello')
   check('parse junk', parseGuestMessage({ t: 'nope' }) === null && parseGuestMessage(null) === null && parseGuestMessage({ t: 'ops', st: 1 }) === null && parseGuestMessage({ t: 'ops', st: 's0', ops: [{ k: 'tap' }] })?.t === 'ops')
+
+  // The host's clock: a throttled tab wakes once a minute; the catch-up replays the whole minute in 0.25 s steps.
+  const woke = startDay(newSave(31))
+  reduce(woke, 0, { a: 'join', name: 'Host' })
+  reduce(woke, 0, { a: 'open' })
+  const stepped = structuredClone(woke)
+  runFor(woke, 60)
+  for (let i = 0; i < 240; i++) tick(stepped, 0.25)
+  check('catch-up: a minute asleep is a minute of the day', Math.abs(woke.clock - 60) < 1e-6, woke.clock)
+  check('catch-up: the same day as ticking every quarter second', woke.spawned === stepped.spawned && woke.customers.length === stepped.customers.length && woke.spawned > 0, { woke: woke.spawned, stepped: stepped.spawned })
+  const long = startDay(newSave(32))
+  reduce(long, 0, { a: 'open' })
+  runFor(long, 3600)
+  check('catch-up: one wake-up replays at most two minutes', long.clock <= MAX_CATCH_UP + 1e-6 && long.clock > MAX_CATCH_UP - 1, long.clock)
+  const before = long.clock
+  runFor(long, -5)
+  check('catch-up: time never runs backwards', long.clock === before)
 }

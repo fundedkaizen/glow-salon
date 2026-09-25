@@ -199,6 +199,19 @@ export function run() {
   const skip = new TreatmentSession({ treatment: 'facial', seed: 9 })
   while (!skip.finished) skip.apply({ k: 'advance', s: skip.step, skip: true })
   check('skipping everything is not thorough', skip.result().thoroughness < 0.1 && skip.result().skipped > 5)
+  // Skipped steps fix nothing: the grime and the pimples stay for the after photo; the salon's own products still come off.
+  const sum = (g: Float32Array) => g.reduce((a, v) => a + v, 0)
+  const grimy = seedWhere(seed => { const t = new TreatmentSession({ treatment: 'facial', seed }); return sum(t.layers.grime) > 20 && t.targets.some(x => x.kind === 'whitehead') })
+  const lazy = new TreatmentSession({ treatment: 'facial', seed: grimy })
+  const grimeBefore = sum(lazy.layers.grime)
+  while (!lazy.finished) lazy.apply({ k: 'advance', s: lazy.step, skip: true })
+  check('skip: the grime is still there', sum(lazy.layers.grime) >= grimeBefore * 0.99, { before: grimeBefore, after: sum(lazy.layers.grime) })
+  check('skip: no pimple counts as popped', lazy.targets.filter(x => x.kind === 'whitehead').every(x => !x.done) && lazy.popped === 0)
+  check('skip: no foam or mask left on the face', sum(lazy.layers.foam) === 0 && sum(lazy.layers.mask) === 0)
+  check('skip: nothing counted as done', lazy.result().done === 0)
+  const footSkip = new TreatmentSession({ treatment: 'feet', seed: 5 })
+  while (!footSkip.finished) footSkip.apply({ k: 'advance', s: footSkip.step, skip: true })
+  check('skip: a skipped foot bath still drains', sum(footSkip.layers['top.water']) === 0)
 
   // Auto-complete: an erase step is ready at 95% and the rest settles on advance.
   const steamFirst = seedWhere(seed => { const st = planTreatment('facial', seed, false).def.steps; return st[0].id === 'steam' && st[1].id === 'cleanse' })

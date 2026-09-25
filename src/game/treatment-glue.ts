@@ -41,6 +41,10 @@ export function openTreatment(o: OpenTreatment): TreatmentView | null {
   const station = o.state.stations.find(s => s.id === o.stationId)
   const customer = station && o.state.customers.find(c => c.id === station.customer)
   if (!station || !customer) return null
+  // Did this player save the before-and-after photo? The review only talks about a photo that exists.
+  let photo = false
+  const onPhoto = (e: Event) => { if (e.target instanceof Element && e.target.closest('.reveal-photo')) photo = true }
+  o.overlay.addEventListener('click', onPhoto, true)
   const role = station.lead === o.me ? 'lead' : 'helper'
   const leadName = o.state.players.find(p => p.id === station.lead)?.name ?? 'your partner'
   const view = new TreatmentView({
@@ -57,9 +61,11 @@ export function openTreatment(o: OpenTreatment): TreatmentView | null {
     ambience: ambienceStars(o.state.owned),
     onOps: ops => o.net.sendOps(o.stationId, ops),
     onProgress: o.onProgress,
-    onFinish: o.onFinish,
+    onFinish: (result, foam) => o.onFinish(photo ? { ...result, photo } : result, foam),
     onLeave: o.onLeave,
   })
+  const destroy = view.destroy.bind(view)
+  view.destroy = () => { o.overlay.removeEventListener('click', onPhoto, true); destroy() }
   o.app.stage.addChild(view.root)
   view.resize(o.app.screen.width, o.app.screen.height)
   if (role === 'helper') o.net.requestSync(o.stationId)

@@ -100,6 +100,8 @@ export type TreatmentResult = {
   disaster: boolean
   /** 0 to 1: every step done well, plus extras. */
   thoroughness: number
+  /** The lead saved the before-and-after photo (set by the salon glue, not the session). */
+  photo?: boolean
 }
 
 export const TIER_RATE = [1, 1.5, 2.1, 2.6]
@@ -275,6 +277,8 @@ export class TreatmentSession {
     for (const layer of this.def.layers) this.layers[layer.id] = this.seedLayer(layer.seed, layer.region, layer.id)
     this.layers[WET] = new Float32Array(GRID * GRID)
     this.makeTargets()
+    // Steps this customer will never need drop out now, so the step count is right from the first step.
+    this.def.steps.forEach((step, i) => { if (!this.planned(step)) this.status[i] = 'na' })
     const start = clamp(options.startStep ?? 0, 0, this.def.steps.length)
     // Resume: earlier steps count as done and their layers settle as if finished.
     if (start === 0) this.beginStep()
@@ -521,9 +525,25 @@ export class TreatmentSession {
     return true
   }
 
+  /**
+   * Will this customer need the step, as far as can be told before anything is done? Pimple patches, plasters
+   * and the antiseptic count on the pops and pulls before them being done.
+   */
+  private planned(step: StepDef): boolean {
+    const any = (...kinds: TargetKind[]) => this.targets.some(t => kinds.includes(t.kind))
+    if (step.need === 'targets' && step.targets === 'patch' && !step.targetTag) return any('whitehead')
+    if (step.need === 'targets' && step.targets === 'patch' && step.targetTag === 'top') return any('corn', 'ingrown')
+    if (step.need === 'targets' && step.targets === 'patch' && step.targetTag === 'sole') return any('splinter')
+    if (step.need === 'layer' && step.layer === 'marks') return any('whitehead', 'blackhead')
+    return this.applies(step)
+  }
+
   private beginStep() {
-    // Steps with nothing to do for this customer drop out without a penalty.
-    while (this.current && !this.applies(this.current)) {
+    // Steps with nothing to do for this customer drop out without a penalty: planned out from the start, or (for
+    // what depends on the pops before them) nothing to do now. A planned clean-up of the customer's own grime or
+    // polish stays even if an earlier step took most of it, so the step count holds.
+    const stays = (step: StepDef) => step.need === 'layer' && step.layer !== 'marks'
+    while (this.current && (this.status[this.step] === 'na' || (!stays(this.current) && !this.applies(this.current)))) {
       const from = this.step
       this.status[from] = 'na'
       this.step++
@@ -813,20 +833,29 @@ export class TreatmentSession {
     if (step.choice && this.choices[this.step] === undefined) this.choices[this.step] = this.wish ?? 0
     if (step.optional) this.status[this.step] = !skip && this.stepTargets().some(t => t.done) ? 'done' : 'todo'
     else this.status[this.step] = skip ? 'skipped' : 'done'
+    // A skipped step leaves the customer's own problem as it was (grime, old polish, calluses, pimples); only
+    // the salon's own products (foam, a mask, the bath water) still come off, so the treatment carries on.
+    const settles = (id: string) => !skip || this.isProduct(id)
     // The last few percent settle by themselves, so nobody hunts for pixels.
     if (step.layer && step.gesture !== 'targets') {
       const to = step.gesture === 'erase' || step.gesture === 'peel' || step.gesture === 'hold' ? 0 : 1
-      this.resolveLayer(step.layer, to, to === 0 ? 'everywhere' : step.region)
+      if (!skip || (to === 0 && this.isProduct(step.layer))) this.resolveLayer(step.layer, to, to === 0 ? 'everywhere' : step.region)
     }
     // Out of the foot bath (or from under the hot towel), the foot is wet all over.
     if (this.foot && step.gesture === 'hold' && step.wet) this.stampLayer(WET, 512, 540, 760, step.wet, 'everywhere')
-    for (const id of step.clears ?? []) this.resolveLayer(id, 0, 'everywhere')
-    if (step.targets && !step.optional) for (const t of this.stepTargets()) if (!t.done) { t.done = true; t.progress = 1 }
+    for (const id of step.clears ?? []) if (settles(id)) this.resolveLayer(id, 0, 'everywhere')
+    if (!skip && step.targets && !step.optional) for (const t of this.stepTargets()) if (!t.done) { t.done = true; t.progress = 1 }
     if (step.gesture === 'peel') { this.peel.progress = 1; this.peel.released = true }
     const from = this.step
     this.step++
     this.emit({ e: 'advance', from, to: this.step, skipped: skip, na: false })
     this.beginStep()
+  }
+
+  /** Something the salon put on (a paint, wet or glow layer), not one of the customer's own problems. */
+  private isProduct(id: string) {
+    const kind = this.def.layers.find(l => l.id === id)?.kind
+    return kind === 'paint' || kind === 'wet' || kind === 'glow'
   }
 
   private resolveLayer(id: string, to: 0 | 1, regionId: RegionId) {

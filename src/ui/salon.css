@@ -159,7 +159,10 @@
 .gs-card.owned { background: linear-gradient(160deg, #f4fcf8, #fff); }
 .gs-card.owned .gs-price { color: var(--gs-mint-deep); }
 .gs-card.locked { opacity: 0.72; }
-.gs-card.soon { opacity: 0.6; }
+.gs-card.soon { opacity: 0.85; }
+.gs-card.soon .gs-card-art { background: linear-gradient(160deg, #f6f1fd, #fdeff4); }
+.gs-soon-more { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px 14px; border-radius: 16px; background: var(--gs-lilac-2); font: 700 13px/1.4 var(--gs-font); color: var(--gs-lilac-deep); }
+.gs-soon-more svg { width: 28px; height: 28px; flex: 0 0 auto; }
 .gs-tagline { font: 800 11px var(--gs-font); padding: 3px 8px; border-radius: 99px; background: var(--gs-lilac-2); color: var(--gs-lilac-deep); align-self: flex-start; }
 .gs-card.just { animation: gs-bought 0.8s var(--gs-ease); }
 @keyframes gs-bought { 20% { transform: scale(1.06) rotate(-1deg); box-shadow: 0 0 0 4px var(--gs-mint), 0 12px 26px rgba(69, 184, 144, 0.3); } }
@@ -210,6 +213,7 @@
 .gs-served { text-align: center; font: 800 13px var(--gs-font); color: var(--gs-ink-soft); margin-top: 10px; }
 .gs-stamp { display: table; margin: 16px auto 0; transform: rotate(-8deg) scale(2); opacity: 0; font: 700 16px var(--gs-head); color: var(--gs-mint-deep); border: 3px solid var(--gs-mint-deep); border-radius: 10px; padding: 4px 12px; letter-spacing: 1.5px; transition: all 0.35s var(--gs-ease); }
 .gs-stamp.in { transform: rotate(-8deg) scale(1); opacity: 0.85; }
+.gs-stamp.meh { color: #9a7aa8; border-color: #9a7aa8; }
 .gs-reviews { flex: 1; min-width: 0; max-width: 620px; display: flex; flex-direction: column; gap: 12px; }
 .gs-gcard { background: #fff; border-radius: 22px; padding: 18px 20px; box-shadow: var(--gs-shadow); animation: gs-card-in 0.5s var(--gs-ease) both; }
 .gs-g-head { display: flex; align-items: center; gap: 16px; }

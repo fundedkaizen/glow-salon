@@ -105,7 +105,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .tool.done .tool-check { transform: scale(1); }
 .tool.skipped .tool-check { transform: scale(1); background: #d8c4cf; }
 .tool-opt { position: absolute; top: -6px; left: 50%; transform: translateX(-50%); font: 800 9px var(--font); background: var(--butter); color: #a07420; padding: 1px 6px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.5px; }
-.thud.revealing .thud-bottom, .thud.revealing .thud-choice, .thud.revealing .thud-leave, .thud.revealing .thud-head { opacity: 0; transform: translateY(20px); pointer-events: none; transition: opacity 0.5s, transform 0.5s; }
+.thud.revealing .thud-bottom, .thud.revealing .thud-choice, .thud.revealing .thud-leave, .thud.revealing .thud-head, .thud.revealing .thud-skip { opacity: 0; transform: translateY(20px); pointer-events: none; transition: opacity 0.5s, transform 0.5s; }
 .thud-card { pointer-events: auto; position: absolute; left: 50%; bottom: calc(24px + var(--safe-b)); transform: translateX(-50%); background: rgba(255, 253, 251, 0.97); border-radius: 28px; padding: 18px 24px 20px; box-shadow: var(--shadow); text-align: center; min-width: min(360px, calc(100% - 32px)); animation: cardin 0.6s cubic-bezier(.3, 1.4, .5, 1); }
 @keyframes cardin { from { transform: translate(-50%, 40px); opacity: 0; } }
 .reveal-name { font: 600 24px var(--font-head); color: var(--rose); }
@@ -231,5 +231,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   .thud-skip { min-height: 40px; font-size: 13px; }
   .tool { width: 54px; height: 54px; }
   .tool img { width: 46px; height: 46px; }
-  .thud-tray { padding: 40px 10px 10px; gap: 6px; }
+  /* The step card at the top already names the tool: no label over the tray, so nothing hangs off its edge. */
+  .thud-tray { padding: 14px 12px 10px; gap: 6px; max-width: calc(100vw - 24px); }
+  .tool .tool-name { display: none; }
+  /* Hidden tools give back exactly the gap they leave (6px here), or the tray measures short and cuts the last tool. */
+  .tool.gone, .tool.far { margin-left: -6px; }
 }

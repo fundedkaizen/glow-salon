@@ -1,5 +1,6 @@
 import { POLISH_COLORS, type TreatmentDef } from '../core/treatments/types.ts'
 import type { StepStatus } from '../core/treatments/session.ts'
+import { revealTitle } from '../core/reviews.ts'
 import { toolArt } from '../art/tools.ts'
 import { esc, h } from './dom.ts'
 
@@ -28,6 +29,8 @@ export class TreatmentHud {
   private card: HTMLElement
   private chip: HTMLElement
   private lastStep = -1
+  /** The steps counted in "3 / 12", fixed when the treatment starts: a step that drops out later never changes the total. */
+  private planned: number[] | null = null
 
   private def: TreatmentDef
   private opts: { customer: string; wish: number | null; role: 'lead' | 'helper'; leadName: string; actions: HudActions }
@@ -79,9 +82,9 @@ export class TreatmentHud {
     const s = this.def.steps[step]
     if (!s) return
     this.title.textContent = `${s.label}`
-    const visible = [...this.tray.querySelectorAll<HTMLElement>('.tool:not(.gone)')]
-    const pos = visible.findIndex(el => el.dataset.i === String(step))
-    this.title.dataset.count = `${Math.max(1, pos + 1)} / ${visible.length || this.def.steps.length}`
+    this.planned ??= [...this.tray.querySelectorAll<HTMLElement>('.tool:not(.gone)')].map(el => Number(el.dataset.i))
+    const total = this.planned.length || this.def.steps.length
+    this.title.dataset.count = `${Math.min(total, Math.max(1, this.planned.filter(i => i <= step).length))} / ${total}`
     this.hint.textContent = this.opts.role === 'helper' && s.lamp ? 'Hold the magnifier lamp over the spot your partner is working on, or help with the tool' : s.hint
     this.finishBtn.hidden = !s.optional || this.opts.role === 'helper'
     this.skipBtn.hidden = this.opts.role === 'helper' || !!s.optional
@@ -146,7 +149,7 @@ export class TreatmentHud {
   showReveal(o: { name: string; stars: number; lead: boolean }) {
     this.card.hidden = false
     this.card.innerHTML = `
-      <div class="reveal-name">${esc(o.name)} is glowing!</div>
+      <div class="reveal-name">${esc(revealTitle(o.name, o.stars))}</div>
       <div class="reveal-stars">${[1, 2, 3, 4, 5].map(i => `<span class="rstar${i <= o.stars ? ' on' : ''}" style="--d:${i * 0.12}s">&#9733;</span>`).join('')}</div>
       <div class="reveal-btns">
         <button class="pill reveal-photo">Save photo</button>

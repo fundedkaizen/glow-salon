@@ -16,8 +16,8 @@ import { personaFor, storyBeat } from '../core/persona.ts'
 import { withFigure } from '../core/figure.ts'
 import { hashString, makeRng } from '../core/rng.ts'
 import type { Action, Customer, DayStats, GameEvent, Pending, Phase, Player, Station } from '../core/salon.ts'
-import type { SalonExt } from '../core/salon-ext.ts'
-import { STAFF_GRACE, STAFF_ID_BASE, type StaffMember } from '../core/staff.ts'
+import { staffCountdown, type SalonExt } from '../core/salon-ext.ts'
+import { STAFF_ID_BASE, type StaffMember } from '../core/staff.ts'
 import { Cat } from './floor-cat.ts'
 import { Person } from './floor-person.ts'
 import { Particles, easeOutBack } from './particles.ts'
@@ -595,7 +595,7 @@ export class FloorView {
   private onKeyDown = (e: KeyboardEvent) => {
     if (!this.inputOn || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
     const k = e.key.toLowerCase()
-    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { this.keys.add(k); this.path = []; this.goal = null; e.preventDefault() }
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { this.keys.add(k); this.path = []; this.goal = null; this.claim(null); e.preventDefault() }
     if ((k === 'f' || k === 'e' || k === 'enter' || k === ' ') && !e.repeat) { if (this.target) { e.preventDefault(); this.interact() } }
   }
   private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.key.toLowerCase()) }
@@ -629,7 +629,16 @@ export class FloorView {
       if (p.x > r.x - 10 && p.x < r.x + r.w + 10 && p.y > r.y - 60 && p.y < r.y + r.h + 10) { const spot = stationSpot(st.slot); this.goTo({ kind: 'station', id: st.id, ...spot }); return }
     }
     this.goal = null
+    this.claim(null)
     this.walkTo(p)
+  }
+
+  /** Tell the salon which station this player is walking over to (null: none), so staff leave it to them. */
+  private claimed: string | null = null
+  private claim(station: string | null) {
+    if (station === this.claimed) return
+    this.claimed = station
+    this.hooks.onAction({ a: 'claim', station })
   }
 
   private walkTo(p: Pt) {
@@ -642,6 +651,7 @@ export class FloorView {
   private goTo(t: Target) {
     const here = Math.hypot(this.me.x - t.x, this.me.y - t.y)
     this.goal = t
+    this.claim(t.kind === 'station' ? t.id : null)
     if (here < 30) { this.goal = null; this.interactWith(t); return }
     this.walkTo(t.kind === 'cat' ? { x: t.x + (this.me.x < t.x ? -40 : 40), y: t.y + 6 } : t)
   }
@@ -840,7 +850,8 @@ export class FloorView {
       const mine = p.id === this.playerId
       const st = p.station ? state.stations.find(s => s.id === p.station) : null
       let tx = mine ? this.me.x : p.x, ty = mine ? this.me.y : p.y
-      if (st && !mine) { const spot = stationSpot(st.slot); tx = spot.x; ty = spot.y }
+      // The lead works at the station's spot; a helper stands beside them, never on top.
+      if (st && !mine) { const k = st.helpers.indexOf(p.id); const spots = this.asideSpots(st.slot); const spot = k < 0 ? stationSpot(st.slot) : spots[k % spots.length]; tx = spot.x; ty = spot.y }
       const px = v.x, py = v.y
       if (mine) { v.x = tx; v.y = ty } else { const k = Math.min(1, dt * 12); v.x += (tx - v.x) * k; v.y += (ty - v.y) * k }
       const moving = mine ? this.me.moving : Math.hypot(v.x - px, v.y - py) / Math.max(dt, 1e-3) > 14 || p.moving
@@ -857,6 +868,19 @@ export class FloorView {
     }
   }
 
+  /** Open places to stand beside a station (helpers and waiting staff), clear of furniture, nearest first. */
+  private asideSpots(slot: number): Pt[] {
+    const spot = stationSpot(slot)
+    const out: Pt[] = []
+    for (const [dx, dy] of [[-44, 52], [-70, 4], [0, -70], [30, 60]]) {
+      const p = { x: spot.x + dx, y: spot.y + dy }
+      if (p.x < 24 || p.x > FLOOR_W - 24 || p.y < 186 || p.y > FLOOR_H - 22) continue
+      if (!this.grid[Math.floor(p.y / CELL) * COLS + Math.floor(p.x / CELL)]) out.push(p)
+    }
+    if (!out.length) out.push({ x: spot.x - 34, y: spot.y + 18 })
+    return out
+  }
+
   private updateStaff(state: FloorState, dt: number) {
     const staff = state.ext?.staff ?? []
     staff.forEach((s: StaffMember, i) => {
@@ -866,7 +890,9 @@ export class FloorView {
       const where = s.task?.station ?? s.station
       const st = where ? state.stations.find(x => x.id === where && x.slot >= 0) : null
       const onBreak = s.breakLeft > 0
-      const goal: Pt = onBreak || !st ? { x: 356 + i * 34, y: 336 + (i % 2) * 12 } : stationSpot(st.slot)
+      // Working: at the station's spot. Waiting at their own station: beside it, clear of any player there.
+      const aside = st ? this.asideSpots(st.slot) : []
+      const goal: Pt = onBreak || !st ? { x: 356 + i * 34, y: 336 + (i % 2) * 12 } : s.task ? stationSpot(st.slot) : aside[st.helpers.length % aside.length]
       if (Math.hypot(goal.x - v.goal.x, goal.y - v.goal.y) > 2) { v.goal = goal; v.path = findPath(this.grid, v, goal) }
       let moving = false
       if (v.path.length) {
@@ -925,15 +951,18 @@ export class FloorView {
       if (working) {
         const cx = p.x + 10, cy = p.y - 118
         info.ring.circle(cx, cy, 13).fill({ color: 0xffffff, alpha: 0.95 }).stroke({ width: 1.2, color: 0xe9c2d0 })
-        info.ring.moveTo(cx, cy - 13).arc(cx, cy, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.02, st.progress)).stroke({ width: 4, color: st.lead !== null && st.lead >= STAFF_ID_BASE ? 0x4fbf98 : PLAYER_COLORS[(st.lead ?? 0) % 4], cap: 'round' })
+        // How far along the whole treatment is (a player reports the step and that step's progress; staff the whole).
+        const staffLed = st.lead !== null && st.lead >= STAFF_ID_BASE
+        const done = staffLed ? st.progress : Math.min(1, (st.step + st.progress) / Math.max(1, st.steps))
+        info.ring.moveTo(cx, cy - 13).arc(cx, cy, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.02, done)).stroke({ width: 4, color: st.lead !== null && st.lead >= STAFF_ID_BASE ? 0x4fbf98 : PLAYER_COLORS[(st.lead ?? 0) % 4], cap: 'round' })
         info.ring.circle(cx, cy, 4).fill({ color: 0xf5b83d })
       }
       // A label: who is on it, or a staff member about to step in.
       let label = ''
       if (c && c.state === 'seated' && st.lead === null) {
         const s = state.ext?.staff.find(m => m.station === st.id && !m.task && m.breakLeft <= 0)
-        const since = state.ext?.today.seatedAt[st.id]
-        if (s && since !== undefined) label = `${s.name} takes over in ${Math.max(0, Math.ceil(STAFF_GRACE - (state.clock - since)))}s`
+        const left = staffCountdown(state, st.id)
+        if (s && left !== null) label = `${s.name} takes over in ${Math.ceil(left)}s`
       }
       info.text.text = label
       const bg = info.label.children[0] as Graphics

@@ -33,6 +33,28 @@ export function starsFor(result: Pick<TreatmentResult, 'thoroughness' | 'seconds
   return clamp(Math.round(1 + score * 4.35), 1, 5)
 }
 
+/**
+ * The receipt's verdict on the day, from what the customers said: how many left happy (four stars or more)
+ * and the stamp, from the day's average stars (never "great" on a day with let-downs in it).
+ */
+export function dayVerdict(reviews: readonly { stars: number }[], served: number): { happy: number; line: string; stamp: string; tone: 'great' | 'good' | 'meh' } {
+  const happy = reviews.filter(r => r.stars >= 4).length
+  const plural = (n: number) => `${n} customer${n === 1 ? '' : 's'}`
+  const line = !served ? 'No customers today' : happy === served ? `${plural(served).replace('customer', 'happy customer')} today` : happy ? `${happy} of ${plural(served)} left happy` : `${plural(served)} served today`
+  if (!reviews.length) return { happy, line, stamp: 'THANK YOU', tone: 'good' }
+  const avg = reviews.reduce((a, r) => a + r.stars, 0) / reviews.length
+  if (avg >= 4.5) return { happy, line, stamp: 'GREAT DAY', tone: 'great' }
+  if (avg >= 3.5) return { happy, line, stamp: 'GOOD DAY', tone: 'good' }
+  return { happy, line, stamp: 'TOMORROW IS NEW', tone: 'meh' }
+}
+
+/** The reveal's headline follows the stars: a rushed job is never "glowing". */
+export function revealTitle(name: string, stars: number) {
+  if (stars <= 2) return `A quick tidy-up for ${name}`
+  if (stars === 3) return `${name} looks fresher`
+  return `${name} is glowing!`
+}
+
 /** 1 when at or under par, falling off gently to 0 at three times par. */
 export function speedScore(seconds: number, par: number) {
   if (seconds <= par) return 1

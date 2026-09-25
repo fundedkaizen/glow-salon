@@ -10,6 +10,7 @@ import { ext, extraCustomers, hireCheck, validateExt, personaOf } from '../src/c
 import { importCode, exportCode, validate } from '../src/core/save.ts'
 import { PEOPLE_DATA } from '../src/content/people.ts'
 import { REVIEWS_DATA } from '../src/content/reviews.ts'
+import { dayVerdict } from '../src/core/reviews.ts'
 import type { TreatmentResult } from '../src/core/treatments/session.ts'
 
 const result = (over: Partial<TreatmentResult> = {}): TreatmentResult => ({ treatment: 'facial', seconds: 150, par: 170, required: 12, done: 12, skipped: 0, optionalDone: 1, popped: 6, extracted: 12, fourHands: false, wishMatched: null, disaster: false, thoroughness: 0.96, ...over })
@@ -53,6 +54,40 @@ export function run() {
   check('an unnamed player is never "You was"', unnamed.every(t => !/\bYou was\b|\byou was\b/.test(t)), unnamed.find(t => /You was/i.test(t)))
   const tags = salonTags([{ tags: ['Great for nails', 'Relaxing'] }, { tags: ['Great for nails'] }, { tags: ['Relaxing', 'Great for nails'] }, { tags: ['A bit pricey'] }])
   check('salon tags count and sort', tags[0].tag === 'Great for nails' && tags[0].count === 3 && tags[1].tag === 'Relaxing' && tags.length === 3, tags)
+
+  // ---------------------------------------------------------------- reviews: variety, the cat, photos and tone (C2-05, C2-06)
+  // A busy day: twenty reviews, mostly five stars, a few voices. No line twice in the day.
+  const dayRecent: string[] = [], dayLines: string[] = []
+  const voices = ['casual', 'polite', 'warm', 'upbeat', 'dreamy']
+  const day = Array.from({ length: 20 }, (_, i) => writeGoogleReview(input({ seed: 900 + i * 7, voice: voices[i % voices.length], stars: i % 6 === 5 ? 4 : 5, recent: dayRecent, today: dayLines, cat: true, catToday: 0, ambience: 4, owned: ['plant', 'lights'] })))
+  check('reviews: no line twice in one day', new Set(dayLines).size === dayLines.length, dayLines.filter((l, i) => dayLines.indexOf(l) !== i))
+  const pools = [...Object.values(REVIEWS_DATA.remarks).flat(), ...Object.values(REVIEWS_DATA.extras).flat()]
+  const repeated = pools.filter(l => l.length > 12 && day.filter(rv => rv.text.includes(l.replace(/\{[a-z]+\}/g, ''))).length > 1 && !/\{/.test(l))
+  check('reviews: no remark or extra appears in two reviews of the day', repeated.length === 0, repeated)
+  check('reviews: the remark pools are big enough for a busy day', REVIEWS_DATA.remarks['5'].length >= 20 && REVIEWS_DATA.extras.cat.length >= 10 && REVIEWS_DATA.extras.fast.length >= 10 && REVIEWS_DATA.extras.decor.length >= 10)
+  // The cat: rarely, and once a day at most (the salon passes catToday).
+  const catty = Array.from({ length: 200 }, (_, i) => writeGoogleReview(input({ seed: 3000 + i, cat: true, catToday: 0 })))
+  const catShare = catty.filter(rv => rv.tags.includes('Cat lovers’ spot')).length / catty.length
+  check('reviews: the cat comes up now and then, not every time', catShare > 0.1 && catShare < 0.4, catShare)
+  check('reviews: once the cat was mentioned today, not again', Array.from({ length: 60 }, (_, i) => writeGoogleReview(input({ seed: 4000 + i, cat: true, catToday: 1 }))).every(rv => !rv.tags.includes('Cat lovers’ spot')))
+  // Photos: only a saved photo is talked about.
+  const noPhoto = Array.from({ length: 120 }, (_, i) => writeGoogleReview(input({ seed: 5000 + i, stars: 5 })).text)
+  check('reviews: no photo line without a saved photo', noPhoto.every(t => !/photo|before and after/i.test(t)), noPhoto.find(t => /photo/i.test(t)))
+  const withPhoto = Array.from({ length: 60 }, (_, i) => writeGoogleReview(input({ seed: 6000 + i, stars: 5, photo: true })).text)
+  check('reviews: a saved photo is often mentioned', withPhoto.filter(t => /before and after/i.test(t)).length > 20)
+  // Tone: a let-down never opens or signs off like a rave.
+  const upbeat = ['no notes', '10/10', 'obsessed', 'Highly recommended', 'Iconic', 'BEST SALON EVER', 'Five stars all day', 'Legendary', 'OMG', 'Absolutely loved it', 'I\'m OBSESSED']
+  const lows = Array.from({ length: 240 }, (_, i) => writeGoogleReview(input({ seed: 7000 + i, stars: 2 + (i % 2), voice: Object.keys(REVIEWS_DATA.openers)[i % 12] })))
+  const gushing = lows.filter(rv => upbeat.some(u => rv.text.toLowerCase().includes(u.toLowerCase())))
+  check('reviews: two and three stars never gush', gushing.length === 0, gushing.slice(0, 3).map(rv => rv.text))
+  check('reviews: every voice has low-star openers and closers', Object.keys(REVIEWS_DATA.openers).every(v => (REVIEWS_DATA.openersLow as Record<string, string[]>)[v]?.length >= 3 && (REVIEWS_DATA.closersLow as Record<string, string[]>)[v]?.length >= 3))
+  check('reviews: no dashes standing in for commas', !JSON.stringify(REVIEWS_DATA).includes('\u2014'))
+  // The receipt: happy means four stars and up; the stamp follows the reviews.
+  const mixed = dayVerdict([{ stars: 5 }, { stars: 5 }, { stars: 2 }, { stars: 4 }, { stars: 5 }], 5)
+  check('receipt: happy counts only four stars and up', mixed.happy === 4 && mixed.line === '4 of 5 customers left happy', mixed)
+  check('receipt: a day with a let-down is a good day, not a great one', mixed.stamp === 'GOOD DAY', mixed.stamp)
+  check('receipt: all five stars is a great day', dayVerdict([{ stars: 5 }, { stars: 5 }], 2).stamp === 'GREAT DAY' && dayVerdict([{ stars: 5 }, { stars: 5 }], 2).line === '2 happy customers today')
+  check('receipt: a rough day says tomorrow is new', dayVerdict([{ stars: 2 }, { stars: 3 }], 2).stamp === 'TOMORROW IS NEW' && dayVerdict([{ stars: 2 }, { stars: 3 }], 2).line === '2 customers served today')
 
   // ---------------------------------------------------------------- personas
   const p1 = personaFor({ seed: 1234, regular: null, treatment: 'facial' }, { rating: 0 })

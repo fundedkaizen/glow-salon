@@ -1,13 +1,16 @@
 import { check } from './harness.ts'
 import { TreatmentSession, type Op } from '../src/core/treatments/session.ts'
 import { planTreatment } from '../src/core/treatments/plan.ts'
+import { COMING_SOON, COMING_SOON_TEASER } from '../src/core/treatments/registry.ts'
 import { handProfile } from '../src/core/treatments/profile.ts'
 import { regionMask } from '../src/core/treatments/session.ts'
 import { GRID, CELL } from '../src/core/treatments/grid.ts'
 import { firstNameOf, planDay, DISASTER_CHANCE } from '../src/core/customers.ts'
 import { genderOfName } from '../src/core/names.ts'
 import { newSave, reduce, startDay, tick, type SalonState } from '../src/core/salon.ts'
-import { candidates, ext } from '../src/core/salon-ext.ts'
+import { candidates, CLAIM_SECONDS, ext, playerHolds, ROAM_GRACE, staffCountdown } from '../src/core/salon-ext.ts'
+import { hire, staffDuration, STAFF_GRACE, STAFF_ID_BASE, type StaffMember } from '../src/core/staff.ts'
+import { stationSpot } from '../src/core/floor.ts'
 import { ambienceStars, AMBIENCE_GOAL, canBuy, ITEM_BY_ID, tipFor } from '../src/core/economy.ts'
 import { DECOR_SETS, GIFT_BY_REGULAR, setPayMult, setStarBonus, setTipMult } from '../src/core/decor.ts'
 import { goalFor, goalTally } from '../src/core/goals.ts'
@@ -31,7 +34,7 @@ function playAll(s: TreatmentSession): Op[] {
         const t = s.stepTargets().find(x => !x.done)
         if (!t) break
         if (step.gesture === 'sweep') push({ k: 'stroke', s: i, x0: t.x - 20, y0: t.y, x1: t.x + 20, y1: t.y })
-        else if (t.kind === 'whitehead' || t.kind === 'hangnail') { push({ k: 'tap', s: i, x: t.x, y: t.y }); for (let h = 0; h < 30 && !t.done && !(t.stage === 1 && !t.gripped); h++) push({ k: 'hold', s: i, x: t.x, y: t.y, dt: 0.1 }) }
+        else if (t.kind === 'whitehead' || t.kind === 'hangnail' || t.kind === 'corn' || t.kind === 'ingrown' || t.kind === 'splinter') { push({ k: 'tap', s: i, x: t.x, y: t.y }); for (let h = 0; h < 30 && !t.done && !(t.stage === 1 && !t.gripped); h++) push({ k: 'hold', s: i, x: t.x, y: t.y, dt: 0.1 }) }
         else push({ k: 'tap', s: i, x: t.x, y: t.y })
         if (step.optional) break
       } else {
@@ -145,7 +148,7 @@ export function run() {
   reduce(st, 0, { a: 'open' })
   for (let t = 0; t < 300 && !st.stations.some(s => s.customer !== null); t++) tick(st, 0.1)
   check('the first customer is seated where the staff member is ready', st.stations[1].customer !== null && st.stations[0].customer === null)
-  for (let t = 0; t < 1200 && staff.served < 1; t++) tick(st, 0.1)
+  for (let t = 0; t < 3000 && staff.served < 1; t++) tick(st, 0.1)
   check('staff serve them on their own', staff.served === 1)
   const staffReview = st.stats.reviews[0]
   const staffPaid = st.stats.revenue + st.stats.tips
@@ -163,6 +166,92 @@ export function run() {
     for (let t = 0; t < 3000 && member.served < 1; t++) tick(away, 0.1)
     check('a skilled staff member with no station of their own still serves', member.served >= 1)
   }
+
+  // ---------------------------------------------------------------- staff balance (C2-04)
+  const trainee = { ...hire(candidates(away)[0], STAFF_ID_BASE), skills: { facial: 2, nails: 2, feet: 2 }, traits: [] }
+  check('staff take about par: a two-star trainee on a facial takes 90% of par', staffDuration(trainee, 'facial', 100, 170) === Math.round(170 * 0.9))
+  check('staff take about par: a five-star expert still takes more than half of par', staffDuration({ ...trainee, skills: { facial: 5, nails: 5, feet: 5 } }, 'facial', 100, 170) > 170 * 0.55)
+  // A salon with two facial chairs and one hire on the second: the first customer sits at the player's chair.
+  const balance = (setup: (s: SalonState, member: StaffMember) => void) => {
+    const s = startDay({ ...newSave(77), day: 6, money: 5000, owned: ['facial-chair-2'] }, [])
+    reduce(s, 0, { a: 'join', name: 'P' })
+    const idx = candidates(s).findIndex(c => c.skills.facial >= 2)
+    reduce(s, 0, { a: 'hire', idx })
+    const member = ext(s).staff[0]
+    setup(s, member)
+    reduce(s, 0, { a: 'open' })
+    return { s, member }
+  }
+  const seatAt = (s: SalonState, id: string, seconds = 400) => { for (let t = 0; t < seconds * 10 && !s.stations.some(x => x.id === id && x.customer !== null && s.customers.find(c => c.id === x.customer)?.state === 'seated'); t++) tick(s, 0.1) }
+  // Staff with a station of their own never leave it for another one.
+  {
+    const { s, member } = balance((s, m) => { reduce(s, 0, { a: 'assignStaff', id: m.id, station: 's1' }) })
+    // The player keeps the staff member's own chair for themselves: the staff member waits rather than roam.
+    const spot1 = stationSpot(s.stations[1].slot)
+    reduce(s, 0, { a: 'pos', x: spot1.x, y: spot1.y, f: 1, m: false })
+    seatAt(s, 's0')
+    for (let t = 0; t < 600; t++) tick(s, 0.1)
+    check('staff with a station stay at it (the player’s chair is left to the player)', s.stations[0].lead === null && member.task === null, { lead: s.stations[0].lead })
+  }
+  // Staff set to "Anywhere" wait for the players first, then help.
+  {
+    const { s, member } = balance((s, m) => { reduce(s, 0, { a: 'assignStaff', id: m.id, station: null }) })
+    seatAt(s, 's0')
+    const seatedAt = s.clock
+    for (let t = 0; t < 400 && s.stations[0].lead === null; t++) tick(s, 0.1)
+    check('staff set to Anywhere wait about 30 s for a player', s.stations[0].lead === null || s.clock - seatedAt >= ROAM_GRACE - 0.5, { waited: s.clock - seatedAt })
+    for (let t = 0; t < 400 && s.stations[0].lead === null; t++) tick(s, 0.1)
+    check('staff set to Anywhere then take a waiting customer', s.stations[0].lead === member.id)
+  }
+  // Never a station a player is at, standing by or walking to.
+  {
+    const { s } = balance((s, m) => { reduce(s, 0, { a: 'assignStaff', id: m.id, station: 's0' }) })
+    const spot = stationSpot(s.stations[0].slot)
+    reduce(s, 0, { a: 'pos', x: spot.x + 30, y: spot.y, f: 1, m: false })
+    seatAt(s, 's0')
+    for (let t = 0; t < 600; t++) tick(s, 0.1)
+    check('staff leave a station to a player standing at it', s.stations[0].lead === null)
+    check('no countdown while a player is there', staffCountdown(s, 's0') === null)
+    reduce(s, 0, { a: 'pos', x: 200, y: 700, f: 1, m: false })
+    reduce(s, 0, { a: 'claim', station: 's0' })
+    for (let t = 0; t < 100; t++) tick(s, 0.1)
+    check('staff leave a station to a player walking over to it', s.stations[0].lead === null && playerHolds(s, 's0'))
+    reduce(s, 0, { a: 'claim', station: null })
+    tick(s, 0.1)
+    check('the wait starts again when the player goes elsewhere', s.stations[0].lead === null && (staffCountdown(s, 's0') ?? 0) > STAFF_GRACE - 0.5, staffCountdown(s, 's0'))
+    for (let t = 0; t < 80; t++) tick(s, 0.1)
+    check('then the staff member steps in', s.stations[0].lead !== null && s.stations[0].lead >= STAFF_ID_BASE)
+    // A claim runs out: a player who wandered off does not hold a chair forever.
+    const other = startDay({ ...newSave(78), day: 6 }, [])
+    reduce(other, 0, { a: 'join', name: 'Q' })
+    reduce(other, 0, { a: 'claim', station: 's0' })
+    reduce(other, 0, { a: 'open' })
+    for (let t = 0; t < (CLAIM_SECONDS + 1) * 10; t++) tick(other, 0.1)
+    check('a claim runs out', !playerHolds(other, 's0'))
+    check('a claim for a station that does not exist is refused', !reduce(other, 0, { a: 'claim', station: 's9' }))
+  }
+
+  // ---------------------------------------------------------------- the step counter is planned up front (C2-21)
+  const drops: string[] = []
+  let plays = 0
+  for (const treatment of ['facial', 'nails', 'feet'] as const) {
+    for (let seed = 200; seed < 216; seed++) {
+      const s = new TreatmentSession({ treatment, seed, disaster: seed % 5 === 0 })
+      const planned = s.status.map((st, i) => (st === 'na' ? -1 : i)).filter(i => i >= 0)
+      playAll(s)
+      plays++
+      const dropped = planned.filter(i => s.status[i] === 'na')
+      if (dropped.length) drops.push(`${treatment}:${seed}:${dropped.map(i => s.def.steps[i].id).join('+')}`)
+    }
+  }
+  check('step counter: played in full, the planned steps are the steps played (the total never changes)', drops.length === 0 && plays === 48, drops)
+  const skipper = new TreatmentSession({ treatment: 'facial', seed: 4 })
+  const plannedCount = skipper.status.filter(st => st !== 'na').length
+  check('step counter: steps a customer will never need are out from the start', plannedCount < skipper.def.steps.length || skipper.def.steps.every(st => !st.need), { plannedCount, all: skipper.def.steps.length })
+
+  // ---------------------------------------------------------------- the shop's coming treatments are real cards (C2-18)
+  check('every coming treatment says what it is', COMING_SOON.every(n => (COMING_SOON_TEASER[n] ?? '').length > 20) && new Set(Object.values(COMING_SOON_TEASER)).size === COMING_SOON.length)
+  check('pedicures are no longer "coming": the foot spa is in the shop', !COMING_SOON.some(n => /pedicure|feet|foot/i.test(n)) && ITEM_BY_ID['treat-feet']?.tab === 'treatments')
 
   // ---------------------------------------------------------------- purchases feel weighty
   check('ambience goal is 15 points', AMBIENCE_GOAL === 15 && ambienceStars([]) === 1)

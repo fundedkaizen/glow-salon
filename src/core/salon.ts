@@ -383,8 +383,9 @@ function complete(state: SalonState, id: string, by: number) {
     state.stations.push({ id: `s${state.stations.length}`, kind, slot, customer: null, lead: null, helpers: [], step: 0, steps: TREATMENTS[kind].steps.length, progress: 0 })
     state.slots = state.stations.map(s => s.slot)
   }
-  // A new treatment bought before opening: today's customers (nobody has arrived yet) can already ask for it.
-  if (state.phase === 'prep' && item.effect.kind === 'treatment') {
+  // A new treatment or station bought before opening: today's customers (nobody has arrived yet) can already
+  // ask for it, and a new station makes room for more of them.
+  if (state.phase === 'prep' && state.spawned === 0 && (item.effect.kind === 'treatment' || item.effect.kind === 'station')) {
     planSchedule(state)
     const e = ext(state)
     if (e.today.goal && !e.today.goal.done) e.today.goal = goalFor(state.seed, state.day, state.schedule.length, state.owned.includes('treat-nails'), state.owned.includes('treat-feet'))
@@ -406,6 +407,10 @@ function finish(state: SalonState, by: number, stationId: string, result: Treatm
   let tipMult = setTipMult(state.owned, c.plan.archetype ?? '', !!mid && c.plan.arriveAt >= mid.arriveAt)
   // Staff take a share: the salon keeps less of a staff treatment than one the players do themselves.
   if (by >= STAFF_ID_BASE) { const share = staffShare(state, by, stars, c.plan.treatment); price = Math.round(price * share.revenue); tipMult *= share.tips }
+  // A player pays for what was done: skipped steps take the price down (to 40% with nothing done).
+  const completion = completionOf(result)
+  if (by < STAFF_ID_BASE) price = Math.round(price * (0.4 + 0.6 * completion))
+  const rushed = by < STAFF_ID_BASE && completion < RUSHED
   const tip = tipFor(price, stars, c.mood, state.owned, tipMult)
   state.money += price + tip - def.productCost
   state.stats.revenue += price
@@ -436,8 +441,17 @@ function finish(state: SalonState, by: number, stationId: string, result: Treatm
   c.path = pathOnFloor(state, c, DOOR_INSIDE).concat([DOOR])
   for (const pid of [s.lead, ...s.helpers]) { const p = state.players.find(pl => pl.id === pid); if (p) p.station = null }
   s.customer = null; s.lead = null; s.helpers = []; s.step = 0; s.progress = 0
-  event(state, { kind: 'paid', text: `${c.plan.name} paid $${price} + $${tip} tip`, x: c.x, y: c.y, amount: price + tip, player: by })
+  event(state, { kind: 'paid', text: `${c.plan.name} paid $${price} + $${tip} tip${rushed ? ' (rushed)' : ''}`, x: c.x, y: c.y, amount: price + tip, player: by })
   return true
+}
+
+/** Below this share of the steps done, a treatment counts as rushed. */
+export const RUSHED = 0.6
+
+/** The share of a treatment's required steps that were really done (0 to 1). */
+export function completionOf(result: Pick<TreatmentResult, 'done' | 'required'>) {
+  const done = Number.isFinite(result.done) ? result.done : 0
+  return Math.max(0, Math.min(1, done / Math.max(1, result.required)))
 }
 
 /** Advance the day by `dt` seconds (the host only). */
@@ -495,6 +509,18 @@ export function tick(state: SalonState, dt: number) {
   }
 }
 
+/** The longest stretch one catch-up replays (a host tab woken after a long sleep). */
+export const MAX_CATCH_UP = 120
+
+/**
+ * Advance the day by real elapsed seconds in 0.25 s steps (tick() takes at most 0.25 at a time), so a host
+ * whose tab gets few or no frames keeps the salon running at full speed for the guests.
+ */
+export function runFor(state: SalonState, seconds: number) {
+  let left = Math.min(MAX_CATCH_UP, Math.max(0, seconds))
+  while (left > 1e-6) { const d = Math.min(0.25, left); tick(state, d); left -= d }
+}
+
 function seatPoint(seat: number | null): Pt {
   if (seat === null) return STANDING[0]
   return seat < SOFA_SEATS.length ? SOFA_SEATS[seat] : STANDING[(seat - SOFA_SEATS.length) % STANDING.length]
@@ -517,16 +543,21 @@ function reseat(state: SalonState) {
   }
 }
 
-/** The day's awards, for the receipt. */
+/**
+ * The day's awards, for the receipt: each title to the player who did the most of it. Everyone who served a
+ * customer gets one first (their best title, or a title of their own), then the rest fill up to four, so a
+ * guest who ran their own station never leaves with nothing.
+ */
 export function awards(stats: DayStats): { title: string; name: string; value: string }[] {
   const players = Object.values(stats.byPlayer)
   if (!players.length) return []
-  const out: { title: string; name: string; value: string }[] = []
+  type Award = { title: string; name: string; value: string; who: PlayerStats }
+  const all: Award[] = []
   type Key = 'popped' | 'extracted' | 'tips' | 'served' | 'foam' | 'nails' | 'feet'
   const best = (key: Key) => players.reduce((a, b) => ((b[key] ?? 0) > (a[key] ?? 0) ? b : a))
   const add = (title: string, key: Key, unit: (n: number) => string) => {
     const p = best(key)
-    if ((p[key] ?? 0) > 0) out.push({ title, name: p.name, value: unit(p[key] ?? 0) })
+    if ((p[key] ?? 0) > 0) all.push({ title, name: p.name, value: unit(p[key] ?? 0), who: p })
   }
   add('Most pimples popped', 'popped', n => `${n} popped`)
   add('Blackhead hunter', 'extracted', n => `${n} extracted`)
@@ -536,8 +567,23 @@ export function awards(stats: DayStats): { title: string; name: string; value: s
   add('Nail artist', 'nails', n => `${n} manicures`)
   add('Foot whisperer', 'feet', n => `${n} ${n === 1 ? 'pedicure' : 'pedicures'}`)
   const fastest = players.filter(p => p.fastest !== null).sort((a, b) => a.fastest! - b.fastest!)[0]
-  if (fastest) out.push({ title: 'Speedy hands', name: fastest.name, value: `${Math.floor(fastest.fastest! / 60)}:${String(fastest.fastest! % 60).padStart(2, '0')}` })
-  return out.slice(0, 4)
+  if (fastest) all.push({ title: 'Speedy hands', name: fastest.name, value: `${Math.floor(fastest.fastest! / 60)}:${String(fastest.fastest! % 60).padStart(2, '0')}`, who: fastest })
+  const out: Award[] = []
+  for (const p of players.filter(pl => pl.served >= 1)) out.push(all.find(a => a.who === p && !out.includes(a)) ?? ownTitle(p, out))
+  for (const a of all) { if (out.length >= 4) break; if (!out.includes(a)) out.push(a) }
+  return out.map(({ title, name, value }) => ({ title, name, value }))
+}
+
+/** A title for a player who topped nothing today, from what they did do (never one already given). */
+function ownTitle(p: PlayerStats, given: { title: string }[]): { title: string; name: string; value: string; who: PlayerStats } {
+  const facials = p.served - p.nails - (p.feet ?? 0)
+  const options: [string, number, string][] = [
+    ['Polish pro', p.nails, `${p.nails} ${p.nails === 1 ? 'manicure' : 'manicures'}`],
+    ['Happy feet', p.feet ?? 0, `${p.feet} ${p.feet === 1 ? 'pedicure' : 'pedicures'}`],
+    ['Glow getter', facials, `${facials} ${facials === 1 ? 'facial' : 'facials'}`],
+  ]
+  const pick = options.filter(([t, n]) => n > 0 && !given.some(g => g.title === t)).sort((a, b) => b[1] - a[1])[0]
+  return pick ? { title: pick[0], name: p.name, value: pick[2], who: p } : { title: 'Steady hands', name: p.name, value: `${p.served} served`, who: p }
 }
 
 /** Everything the receipt shows. */

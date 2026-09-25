@@ -1,8 +1,9 @@
 import { check } from './harness.ts'
-import { newSave, startDay, reduce, tick, receipt, awards, toSave, type SalonState } from '../src/core/salon.ts'
+import { newSave, startDay, reduce, tick, receipt, awards, toSave, completionOf, type PlayerStats, type SalonState } from '../src/core/salon.ts'
 import { ITEMS, canBuy, customersPerDay, ambiencePoints, ambienceStars, wealth, toolTier, payFor, tipFor, nextUnlock, START_MONEY, CONFIRM_PRICE } from '../src/core/economy.ts'
-import { starsFor, speedScore, writeReview, average, addReview } from '../src/core/reviews.ts'
+import { starsFor, speedScore, writeReview, average, addReview, revealTitle } from '../src/core/reviews.ts'
 import { planDay } from '../src/core/customers.ts'
+import { ext } from '../src/core/salon-ext.ts'
 import { blockedGrid, findPath, SLOTS, SOFA_SEATS, DOOR_INSIDE } from '../src/core/floor.ts'
 import type { TreatmentResult } from '../src/core/treatments/session.ts'
 
@@ -123,4 +124,55 @@ export function run() {
   const unplaced = state.stations.find(st => st.kind === 'nails')!
   check('an unplaced station takes a free slot when the salon opens', reduce(state, 0, { a: 'open' }) && unplaced.slot >= 0 && new Set(state.stations.map(st => st.slot)).size === state.stations.length)
   check('big purchases confirm threshold', CONFIRM_PRICE === 200)
+
+  // ---------------------------------------------------------------- co-op awards are shared (C2-15)
+  const stat = (name: string, over: Partial<PlayerStats>): PlayerStats => ({ name, served: 0, popped: 0, extracted: 0, tips: 0, foam: 0, fastest: null, nails: 0, feet: 0, ...over })
+  const dayStats = (byPlayer: Record<number, PlayerStats>) => ({ revenue: 0, tips: 0, costs: 0, served: 0, reviews: [], ratingBefore: 0, reviewsBefore: 0, byPlayer })
+  const hostDay = awards(dayStats({ 0: stat('Hosty', { served: 5, popped: 20, extracted: 12, tips: 40, foam: 300, nails: 2, fastest: 140 }), 1: stat('Guesty', { served: 1, nails: 1, tips: 5, fastest: 200 }) }))
+  check('awards: a guest who ran their own station gets one', hostDay.some(a => a.name === 'Guesty'), hostDay)
+  check('awards: still four in all, the host keeps the rest', hostDay.length === 4 && hostDay.filter(a => a.name === 'Hosty').length === 3, hostDay)
+  check('awards: a title nobody else has', new Set(hostDay.map(a => a.title)).size === hostDay.length, hostDay)
+  const four = awards(dayStats({ 0: stat('A', { served: 4, popped: 9, tips: 30 }), 1: stat('B', { served: 1 }), 2: stat('C', { served: 2, feet: 2 }), 3: stat('D', { served: 0 }) }))
+  check('awards: everyone who served gets one before anyone gets two', ['A', 'B', 'C'].every(n => four.some(a => a.name === n)) && four.length === 4, four)
+  check('awards: solo play keeps its four', awards(dayStats({ 0: stat('Solo', { served: 4, popped: 9, extracted: 3, tips: 30, foam: 50, fastest: 120 }) })).length === 4)
+
+  // ---------------------------------------------------------------- bought in the morning, used the same day (C2-07)
+  const morning = startDay({ ...newSave(61), day: 4, money: 1000 })
+  reduce(morning, 0, { a: 'join', name: 'Kai' })
+  const planned = morning.schedule.length
+  reduce(morning, 0, { a: 'buy', item: 'facial-chair-2' })
+  check('a chair bought before opening brings more customers that day', morning.schedule.length > planned, { planned, now: morning.schedule.length })
+  reduce(morning, 0, { a: 'buy', item: 'treat-nails' })
+  check('a nail bar bought before opening brings nail customers that day', morning.schedule.some(p => p.treatment === 'nails'))
+  check('the goal follows the new day', ext(morning).today.goal !== null)
+  const names = morning.schedule.map(p => p.name)
+  check('re-planning keeps names unique', new Set(names).size === names.length)
+  reduce(morning, 0, { a: 'open' })
+  const opened = morning.schedule.map(p => p.name).join()
+  morning.money = 1000
+  morning.phase = 'prep'
+  morning.spawned = 1
+  morning.day = 9
+  check('once customers are on their way, the day is not planned again', reduce(morning, 0, { a: 'buy', item: 'nail-desk-2' }) && morning.schedule.map(p => p.name).join() === opened)
+
+  // ---------------------------------------------------------------- skipped steps pay less (C2-02)
+  const paid = (result: TreatmentResult) => {
+    const st = startDay(newSave(88))
+    reduce(st, 0, { a: 'join', name: 'Kai' })
+    reduce(st, 0, { a: 'open' })
+    runUntil(st, () => st.stations[0].customer !== null && st.customers.some(c => c.state === 'seated'))
+    reduce(st, 0, { a: 'work', station: 's0' })
+    const c = st.customers.find(x => x.id === st.stations[0].customer)!
+    c.mood = 1
+    reduce(st, 0, { a: 'finish', station: 's0', result })
+    return { revenue: st.stats.revenue, text: st.events.filter(e => e.kind === 'paid').at(-1)?.text ?? '' }
+  }
+  const full = paid(goodResult())
+  const none = paid({ ...goodResult(), done: 0, skipped: 12, thoroughness: 0, seconds: 40, popped: 0, extracted: 0, optionalDone: 0 })
+  const most = paid({ ...goodResult(), done: 9, skipped: 3, thoroughness: 0.7 })
+  check('skip pay: every step done pays the full price', full.revenue === 38 && !full.text.includes('rushed'), full)
+  check('skip pay: nothing done pays 40%', none.revenue === Math.round(38 * 0.4) && none.text.includes('rushed'), none)
+  check('skip pay: most steps done pays most of it', most.revenue > none.revenue && most.revenue < full.revenue && !most.text.includes('rushed'), most)
+  check('skip pay: completion is clamped', completionOf({ done: 20, required: 10 }) === 1 && completionOf({ done: 0, required: 0 }) === 0)
+  check('reveal: a rushed job is never glowing', !revealTitle('Ella', 2).includes('glowing') && !revealTitle('Ella', 3).includes('glowing') && revealTitle('Ella', 4) === 'Ella is glowing!' && revealTitle('Ella', 5) === 'Ella is glowing!')
 }

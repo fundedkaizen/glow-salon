@@ -51,6 +51,12 @@ export type ReviewInput = {
   byStaff?: boolean
   /** Lines used recently; picked lines are appended (the caller keeps the list short). */
   recent: string[]
+  /** Lines used today: never used twice in one day (an extra with none left is left out). */
+  today?: string[]
+  /** How many of today's reviews already mentioned the cat (it gets one line a day at most). */
+  catToday?: number
+  /** A before-and-after photo of this visit was saved: only then does the review talk about it. */
+  photo?: boolean
 }
 
 const WORDS: Record<string, { treatment: string; part: string }> = {
@@ -75,10 +81,22 @@ export const TAGS = {
   regulars: 'Loyal regulars',
 } as const
 
-function fresh(r: Rng, lines: readonly string[], recent: string[]): string {
-  const unused = lines.filter(l => !recent.includes(l))
-  const line = r.pick(unused.length ? unused : lines)
+/**
+ * A line from a pool that was not used today (and preferably not lately either). When today has used them
+ * all, an optional line is left out (null) and a needed one is the least recently used.
+ */
+function fresh(r: Rng, lines: readonly string[], input: Pick<ReviewInput, 'recent' | 'today'>, optional: true): string | null
+function fresh(r: Rng, lines: readonly string[], input: Pick<ReviewInput, 'recent' | 'today'>, optional?: false): string
+function fresh(r: Rng, lines: readonly string[], input: Pick<ReviewInput, 'recent' | 'today'>, optional = false): string | null {
+  const { recent } = input
+  const today = input.today ?? []
+  const notToday = lines.filter(l => !today.includes(l))
+  if (!notToday.length && (optional || !lines.length)) return null
+  const pool = notToday.length ? notToday : lines
+  const unused = pool.filter(l => !recent.includes(l))
+  const line = unused.length ? r.pick(unused) : pool.reduce((a, b) => (recent.lastIndexOf(b) < recent.lastIndexOf(a) ? b : a))
   recent.push(line)
+  today.push(line)
   return line
 }
 
@@ -127,9 +145,14 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   const speed = speedScore(result.seconds, result.par)
   const tags: string[] = []
 
-  const opener = fill(fresh(r, g.openers[voice], input.recent), input)
-  const remarks: string[] = [sentence(fill(fresh(r, g.remarks[bucket], input.recent), input))]
-  if (stars >= 5 && result.thoroughness >= 0.9 && r.chance(0.45)) remarks.push(sentence(fill(fresh(r, g.remarks[bucket], input.recent), input)))
+  // The tone follows the stars: a let-down never opens with "OMG!!" or signs off "no notes".
+  const low = stars <= 3
+  const openerLine = fresh(r, (low ? g.openersLow : g.openers)[voice], input, true)
+  const opener = openerLine === null ? '' : fill(openerLine, input)
+  const remarks: string[] = [sentence(fill(fresh(r, g.remarks[bucket], input), input))]
+  // A second remark only while the day has plenty left, so later customers still get lines of their own.
+  const leftToday = g.remarks[bucket].filter(l => !(input.today ?? []).includes(l)).length
+  if (stars >= 5 && result.thoroughness >= 0.9 && leftToday >= 10 && r.chance(0.45)) { const more = fresh(r, g.remarks[bucket], input, true); if (more) remarks.push(sentence(fill(more, input))) }
 
   // Extras: what actually happened, most notable first, at most two. Decor is only praised when it exists.
   const decor = decorOwned(input.owned)
@@ -139,7 +162,10 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   if (input.disaster && stars >= 3) extras.push('disaster')
   if (result.fourHands) extras.push('four-hands')
   if (input.regular && stars >= 4) extras.push('regular')
-  if (input.cat && r.chance(0.7)) extras.push('cat')
+  // The cat: now and then, and only once a day, or every review would be about the cat.
+  if (input.cat && !input.catToday && r.chance(0.25)) extras.push('cat')
+  // The photo, only when one was really saved.
+  if (input.photo && stars >= 4 && r.chance(0.7)) extras.push('photo')
   if (speed >= 1 && input.mood > 0.8 && stars >= 4) extras.push('fast')
   if (decor.any && input.ambience >= 3 && r.chance(0.55)) extras.push('decor')
   // The price against what this customer is used to spending.
@@ -147,16 +173,24 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   if (input.price > expected * 1.5 && r.chance(0.6)) extras.push('pricey')
   else if (input.price < expected * 0.95 && stars >= 4 && r.chance(0.5)) extras.push('bargain')
   if (!extras.length && r.chance(0.3)) extras.push(decor.any && r.chance(0.5) ? 'decor' : 'music')
-  const chosen = extras.slice(0, 2)
   // "The plants and lights are so cute" needs both a plant and a light in the salon.
   const lines = (e: ReviewExtra) => g.extras[e].filter(l => e !== 'decor' || !/plants and lights/i.test(l) || (decor.plants && decor.lights))
-  const extraLines = chosen.map(e => sentence(fill(fresh(r, lines(e), input.recent), input)))
-  const closer = fill(fresh(r, g.closers[voice], input.recent), input)
+  const chosen: ReviewExtra[] = []
+  const extraLines: string[] = []
+  for (const e of extras) {
+    if (chosen.length >= 2) break
+    const line = fresh(r, lines(e), input, true)
+    if (line === null) continue
+    chosen.push(e)
+    extraLines.push(sentence(fill(line, input)))
+  }
+  const closerLine = fresh(r, (low ? g.closersLow : g.closers)[voice], input, true)
+  const closer = closerLine === null ? '' : fill(closerLine, input)
 
   const names = [staffWord(input.staff), input.salon]
-  const runsOn = !/[.!?]$/.test(opener)
+  const runsOn = !!opener && !/[.!?]$/.test(opener)
   const body = [runsOn ? runOn(remarks[0], names) : remarks[0], ...remarks.slice(1), ...extraLines]
-  let text = `${opener} ${body.join(' ')} ${closer}`
+  let text = [opener, ...body, closer].filter(Boolean).join(' ')
   if (voice === 'loud') text = text.toUpperCase()
   const emoji = (g.emoji as Record<string, string[]>)[voice]
   if (emoji && stars >= 4 && r.chance(voice === 'dramatic' || voice === 'excited' ? 0.85 : 0.4)) {
