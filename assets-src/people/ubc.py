@@ -24,8 +24,8 @@ BODY = {'fem': 'Superhero_Female_FullBody.gltf', 'masc': 'Superhero_Male_FullBod
 
 # Proportions: (thickness, length) of the leg and arm chains, the head's scale, the chest's width.
 PROFILE = {
-    'fem': dict(leg=(0.9, 0.8), arm=(0.84, 0.85), head=2.25, chest=(0.94, 0.94), smooth=10),
-    'masc': dict(leg=(0.86, 0.81), arm=(0.76, 0.85), head=2.15, chest=(0.86, 0.9), smooth=12),
+    'fem': dict(leg=(0.9, 0.8), arm=(0.84, 0.85), head=2.25, chest=(0.94, 0.94), smooth=10, scale=0.86),
+    'masc': dict(leg=(0.86, 0.81), arm=(0.76, 0.85), head=2.15, chest=(0.86, 0.9), smooth=12, scale=0.87),
 }
 
 
@@ -123,6 +123,19 @@ def restyle(arm, meshes, kind):
             b.head.z -= dz
             b.tail.z -= dz
     bpy.ops.object.mode_set(mode='OBJECT')
+    # the whole figure down to about 1.65 m with the hair (the big head made it tall)
+    k = p.get('scale', 1.0)
+    if k != 1.0:
+        for o in meshes:  # unparent first (keeping the transform), or the rig's scale would reach them twice
+            mw = o.matrix_world.copy()
+            o.parent = None
+            o.matrix_world = mw
+        for o in [arm, *meshes]:
+            o.scale = (k, k, k)
+        gs.activate(arm, *meshes)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        for o in meshes:
+            o.parent = arm
     for o in meshes:
         m = o.modifiers.new('rig', 'ARMATURE')
         m.object = arm

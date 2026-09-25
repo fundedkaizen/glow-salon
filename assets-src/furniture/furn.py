@@ -79,7 +79,7 @@ def cushion(name, size, loc=(0, 0, 0), mat='Accent', puff=0.35, tufts=None, butt
     sx, sy, sz = size
     o = rbox(name, size, loc, mat, r=min(sz * 0.45, 0.05), seg=3)
     s = o.modifiers.new('sub', 'SUBSURF')
-    s.levels = seg
+    s.levels = 1
     gs.apply_all(o)
     c = Vector(loc) + Vector((0, 0, sz / 2))
     me = o.data
@@ -208,10 +208,13 @@ def nodes_info(empties):
     return out
 
 
-def finish(meshes, ao=True, ao_distance=0.25, ao_strength=0.7):
-    """Join parts by material-agnostic object, bake soft occlusion (with a floor) into the vertex colours."""
+def finish(meshes, ao=True, ao_distance=0.25, ao_strength=0.7, target=3200):
+    """Join the parts, decimate to the triangle budget, bake soft occlusion (with a floor) into the vertex colours."""
     meshes = [m for m in meshes if m is not None]
     body = gs.join(meshes, 'body')
+    if target:
+        gs.decimate(body, target)
+        gs.shade_smooth(body)
     if ao:
         gs.bake_vertex_ao([body], samples=96, distance=ao_distance, strength=ao_strength, floor=True)
     else:
