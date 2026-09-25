@@ -758,18 +758,21 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
   // Tints follow the tone: on deeper skin a fixed pale colour turns into a grey film.
   const fair = Math.min(1, (skin.base[0] + skin.base[1] + skin.base[2]) / 3 / 215)
   layers.oil = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, mixRGB(skin.light, [250, 228, 170], 0.25 + 0.35 * fair), fbm(512, 32, 3, seed + 41), 0.04, 0.22), 0, 0)
-  })
+    ctx.drawImage(tintedByNoise(512, mixRGB(shade(skin.light, 0.1), [250, 228, 170], 0.45 * fair), fbm(512, 32, 3, seed + 41), 0.04, 0.22), 0, 0)
+
+  }, faceBelowBand)
   layers.redness = clipped(512, (ctx) => {
     ctx.drawImage(tintedByNoise(512, mixRGB(skin.blush, [232, 96, 104], 0.5 * fair), fbm(512, 40, 3, seed + 51), 0.1, 0.36), 0, 0)
     for (let i = 0; i < 90; i++) { ctx.fillStyle = rgba(mixRGB(skin.blush, [220, 80, 96], 0.6 * fair), r.range(0.15, 0.4)); ctx.beginPath(); ctx.arc(r.range(100, 412), r.range(150, 470), r.range(1, 2.5), 0, Math.PI * 2); ctx.fill() }
-  })
+
+  }, faceBelowBand)
   layers.marks = clipped(512, (ctx) => {
     ctx.drawImage(tintedByNoise(512, [222, 92, 104], fbm(512, 12, 2, seed + 61), 0.32, 0.6), 0, 0)
   })
   layers.serum = clipped(512, (ctx) => {
     ctx.drawImage(tintedByNoise(512, mixRGB(shade(skin.light, 0.1), [255, 238, 196], 0.2 + 0.3 * fair), fbm(512, 40, 2, seed + 71), 0.12, 0.22), 0, 0)
-  })
+
+  }, faceBelowBand)
   layers.glow = clipped(512, (ctx) => {
     // A warm lift of the customer's own tone, even across the face (no mottling).
     ctx.drawImage(tintedByNoise(512, mixRGB(mixRGB(skin.light, skin.blush, 0.15), [255, 232, 226], 0.4 * fair), fbm(512, 90, 2, seed + 81), 0.13, 0.18), 0, 0)

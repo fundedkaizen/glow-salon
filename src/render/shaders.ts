@@ -54,6 +54,8 @@ void main() {
   // Light that has travelled under the skin comes out warm, strongest where the light turns away.
   float scatter = smoothstep(0.05, 0.55, wrap) * (1.0 - smoothstep(0.45, 1.0, wrap));
   vec3 col = base * (0.78 + 0.26 * wrap) + uSss * scatter * 0.2;
+  // Shadows keep their colour: warmer and a little redder as the light turns away, never grey.
+  col *= mix(vec3(1.02, 0.93, 0.88), vec3(1.0), wrap);
   vec2 muv = vec2(vUV.x, mix(vUV.y, 1.0 - vUV.y, uFlipMask));
   float wet = clamp(texture(uWet, muv).a * 1.25 + uSkin.y, 0.0, 1.0);
   vec3 V = vec3(0.0, 0.0, 1.0);
@@ -69,7 +71,11 @@ void main() {
   col *= mix(vec3(1.0), vec3(1.07, 0.95, 0.94), uSkin.x);
   // Wet skin reads a touch deeper and richer under the shine.
   col = mix(col, col * col * 1.18, wet * 0.18);
-  col += vec3(1.0, 0.985, 0.97) * (drySheen + wetSpec + dewy);
+  // Broad sheens take the skin's own colour on deeper tones (a flat white sheen reads as a grey film);
+  // the sharp wet highlight stays white.
+  float lum = dot(base, vec3(0.3, 0.5, 0.2));
+  vec3 sheenCol = mix(base * 1.8 + 0.06, vec3(1.0, 0.985, 0.97), smoothstep(0.35, 0.85, lum));
+  col += sheenCol * (drySheen + dewy) + vec3(1.0, 0.985, 0.97) * wetSpec;
   col += vec3(glint) * 0.0;
   float a = alb.a * uColor.a;
   finalColor = vec4(col * a, a);
