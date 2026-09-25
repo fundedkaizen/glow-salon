@@ -1,12 +1,12 @@
 import type { Look } from '../core/customers.ts'
 import type { Shape } from '../core/geometry.ts'
 import { makeRng } from '../core/rng.ts'
-import { CUFF_Y, alongToe, footAnatomy, toeDir, toeNail, type FootAnatomy, type FootProfile, type FootView, type Toe } from '../core/foot.ts'
+import { CUFF_Y, alongToe, drapeY, footAnatomy, toeDir, toeNail, type FootAnatomy, type FootProfile, type FootView, type Toe } from '../core/foot.ts'
 import { POLISH_COLORS } from '../core/treatments/types.ts'
 import type { Crop } from './face.ts'
 import { shapePath } from './hand.ts'
 import { HAIR, OUTFIT, SKIN, type SkinTone } from './palette.ts'
-import { blob, blurred, canvas, dots, fbm, hex, mixRGB, packHeight, rgba, shade, smoothPath, softBatch, tintedByNoise, warm, type Ctx, type RGB } from './paint.ts'
+import { blob, blurred, canvas, dots, fbm, hex, mixRGB, packHeight, rgba, shade, smoothPath, softBatch, terry, tintedByNoise, type Ctx, type RGB } from './paint.ts'
 
 /**
  * The pedicure close-ups, painted in code on the geometry in core/foot.ts, in the same asset-layer shape as
@@ -200,50 +200,42 @@ function paintTopBase(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, 
   const [sc, s] = canvas(S)
   const toes = a.shape.toes
   const fair = fairOf(skin)
-  // Lit from the top left: the ankle and the lateral (left) slope catch it, the arch side (right) turns away.
-  const lg = s.createLinearGradient(260, 120, 780, 760)
+  // Lit from the top left: the outer (left) slope of the instep catches it, the arch side (right) turns away.
+  const lg = s.createLinearGradient(180, 0, 840, 900)
   lg.addColorStop(0, rgba(mixRGB(skin.base, skin.light, 0.35))); lg.addColorStop(0.5, rgba(skin.base)); lg.addColorStop(1, rgba(mixRGB(skin.base, skin.shadow, 0.4)))
   s.fillStyle = lg
   s.fillRect(0, 0, S, S)
   s.globalCompositeOperation = 'soft-light'
   s.globalAlpha = 0.28
-  s.drawImage(fbm(S, 60, 4, seed + 1), 0, 0)
+  s.drawImage(fbm(S, 70, 4, seed + 1), 0, 0)
   s.globalAlpha = 1
   s.globalCompositeOperation = 'source-over'
-  skinDabs(s, skin, seed, 300, 740, 100, 980, 240)
+  skinDabs(s, skin, seed, 190, 840, 0, 980, 380)
   const ao = aoOf(skin)
-  // The dorsum is a dome: a broad light down its lateral slope, shade down the arch side.
-  softBatch(s, 40, c => {
-    c.fillStyle = rgba(skin.light, 0.5); c.beginPath(); c.ellipse(430, 420, 90, 260, -0.12, 0, Math.PI * 2); c.fill()
-    c.fillStyle = rgba(skin.light, 0.35); c.beginPath(); c.ellipse(470, 170, 80, 90, 0, 0, Math.PI * 2); c.fill()
+  // The instep is a dome: a broad light down its outer slope, shade down the arch side and toward the ankle.
+  softBatch(s, 50, c => {
+    c.fillStyle = rgba(skin.light, 0.5); c.beginPath(); c.ellipse(370, 320, 120, 300, -0.1, 0, Math.PI * 2); c.fill()
   })
-  softBatch(s, 34, c => {
-    c.fillStyle = rgba(ao, 0.55); c.beginPath(); c.ellipse(700, 470, 60, 250, -0.1, 0, Math.PI * 2); c.fill()
-    c.fillStyle = rgba(ao, 0.35); c.beginPath(); c.ellipse(512, 60, 150, 70, 0, 0, Math.PI * 2); c.fill()
+  softBatch(s, 44, c => {
+    c.fillStyle = rgba(ao, 0.6); c.beginPath(); c.ellipse(790, 330, 80, 320, -0.08, 0, Math.PI * 2); c.fill()
+    c.fillStyle = rgba(ao, 0.3); c.beginPath(); c.ellipse(210, 360, 50, 260, 0.1, 0, Math.PI * 2); c.fill()
   }, 'multiply')
-  // Ankle bones: the outer one (left) lower and lit, the inner one (right) higher, its underside in shade.
-  const ank = (x: number, y: number, lit: number) => {
-    blob(s, x, y, 38, 44, skin.light, 0.45 * lit)
-    softBatch(s, 10, c => { c.fillStyle = rgba(ao, 0.4); c.beginPath(); c.ellipse(x + 10, y + 38, 34, 16, 0.2, 0, Math.PI * 2); c.fill() }, 'multiply')
-    blob(s, x - 8, y - 10, 12, 10, [255, 250, 244], 0.25 * lit)
-  }
-  ank(372, 206, 1); ank(650, 176, 0.55)
-  // Extensor tendons fanning from the front of the ankle to each toe; the big toe's stands out most.
+  // Extensor tendons fanning from under the towel to each toe; the big toe's stands out most.
   const tendon = (c: Ctx, t: Toe, dx: number) => {
-    const wx = 500 + (t.base.x - 512) * 0.2, bow = (t.base.x - 512) * 0.1
-    c.beginPath(); c.moveTo(wx + dx, 230); c.quadraticCurveTo((wx + t.base.x) / 2 + bow + dx, 470, t.base.x + dx, t.base.y - t.r0 * 0.9); c.stroke()
+    const wx = 520 + (t.base.x - 512) * 0.3, bow = (t.base.x - 512) * 0.08
+    c.beginPath(); c.moveTo(wx + dx, -20); c.quadraticCurveTo((wx + t.base.x) / 2 + bow + dx, 330, t.base.x + dx, t.base.y - t.r0 * 0.9); c.stroke()
   }
-  softBatch(s, 12, c => { for (const [i, t] of toes.entries()) { c.strokeStyle = rgba(ao, i === 0 ? 0.32 : 0.14); c.lineWidth = i === 0 ? 18 : 10; tendon(c, t, i === 0 ? 13 : 9) } }, 'multiply')
-  softBatch(s, 9, c => { for (const [i, t] of toes.entries()) { c.strokeStyle = rgba(skin.light, i === 0 ? 0.4 : 0.18); c.lineWidth = i === 0 ? 14 : 9; tendon(c, t, 0) } })
+  softBatch(s, 16, c => { for (const [i, t] of toes.entries()) { c.strokeStyle = rgba(ao, i === 0 ? 0.32 : 0.13); c.lineWidth = i === 0 ? 24 : 13; tendon(c, t, i === 0 ? 18 : 12) } }, 'multiply')
+  softBatch(s, 12, c => { for (const [i, t] of toes.entries()) { c.strokeStyle = rgba(skin.light, i === 0 ? 0.42 : 0.18); c.lineWidth = i === 0 ? 20 : 12; tendon(c, t, 0) } })
   // Veins: a few soft, wide branches under the skin, faintly blue-green on fair skin, just deeper on deep skin.
   const veinCol = mixRGB(skin.shadow, [100, 124, 160], 0.45 * fair)
   const vr = makeRng(seed + 88)
-  softBatch(s, 6, c => {
-    c.strokeStyle = rgba(veinCol, 0.08 + 0.07 * fair); c.lineWidth = 9
+  softBatch(s, 8, c => {
+    c.strokeStyle = rgba(veinCol, 0.08 + 0.07 * fair); c.lineWidth = 12
     for (let k = 0; k < 3; k++) {
-      let x = vr.range(420, 620), y = vr.range(620, 660)
+      let x = vr.range(360, 680), y = vr.range(520, 580)
       c.beginPath(); c.moveTo(x, y)
-      for (let j = 0; j < 4; j++) { const nx = x + vr.range(-40, 40), ny = y - vr.range(70, 110); c.quadraticCurveTo(x + vr.range(-20, 20), (y + ny) / 2, nx, ny); x = nx; y = ny }
+      for (let j = 0; j < 4; j++) { const nx = x + vr.range(-50, 50), ny = y - vr.range(100, 150); c.quadraticCurveTo(x + vr.range(-25, 25), (y + ny) / 2, nx, ny); x = nx; y = ny }
       c.stroke()
     }
   }, 'multiply')
@@ -337,7 +329,7 @@ function paintTopBase(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, 
   s.globalAlpha = 1
   clipTo(s, sil)
   ctx.drawImage(sc, 0, 0)
-  paintCuff(ctx, look, skin)
+  paintDrape(ctx, look)
   void profile
   return out
 }
@@ -420,32 +412,48 @@ export function nailOutline(nl: ReturnType<typeof toeNail>, shape: 'square' | 'r
   return pts
 }
 
-/** A rolled-up trouser cuff at the top of the top view: soft cotton, ribbed folds, its shadow on the ankle. */
-function paintCuff(ctx: Ctx, look: Look, skin: SkinTone) {
-  const col = shade(hex(OUTFIT[(look.outfit + 1) % OUTFIT.length]), 0.12)
-  const L = 338, R = 690, B = CUFF_Y
-  const cuff = (k: Ctx, dy = 0) => { k.beginPath(); k.moveTo(L + 6, -60); k.lineTo(R - 6, -60); k.quadraticCurveTo(R + 4, B * 0.5, R - 2, B - 8 + dy); k.bezierCurveTo(R - 60, B + 16 + dy, L + 60, B + 16 + dy, L + 2, B - 8 + dy); k.quadraticCurveTo(L - 4, B * 0.5, L + 6, -60); k.closePath() }
-  softBatch(ctx, 12, k => { k.fillStyle = rgba(aoOf(skin), 0.6); k.translate(4, 18); cuff(k); k.fill() }, 'multiply')
+/**
+ * A soft terry towel draped over the ankle at the top of the top view: cream, with a pastel stripe near its hem,
+ * hanging in a few soft folds, its hem rolled, and its shadow falling on the foot and the towel below.
+ */
+function paintDrape(ctx: Ctx, look: Look) {
+  const col: RGB = [252, 246, 240]
+  const stripe = shade(hex(OUTFIT[(look.outfit + 1) % OUTFIT.length]), 0.1)
+  const r = makeRng(look.outfit * 7 + 3)
+  const hem = (k: Ctx, dy = 0) => { k.beginPath(); k.moveTo(-40, -80); k.lineTo(1064, -80); for (let x = 1064; x >= -40; x -= 8) k.lineTo(x, drapeY(x) + dy); k.closePath() }
+  const hemLine = (k: Ctx, dy: number) => { k.beginPath(); for (let x = -40; x <= 1064; x += 8) (x === -40 ? k.moveTo(x, drapeY(x) + dy) : k.lineTo(x, drapeY(x) + dy)) }
+  softBatch(ctx, 18, k => { k.fillStyle = 'rgba(110,64,100,0.42)'; k.translate(8, 26); hem(k); k.fill() })
+  softBatch(ctx, 5, k => { k.strokeStyle = 'rgba(110,64,100,0.35)'; k.lineWidth = 10; hemLine(k, 8) })
   ctx.save()
-  cuff(ctx)
-  const g = ctx.createLinearGradient(L, 0, R, 0)
-  g.addColorStop(0, rgba(shade(col, -0.05))); g.addColorStop(0.3, rgba(shade(col, 0.3))); g.addColorStop(0.7, rgba(shade(col, 0.12))); g.addColorStop(1, rgba(shade(col, -0.25)))
+  hem(ctx)
+  const g = ctx.createLinearGradient(0, -80, 0, 220)
+  g.addColorStop(0, rgba(shade(col, -0.08))); g.addColorStop(1, rgba(col))
   ctx.fillStyle = g
   ctx.fill()
   ctx.clip()
-  // Two rolled bands: each a soft tube, lit on top, shaded where it tucks under the next.
-  softBatch(ctx, 3, k => {
-    for (const y of [4, 50]) {
-      k.strokeStyle = rgba(shade(col, 0.45), 0.8); k.lineWidth = 8
-      k.beginPath(); k.moveTo(L, y + 6); k.bezierCurveTo(L + 100, y + 20, R - 100, y + 20, R, y + 6); k.stroke()
-      k.strokeStyle = rgba(shade(col, -0.3), 0.6); k.lineWidth = 6
-      k.beginPath(); k.moveTo(L, y + 34); k.bezierCurveTo(L + 100, y + 48, R - 100, y + 48, R, y + 34); k.stroke()
+  terry(ctx, -40, -80, 1104, 320, col, 77, 0.02)
+  // Hanging folds: each a shaded valley beside a lit ridge, running down to the hem.
+  softBatch(ctx, 9, k => {
+    for (let i = 0; i < 9; i++) {
+      const x = 40 + i * 118 + r.range(-30, 30)
+      k.strokeStyle = rgba(shade(col, -0.22), 0.55); k.lineWidth = r.range(12, 22)
+      k.beginPath(); k.moveTo(x + r.range(-30, 30), -60); k.quadraticCurveTo(x + r.range(-20, 20), 60, x, drapeY(x) + 6); k.stroke()
+      k.strokeStyle = rgba([255, 255, 255], 0.75); k.lineWidth = r.range(8, 14)
+      k.beginPath(); k.moveTo(x - 30 + r.range(-20, 20), -60); k.quadraticCurveTo(x - 26, 60, x - 22, drapeY(x - 22) + 4); k.stroke()
     }
-    // A few soft creases where the fabric bunches at the sides.
-    for (const [x, dx] of [[372, 10], [654, -10]] as const) { k.strokeStyle = rgba(shade(col, -0.2), 0.35); k.lineWidth = 5; k.beginPath(); k.moveTo(x, 8); k.quadraticCurveTo(x + dx, 40, x + dx * 0.4, B - 10); k.stroke() }
   })
+  // A woven pastel stripe near the hem, following it.
+  softBatch(ctx, 1.2, k => { k.strokeStyle = rgba(stripe, 0.85); k.lineWidth = 12; hemLine(k, -34) })
+  ctx.globalAlpha = 0.5
+  ctx.strokeStyle = rgba(shade(stripe, 0.4)); ctx.lineWidth = 2; hemLine(ctx, -38); ctx.stroke()
+  ctx.globalAlpha = 1
+  terry(ctx, -40, 60, 1104, 180, stripe, 78, 0.004)
   ctx.restore()
-  softBatch(ctx, 2, k => { k.strokeStyle = rgba(shade(col, 0.5), 0.9); k.lineWidth = 4; k.beginPath(); k.moveTo(L + 4, B - 6); k.bezierCurveTo(L + 60, B + 12, R - 60, B + 12, R - 4, B - 6); k.stroke() })
+  // The rolled hem: lit on top, tucked into shade underneath.
+  softBatch(ctx, 2, k => {
+    k.strokeStyle = rgba(shade(col, 0.2), 0.95); k.lineWidth = 7; hemLine(k, -5); k.stroke()
+    k.strokeStyle = rgba(shade(col, -0.3), 0.6); k.lineWidth = 4; hemLine(k, 1); k.stroke()
+  })
 }
 
 function paintTopHeight(seed: number, a: FootAnatomy, sil: HTMLCanvasElement) {
@@ -468,15 +476,13 @@ function paintTopHeight(seed: number, a: FootAnatomy, sil: HTMLCanvasElement) {
   // Tendons and ankle bones stand proud; the clefts between the toes sink.
   softBatch(c, 9, k => {
     k.strokeStyle = 'rgba(255,255,255,0.18)'
-    for (const [i, t] of toes.entries()) { const wx = 500 + (t.base.x - 512) * 0.2; k.lineWidth = i === 0 ? 16 : 9; k.beginPath(); k.moveTo(wx, 230); k.quadraticCurveTo((wx + t.base.x) / 2 + (t.base.x - 512) * 0.1, 470, t.base.x, t.base.y - t.r0 * 0.9); k.stroke() }
+    for (const [i, t] of toes.entries()) { const wx = 520 + (t.base.x - 512) * 0.3; k.lineWidth = i === 0 ? 22 : 12; k.beginPath(); k.moveTo(wx, -20); k.quadraticCurveTo((wx + t.base.x) / 2 + (t.base.x - 512) * 0.08, 330, t.base.x, t.base.y - t.r0 * 0.9); k.stroke() }
   })
-  blob(c, 372, 206, 40, 46, [255, 255, 255], 0.35)
-  blob(c, 650, 176, 40, 46, [255, 255, 255], 0.3)
   const nails = shapesCanvas(a.shapes.nailShapes)
   blurred(c, 1.5, () => { c.globalAlpha = 0.45; c.drawImage(nails, 0, 0) })
   c.globalAlpha = 1
   // Pores and fine texture, and short creases across the toe joints.
-  dots(c, [0, 0, 0], 9000, () => ({ a: r.range(0.08, 0.24), x: r.range(260, 780), y: r.range(100, 1000), r: r.range(0.7, 1.4) }))
+  dots(c, [0, 0, 0], 14000, () => ({ a: r.range(0.08, 0.22), x: r.range(180, 850), y: r.range(0, 1000), r: r.range(0.8, 1.6) }))
   // Gloss: a soft sheen over the top of the foot, more on the knuckles, toe tips and ankle bones; nails shine most.
   const [gl, g] = canvas(S)
   g.fillStyle = '#000'
@@ -485,8 +491,6 @@ function paintTopHeight(seed: number, a: FootAnatomy, sil: HTMLCanvasElement) {
   g.drawImage(sil, 0, 0)
   g.globalAlpha = 1
   for (const [i, t] of toes.entries()) { const kn = alongToe(t, i === 0 ? 0.48 : 0.44, -0.2); blob(g, kn.x, kn.y, t.r0 * 0.5, t.r0 * 0.4, [255, 255, 255], 0.45) }
-  blob(g, 372, 200, 30, 30, [255, 255, 255], 0.5)
-  blob(g, 650, 170, 30, 30, [255, 255, 255], 0.35)
   g.drawImage(nails, 0, 0)
   return packHeight(h, gl)
 }
@@ -572,7 +576,7 @@ function paintSoleBase(sole: SkinTone, top: SkinTone, seed: number, a: FootAnato
   softBatch(s, 2.5, c => {
     for (const t of toes) {
       const d = toeDir(t), n = { x: -d.y, y: d.x }, q = alongToe(t, 0.06), cw = t.r0 * 0.95
-      c.strokeStyle = rgba(ao, 0.6); c.lineWidth = 4
+      c.strokeStyle = rgba(ao, 0.4); c.lineWidth = 5
       c.beginPath(); c.moveTo(q.x - n.x * cw, q.y - n.y * cw); c.quadraticCurveTo(q.x - d.x * 24, q.y - d.y * 24, q.x + n.x * cw, q.y + n.y * cw); c.stroke()
     }
   }, 'multiply')
@@ -642,32 +646,719 @@ function paintSoleHeight(seed: number, a: FootAnatomy, sil: HTMLCanvasElement) {
   return packHeight(h, gl)
 }
 
-// ---------------------------------------------------------------- layers (filled in below)
 
-function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil: HTMLCanvasElement, profile: FootProfile): Record<string, () => HTMLCanvasElement> {
-  void look; void skin; void seed; void a; void sil; void profile
-  return {}
+// ---------------------------------------------------------------- layer sheets
+
+/** A layer sheet: paint, then keep it inside the mask (feathered by `feather` px). */
+function sheet(mask: HTMLCanvasElement, draw: (c: Ctx) => void, feather = 0) {
+  const [c, ctx] = canvas(S)
+  draw(ctx)
+  if (feather) {
+    const [m, mctx] = canvas(S)
+    mctx.filter = `blur(${feather}px)`
+    mctx.drawImage(mask, 0, 0)
+    clipTo(ctx, m)
+  } else clipTo(ctx, mask)
+  return c
 }
 
-function soleLayers(sole: SkinTone, seed: number, a: FootAnatomy, sil: HTMLCanvasElement, profile: FootProfile): Record<string, () => HTMLCanvasElement> {
-  void sole; void seed; void a; void sil; void profile
-  return {}
+/** The painted nails' own outlines as a mask (layers on the nails follow the art, not the region capsules). */
+function nailMask(a: FootAnatomy, grow = 0) {
+  const [c, ctx] = canvas(S)
+  ctx.fillStyle = '#fff'
+  ctx.strokeStyle = '#fff'
+  ctx.lineWidth = grow * 2
+  ctx.lineJoin = 'round'
+  a.shape.toes.forEach((t, i) => { ctx.beginPath(); smoothPath(ctx, nailOutline(toeNail(t), a.shape.nailShape, i)); ctx.fill(); if (grow) ctx.stroke() })
+  return c
 }
 
-function paintTips(a: FootAnatomy, profile: FootProfile): (Crop | null)[] {
-  void a; void profile
-  return []
+/** The mask minus a hole (skin-only layers: the foot minus the nails). */
+function without(mask: HTMLCanvasElement, hole: HTMLCanvasElement) {
+  const [c, ctx] = canvas(S)
+  ctx.drawImage(mask, 0, 0)
+  ctx.globalCompositeOperation = 'destination-out'
+  ctx.drawImage(hole, 0, 0)
+  return c
 }
 
+function whole() { const [c, ctx] = canvas(S); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S); return c }
+
+/** Water droplets and a wet film (after the bath or a rinse). */
+function paintWet(l: Ctx, seed: number, x0: number, x1: number, y0: number, y1: number) {
+  const r = makeRng(seed + 2)
+  l.drawImage(tintedByNoise(S, [240, 248, 255], fbm(S, 40, 3, seed + 2), 0.05, 0.18), 0, 0)
+  const drops = Array.from({ length: 150 }, () => ({ x: r.range(x0, x1), y: r.range(y0, y1), r: r() < 0.85 ? r.range(2.5, 6) : r.range(7, 12) }))
+  softBatch(l, 1.2, c => { c.fillStyle = 'rgba(120,90,110,0.18)'; for (const d of drops) { c.beginPath(); c.ellipse(d.x + d.r * 0.25, d.y + d.r * 0.35, d.r, d.r * 1.1, 0, 0, Math.PI * 2); c.fill() } }, 'multiply')
+  for (const d of drops) {
+    const g = l.createRadialGradient(d.x - d.r * 0.3, d.y - d.r * 0.3, d.r * 0.1, d.x, d.y, d.r * 1.1)
+    g.addColorStop(0, 'rgba(255,255,255,0.35)'); g.addColorStop(0.6, 'rgba(236,246,255,0.18)'); g.addColorStop(0.92, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)')
+    l.fillStyle = g
+    l.beginPath(); l.ellipse(d.x, d.y, d.r, d.r * 1.1, 0, 0, Math.PI * 2); l.fill()
+    blob(l, d.x - d.r * 0.35, d.y - d.r * 0.4, d.r * 0.3, d.r * 0.24, [255, 255, 255], 0.95)
+  }
+}
+
+/** Foam: thousands of bubbles, each a soft shadowed rim, a white body and a glint, in a few batched fills. */
+function paintFoam(l: Ctx, seed: number, x0: number, x1: number, y0: number, y1: number) {
+  const r = makeRng(seed + 101)
+  l.fillStyle = 'rgba(252,250,255,0.9)'
+  l.fillRect(0, 0, S, S)
+  for (let batch = 0; batch < 4; batch++) {
+    const bubbles = Array.from({ length: 1100 }, () => { const rr = r() < 0.88 ? r.range(2.5, 9) : r.range(10, 22); return { x: r.range(x0, x1), y: r.range(y0, y1), r: rr } })
+    dots(l, [214, 214, 236], bubbles.length, i => ({ ...bubbles[i], a: r.range(0.3, 0.65) }), 3)
+    dots(l, [255, 255, 255], bubbles.length, i => ({ x: bubbles[i].x - bubbles[i].r * 0.25, y: bubbles[i].y - bubbles[i].r * 0.25, r: bubbles[i].r * 0.7, a: r.range(0.7, 1) }), 3)
+    dots(l, [255, 255, 255], bubbles.length, i => ({ x: bubbles[i].x - bubbles[i].r * 0.4, y: bubbles[i].y - bubbles[i].r * 0.4, r: bubbles[i].r * 0.22, a: 1 }), 1)
+  }
+  // A few big clear bubbles with a faint rainbow rim, as in the scrub foam of the reference.
+  for (let i = 0; i < 26; i++) {
+    const x = r.range(x0, x1), y = r.range(y0, y1), rr = r.range(9, 18)
+    l.strokeStyle = 'rgba(200,210,240,0.7)'; l.lineWidth = 1.6
+    l.beginPath(); l.arc(x, y, rr, 0, Math.PI * 2); l.stroke()
+    l.strokeStyle = 'rgba(255,220,240,0.5)'; l.lineWidth = 1.2
+    l.beginPath(); l.arc(x, y, rr - 1.5, Math.PI * 0.1, Math.PI * 0.9); l.stroke()
+    blob(l, x - rr * 0.4, y - rr * 0.45, rr * 0.28, rr * 0.18, [255, 255, 255], 1)
+  }
+}
+
+/** Thick white cream spread with soft swirls where it was scooped (foot cream; the antifungal cream is whiter). */
+function paintCream(l: Ctx, seed: number, x0: number, x1: number, y0: number, y1: number, tint: RGB = [255, 250, 244]) {
+  l.fillStyle = rgba(tint)
+  l.fillRect(0, 0, S, S)
+  l.globalCompositeOperation = 'multiply'
+  l.globalAlpha = 0.22
+  l.drawImage(fbm(S, 60, 3, seed + 90), 0, 0)
+  l.globalAlpha = 1
+  l.globalCompositeOperation = 'source-over'
+  const r = makeRng(seed + 91)
+  softBatch(l, 2.5, c => {
+    for (let i = 0; i < 90; i++) {
+      const x = r.range(x0, x1), y = r.range(y0, y1), rr = r.range(12, 36)
+      c.strokeStyle = r() < 0.5 ? 'rgba(226,214,208,0.55)' : 'rgba(255,255,255,0.85)'
+      c.lineWidth = r.range(3, 7)
+      c.beginPath(); c.arc(x, y, rr, r() * 6, r() * 6 + r.range(1.2, 2.4)); c.stroke()
+    }
+  })
+}
+
+/** Pink salt scrub: coarse translucent crystals in a light oily base. */
+function paintSalt(l: Ctx, seed: number, x0: number, x1: number, y0: number, y1: number) {
+  const r = makeRng(seed + 131)
+  l.fillStyle = 'rgba(252,226,232,0.55)'
+  l.fillRect(0, 0, S, S)
+  const cols: RGB[] = [[246, 176, 196], [252, 214, 222], [255, 244, 246], [236, 150, 176]]
+  const grains = Array.from({ length: 2600 }, () => ({ x: r.range(x0, x1), y: r.range(y0, y1), s: r.range(2.5, 7), a: r.range(0, Math.PI), c: r.int(0, 3) }))
+  softBatch(l, 1.5, c => { c.fillStyle = 'rgba(140,70,100,0.25)'; for (const g of grains) { c.beginPath(); c.ellipse(g.x + 1.5, g.y + 2, g.s, g.s * 0.8, g.a, 0, Math.PI * 2); c.fill() } }, 'multiply')
+  // One path per colour: facetted crystals.
+  for (let ci = 0; ci < cols.length; ci++) {
+    const path = new Path2D()
+    for (const g of grains) {
+      if (g.c !== ci) continue
+      for (let k = 0; k < 5; k++) { const aa = g.a + (k / 5) * Math.PI * 2, d = g.s * (0.7 + (k % 3) * 0.12); if (k === 0) path.moveTo(g.x + Math.cos(aa) * d, g.y + Math.sin(aa) * d); else path.lineTo(g.x + Math.cos(aa) * d, g.y + Math.sin(aa) * d) }
+      path.closePath()
+    }
+    l.fillStyle = rgba(cols[ci], 0.95)
+    l.fill(path)
+  }
+  dots(l, [255, 255, 255], grains.length, i => ({ x: grains[i].x - grains[i].s * 0.3, y: grains[i].y - grains[i].s * 0.3, r: grains[i].s * 0.25, a: 0.9 }), 1)
+}
+
+/** A peel-off gel mask: lavender, glossy, brush-streaked, with tiny caught bubbles and a sheen. */
+function paintGelMask(l: Ctx, seed: number, x0: number, x1: number, y0: number, y1: number) {
+  const r = makeRng(seed + 111)
+  const base: RGB = [196, 172, 238]
+  l.fillStyle = rgba(base, 0.92)
+  l.fillRect(0, 0, S, S)
+  for (let i = 0; i < 700; i++) {
+    const x = r.range(x0, x1), y = r.range(y0, y1), a = r.range(-0.6, 0.6) + Math.PI / 2, len = r.range(30, 100)
+    l.strokeStyle = rgba(shade(base, r.range(-0.12, 0.14)), r.range(0.15, 0.4))
+    l.lineWidth = r.range(3, 9)
+    l.beginPath(); l.moveTo(x, y); l.quadraticCurveTo(x + len * 0.5 * Math.cos(a) + 8, y + len * 0.5 * Math.sin(a), x + len * Math.cos(a), y + len * Math.sin(a)); l.stroke()
+  }
+  l.globalCompositeOperation = 'soft-light'
+  l.drawImage(fbm(S, 30, 4, seed + 112), 0, 0)
+  l.globalCompositeOperation = 'source-over'
+  for (let i = 0; i < 180; i++) { const x = r.range(x0, x1), y = r.range(y0, y1), rr = r.range(1.5, 4.5); blob(l, x, y, rr, rr, [240, 230, 255], 0.7, 0.4); blob(l, x - rr * 0.3, y - rr * 0.3, rr * 0.35, rr * 0.3, [255, 255, 255], 0.95) }
+  blob(l, 440, 300, 180, 260, [240, 232, 255], 0.25)
+}
+
+/**
+ * The foot bath: looking down through warm water. An aqua tint that deepens away from the light, a net of
+ * caustic light over everything, streams of rising bubbles, rafts of foam at the edges and a soft glint.
+ */
+function paintWater(l: Ctx, seed: number) {
+  const r = makeRng(seed + 141)
+  const g = l.createLinearGradient(0, 0, S, S)
+  g.addColorStop(0, 'rgba(150,222,226,0.38)'); g.addColorStop(1, 'rgba(96,180,204,0.5)')
+  l.fillStyle = g
+  l.fillRect(0, 0, S, S)
+  softBatch(l, 1.6, c => {
+    c.strokeStyle = 'rgba(236,255,255,0.5)'
+    for (let i = 0; i < 260; i++) {
+      const x = r.range(-20, S + 20), y = r.range(-20, S + 20), rr = r.range(18, 46)
+      c.lineWidth = r.range(1.5, 3.5)
+      c.beginPath()
+      for (let k = 0; k <= 7; k++) { const aa = (k / 7) * Math.PI * 2, d = rr * r.range(0.7, 1.15); if (k === 0) c.moveTo(x + Math.cos(aa) * d, y + Math.sin(aa) * d); else c.quadraticCurveTo(x + Math.cos(aa - 0.45) * d * 1.1, y + Math.sin(aa - 0.45) * d * 1.1, x + Math.cos(aa) * d, y + Math.sin(aa) * d) }
+      c.stroke()
+    }
+  }, 'screen')
+  softBatch(l, 14, c => {
+    for (let i = 0; i < 9; i++) {
+      const y = r.range(0, S), bend = r.range(-60, 60)
+      c.strokeStyle = i % 2 ? 'rgba(255,255,255,0.22)' : 'rgba(40,110,140,0.14)'; c.lineWidth = r.range(14, 30)
+      c.beginPath(); c.moveTo(-20, y); c.quadraticCurveTo(S / 2, y + bend, S + 20, y + r.range(-40, 40)); c.stroke()
+    }
+  })
+  const bubbles: { x: number; y: number; r: number }[] = []
+  for (let s2 = 0; s2 < 8; s2++) {
+    let x = r.range(120, 900), y = r.range(80, 960)
+    for (let k = 0; k < 16; k++) { bubbles.push({ x, y, r: r.range(2, 7) }); x += r.range(-10, 10); y += r.range(8, 20) }
+  }
+  for (let i = 0; i < 420; i++) bubbles.push({ x: r.range(0, S), y: r.range(0, S), r: r() < 0.9 ? r.range(1.2, 3.5) : r.range(5, 10) })
+  const rims = new Path2D()
+  for (const b of bubbles) { rims.moveTo(b.x + b.r, b.y); rims.arc(b.x, b.y, b.r, 0, Math.PI * 2) }
+  l.strokeStyle = 'rgba(255,255,255,0.75)'; l.lineWidth = 1.2
+  l.stroke(rims)
+  dots(l, [255, 255, 255], bubbles.length, i => ({ x: bubbles[i].x - bubbles[i].r * 0.35, y: bubbles[i].y - bubbles[i].r * 0.4, r: bubbles[i].r * 0.32, a: 1 }), 1)
+  for (let i = 0; i < 7; i++) {
+    const edge = r.int(0, 3), t = r.range(0.1, 0.9)
+    const x = edge === 0 ? t * S : edge === 1 ? S - r.range(10, 80) : edge === 2 ? t * S : r.range(10, 80)
+    const y = edge === 0 ? r.range(10, 80) : edge === 1 ? t * S : edge === 2 ? S - r.range(10, 80) : t * S
+    dots(l, [255, 255, 255], 40, () => ({ x: x + r.range(-60, 60), y: y + r.range(-30, 30), r: r.range(3, 10), a: r.range(0.6, 0.9) }), 2)
+  }
+  blob(l, 300, 220, 160, 60, [255, 255, 255], 0.3)
+}
+
+function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil: HTMLCanvasElement, p: FootProfile): Record<string, () => HTMLCanvasElement> {
+  const toes = a.shape.toes
+  const nails = nailMask(a)
+  // The foot below the cuff.
+  const foot = (() => { const [c, ctx] = canvas(S); ctx.drawImage(sil, 0, 0); ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(S, -10); for (let x = S; x >= 0; x -= 16) ctx.lineTo(x, drapeY(x) + 4); ctx.closePath(); ctx.fill(); return c })()
+  const skinOnly = without(foot, nails)
+  const toesMask = (() => { const [c, ctx] = canvas(S); ctx.fillStyle = '#fff'; for (const t of toes) { ctx.beginPath(); smoothPath(ctx, toeOutline(t, 0.1)); ctx.fill() } return c })()
+  const inflamed = inflamedOf(skin)
+  const bigNail = toeNail(toes[0])
+  const ingrownSide = p.ingrown || 1
+  const X0 = 180, X1 = 850, Y0 = CUFF_Y, Y1 = 990
+  const polishCol = hex(POLISH_COLORS[(p.polish?.color ?? 1) % POLISH_COLORS.length].hex)
+  const hair = HAIR[look.hair % HAIR.length]
+  return {
+    // Angry skin around sick nails, an ingrown edge, corns and between the toes: blotchy, never flat.
+    redness: () => sheet(skinOnly, l => {
+      softBatch(l, 12, c => {
+        toes.forEach((t, i) => {
+          const k = Math.max(p.fungus[i], i === 0 && p.ingrown ? 0.8 : 0, 0.25)
+          const nl = toeNail(t), m = alongToe(t, 0.78)
+          c.fillStyle = rgba(inflamed, 0.3 + 0.4 * k)
+          c.beginPath(); c.ellipse(m.x, m.y, t.r1 * 1.25, Math.hypot(nl.tip.x - nl.base.x, nl.tip.y - nl.base.y) * 0.8, Math.atan2(nl.dir.y, nl.dir.x) + Math.PI / 2, 0, Math.PI * 2); c.fill()
+          const root = alongToe(t, 0.1)
+          c.fillStyle = rgba(inflamed, 0.3 * k); c.beginPath(); c.ellipse(root.x, root.y, t.r0 * 0.9, t.r0 * 0.7, 0, 0, Math.PI * 2); c.fill()
+        })
+        for (const cn of p.corns) { c.fillStyle = rgba(inflamed, 0.5); c.beginPath(); c.arc(cn.x, cn.y, cn.size * 1.6, 0, Math.PI * 2); c.fill() }
+        for (let i = 0; i < 4; i++) { const q = alongToe(toes[i], 0.15), n2 = alongToe(toes[i + 1], 0.15); c.fillStyle = rgba(inflamed, 0.35); c.beginPath(); c.ellipse((q.x + n2.x) / 2, (q.y + n2.y) / 2 + 20, 18, 50, 0, 0, Math.PI * 2); c.fill() }
+      })
+      l.globalCompositeOperation = 'destination-in'
+      l.drawImage(tintedByNoise(S, [255, 255, 255], fbm(S, 26, 3, seed + 51), 0.45, 1), 0, 0)
+      l.globalCompositeOperation = 'source-over'
+      const r = makeRng(seed + 52)
+      toes.forEach((t, i) => { if (!p.fungus[i]) return; dots(l, mixRGB(inflamed, [200, 60, 80], 0.4), 30, () => { const q = alongToe(t, r.range(0.55, 1), r.range(-1, 1)); return { x: q.x, y: q.y, r: r.range(1, 2.4), a: r.range(0.2, 0.5) } }, 2) })
+    }),
+    // An ingrown nail: the fold along one side of the big toenail swells, red and shiny, over the nail's edge.
+    swelling: () => sheet(foot, l => {
+      const nx = -bigNail.dir.y * ingrownSide, ny = bigNail.dir.x * ingrownSide, hw = bigNail.halfWidth
+      const at = (u: number, o: number) => ({ x: bigNail.base.x + (bigNail.tip.x - bigNail.base.x) * u + nx * o, y: bigNail.base.y + (bigNail.tip.y - bigNail.base.y) * u + ny * o })
+      const path = (c: Ctx, o0: number, o1: number) => {
+        c.beginPath()
+        const p0 = at(0.15, o0), p1 = at(0.55, o0 - 6), p2 = at(0.95, o0 - 2), q2 = at(0.95, o1), q1 = at(0.55, o1 + 6), q0 = at(0.15, o1)
+        c.moveTo(p0.x, p0.y); c.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y); c.lineTo(q2.x, q2.y); c.quadraticCurveTo(q1.x, q1.y, q0.x, q0.y); c.closePath()
+      }
+      softBatch(l, 9, c => { c.fillStyle = rgba(inflamed, 0.75); path(c, hw * 0.65, hw * 1.55); c.fill() })
+      const g0 = at(0.5, hw * 0.75), g1 = at(0.5, hw * 1.35)
+      softBatch(l, 3, c => {
+        const g = c.createLinearGradient(g0.x, g0.y, g1.x, g1.y)
+        g.addColorStop(0, rgba(shade(inflamed, -0.2), 0.95)); g.addColorStop(0.5, rgba(mixRGB(inflamed, skin.light, 0.25), 0.95)); g.addColorStop(1, rgba(inflamed, 0.5))
+        c.fillStyle = g; path(c, hw * 0.78, hw * 1.3); c.fill()
+      })
+      // The shine of stretched skin, and the dark line where it presses into the nail.
+      const s0 = at(0.3, hw * 1.02), s1 = at(0.8, hw * 1.0)
+      blurred(l, 2, () => { l.strokeStyle = 'rgba(255,240,240,0.75)'; l.lineWidth = 3; l.lineCap = 'round'; l.beginPath(); l.moveTo(s0.x, s0.y); l.lineTo(s1.x, s1.y); l.stroke() })
+      const e0 = at(0.2, hw * 0.8), e1 = at(0.92, hw * 0.78)
+      blurred(l, 1, () => { l.strokeStyle = rgba(shade(inflamed, -0.45), 0.7); l.lineWidth = 2.2; l.beginPath(); l.moveTo(e0.x, e0.y); l.lineTo(e1.x, e1.y); l.stroke() })
+    }),
+    // Fungus: thick, yellowed, crumbling nails, broken into plates by dark cracks, chalky at the free edge.
+    fungus: () => sheet(nailMask(a, 2), l => {
+      toes.forEach((t, i) => {
+        const k = p.fungus[i]
+        if (!k) return
+        const nl = toeNail(t), hw = nl.halfWidth, dir = nl.dir, nx = -dir.y, ny = dir.x
+        const along = (u: number, side = 0) => ({ x: nl.base.x + (nl.tip.x - nl.base.x) * u + nx * side * hw, y: nl.base.y + (nl.tip.y - nl.base.y) * u + ny * side * hw })
+        const r = makeRng(seed + 700 + i)
+        l.save()
+        l.beginPath(); smoothPath(l, nailOutline(nl, a.shape.nailShape, i)); l.clip()
+        const yel: RGB = mixRGB([226, 190, 96], [200, 150, 70], r() * 0.5)
+        const mid = along(0.5)
+        const g = l.createLinearGradient(mid.x + nx * hw, mid.y + ny * hw, mid.x - nx * hw, mid.y - ny * hw)
+        g.addColorStop(0, rgba(shade(yel, 0.28), 0.4 + 0.55 * k)); g.addColorStop(0.5, rgba(yel, 0.45 + 0.55 * k)); g.addColorStop(1, rgba(shade(yel, -0.25), 0.5 + 0.5 * k))
+        l.fillStyle = g
+        l.fillRect(0, 0, S, S)
+        // Mottled, with brown streaks running along the nail and a chalky, crumbly band at the free edge.
+        l.globalCompositeOperation = 'multiply'
+        l.globalAlpha = 0.5 * k
+        l.drawImage(fbm(256, 10, 3, seed + i * 3), mid.x - 128, mid.y - 128)
+        l.globalAlpha = 1
+        l.globalCompositeOperation = 'source-over'
+        for (let s2 = 0; s2 < 3 + Math.round(k * 4); s2++) {
+          const sd = r.range(-0.8, 0.8), p0 = along(r.range(0.05, 0.4), sd), p1 = along(r.range(0.7, 1.05), sd + r.range(-0.15, 0.15))
+          blurred(l, 1.5, () => { l.strokeStyle = rgba([150, 100, 40], r.range(0.25, 0.5) * k); l.lineWidth = r.range(2, hw * 0.3); l.beginPath(); l.moveTo(p0.x, p0.y); l.lineTo(p1.x, p1.y); l.stroke() })
+        }
+        const chalk = along(0.92)
+        blob(l, chalk.x, chalk.y, hw * 1.2, hw * 0.45, [252, 240, 200], 0.75 * k)
+        dots(l, [255, 246, 214], Math.round(40 * k * (hw / 20)), () => { const q = along(r.range(0.7, 1.02), r.range(-1, 1)); return { x: q.x, y: q.y, r: r.range(0.8, hw * 0.1 + 1), a: r.range(0.4, 0.9) } }, 2)
+        // Cracks: a network splitting the plate into pieces, dark with a pale lifted edge beside each.
+        const cracks = Math.round((i === 0 ? 7 : 2) + k * (i === 0 ? 8 : 3))
+        const lines: { x: number; y: number }[][] = []
+        for (let c2 = 0; c2 < cracks; c2++) {
+          let q = along(r.range(0.1, 0.95), r.range(-0.9, 0.9)), ang = r.range(0, Math.PI * 2)
+          const pts = [q]
+          for (let j = 0; j < r.int(3, 6); j++) { ang += r.range(-1, 1); q = { x: q.x + Math.cos(ang) * hw * r.range(0.15, 0.35), y: q.y + Math.sin(ang) * hw * r.range(0.15, 0.35) }; pts.push(q) }
+          lines.push(pts)
+        }
+        const stroke = (col: string, wd: number, dx: number, dy: number) => { l.strokeStyle = col; l.lineWidth = wd; l.lineJoin = 'round'; for (const pts of lines) { l.beginPath(); pts.forEach((q, j) => (j ? l.lineTo(q.x + dx, q.y + dy) : l.moveTo(q.x + dx, q.y + dy))); l.stroke() } }
+        stroke(rgba([255, 244, 206], 0.7 * k), i === 0 ? 2.6 : 1.4, -1, -1)
+        stroke(rgba([110, 70, 24], 0.85 * k), i === 0 ? 2 : 1.1, 0, 0)
+        l.restore()
+        // The thickened free edge: ragged and lifted, with a dark gap under it.
+        const e = along(1.0)
+        softBatch(l, 1.5, c => { c.strokeStyle = rgba([96, 60, 26], 0.6 * k); c.lineWidth = hw * 0.18; c.beginPath(); c.ellipse(e.x, e.y, hw * 0.92, hw * 0.3, Math.atan2(dir.y, dir.x) + Math.PI / 2, Math.PI * 0.05, Math.PI * 0.95); c.stroke() })
+      })
+    }),
+    oldPolish: () => sheet(nails, l => {
+      if (!p.polish) return
+      const r = makeRng(seed + 72)
+      toes.forEach((t, i) => {
+        const nl = toeNail(t), hw = nl.halfWidth
+        l.save()
+        l.beginPath(); smoothPath(l, nailOutline(nl, a.shape.nailShape, i)); l.clip()
+        const mid = alongToe(t, 0.85)
+        const g = l.createLinearGradient(mid.x - hw, mid.y, mid.x + hw, mid.y)
+        g.addColorStop(0, rgba(shade(polishCol, 0.1))); g.addColorStop(0.5, rgba(shade(polishCol, -0.05))); g.addColorStop(1, rgba(shade(polishCol, -0.25)))
+        l.fillStyle = g
+        l.fillRect(0, 0, S, S)
+        // Dulled and scuffed: faint scratches and a tired sheen.
+        l.strokeStyle = 'rgba(255,255,255,0.2)'; l.lineWidth = 1
+        for (let k = 0; k < 14; k++) { const q = alongToe(t, r.range(0.6, 1), r.range(-0.8, 0.8)); l.beginPath(); l.moveTo(q.x, q.y); l.lineTo(q.x + r.range(-10, 10), q.y + r.range(-4, 4)); l.stroke() }
+        const g0 = alongToe(t, 0.7, 0.35), g1 = alongToe(t, 0.9, 0.3)
+        blurred(l, 2, () => { l.strokeStyle = 'rgba(255,255,255,0.35)'; l.lineWidth = Math.max(2, hw * 0.12); l.lineCap = 'round'; l.beginPath(); l.moveTo(g0.x, g0.y); l.lineTo(g1.x, g1.y); l.stroke() })
+        l.restore()
+      })
+      // Chips: bites out of the polish at the free edge, and a bare band grown out at the cuticle.
+      const bites = new Path2D()
+      toes.forEach(t => {
+        const nl = toeNail(t), hw = nl.halfWidth
+        for (let k = 0; k < 1 + Math.round(p.polish!.chips * 3); k++) {
+          const side = r.range(-1, 1), u = r() < 0.75 ? r.range(0.8, 1.1) : r.range(0.2, 0.6)
+          const cx = nl.base.x + (nl.tip.x - nl.base.x) * u - nl.dir.y * side * hw, cy = nl.base.y + (nl.tip.y - nl.base.y) * u + nl.dir.x * side * hw
+          const rr = r.range(0.2, 0.45) * hw + 2
+          bites.moveTo(cx + rr, cy)
+          for (let j = 1; j <= 8; j++) { const aa = (j / 8) * Math.PI * 2, d = rr * r.range(0.6, 1.2); bites.lineTo(cx + Math.cos(aa) * d, cy + Math.sin(aa) * d) }
+          bites.closePath()
+        }
+        const b0 = { x: nl.base.x - nl.dir.x * 2, y: nl.base.y - nl.dir.y * 2 }
+        bites.ellipse(b0.x, b0.y, hw * 1.2, hw * 0.24 + 2 + p.polish!.chips * 3, Math.atan2(nl.dir.y, nl.dir.x) + Math.PI / 2, 0, Math.PI * 2)
+      })
+      l.save(); l.strokeStyle = 'rgba(255,255,255,0.45)'; l.lineWidth = 2; l.stroke(bites); l.restore()
+      l.save(); l.globalCompositeOperation = 'destination-out'; l.fill(bites); l.restore()
+    }),
+    // Overgrown cuticles: a thin, pale, papery crescent creeping up from the nail fold onto the nail's base.
+    cuticle: () => sheet(foot, l => {
+      const r = makeRng(seed + 5)
+      toes.forEach((t, i) => {
+        const nl = toeNail(t), hw = nl.halfWidth, ang = Math.atan2(nl.dir.y, nl.dir.x) + Math.PI / 2
+        const reach = hw * (0.18 + 0.22 * p.cuticle)
+        const c0 = { x: nl.base.x - nl.dir.x * hw * 0.1, y: nl.base.y - nl.dir.y * hw * 0.1 }
+        const film = mixRGB(skin.light, [250, 232, 224], 0.5)
+        l.save()
+        l.translate(c0.x, c0.y); l.rotate(ang)
+        // A crescent: the outer arc follows the fold; the inner (ragged) edge reaches onto the nail.
+        l.beginPath()
+        l.ellipse(0, 0, hw * 1.02, hw * 0.42, 0, Math.PI, 0, true)
+        const steps = 10
+        for (let k = steps; k >= 0; k--) { const u = k / steps, x = -hw * 0.95 + u * hw * 1.9, y = hw * 0.28 + reach * Math.sin(u * Math.PI) * r.range(0.7, 1.1); l.lineTo(x, y) }
+        l.closePath()
+        l.fillStyle = rgba(film, 0.8)
+        l.fill()
+        l.strokeStyle = rgba(mixRGB(skin.shadow, skin.base, 0.3), 0.35); l.lineWidth = 0.8
+        for (let k = 0; k < (i === 0 ? 8 : 3); k++) { const x = r.range(-hw * 0.7, hw * 0.7), y = r.range(0, hw * 0.3 + reach * 0.6); l.beginPath(); l.moveTo(x, y); l.lineTo(x + r.range(-4, 4), y + r.range(1, 4)); l.stroke() }
+        l.restore()
+      })
+    }, 1),
+    // Dirt: dust over the top of the foot, grime ground into the toes, dark crescents under the nails.
+    dirt: () => sheet(foot, l => {
+      const r = makeRng(seed + 31)
+      const kf = clamp01((fairOf(skin) - 0.45) / 0.4)
+      const mud = mixRGB([84, 54, 36], [126, 88, 62], kf)
+      l.drawImage(tintedByNoise(S, mud, fbm(S, 60, 4, seed + 31), 0.04, 0.2 + 0.25 * p.dirt), 0, 0)
+      softBatch(l, 18, c => {
+        for (const t of toes) { const q = alongToe(t, 0.55); c.fillStyle = rgba(mud, 0.25 + 0.3 * p.dirt); c.beginPath(); c.ellipse(q.x, q.y, t.r0 * 1.1, t.r0 * 1.6, 0, 0, Math.PI * 2); c.fill() }
+        for (let i = 0; i < 4; i++) { const q = alongToe(toes[i], 0.2), n2 = alongToe(toes[i + 1], 0.2); c.fillStyle = rgba(shade(mud, -0.3), 0.6); c.beginPath(); c.ellipse((q.x + n2.x) / 2, (q.y + n2.y) / 2, 14, 50, 0, 0, Math.PI * 2); c.fill() }
+      })
+      // Smudges: soft, rounded, a little darker at one end where the dirt was dragged.
+      softBatch(l, 9, c => {
+        for (let i = 0; i < Math.round(8 + 14 * p.dirt); i++) {
+          const x = r.range(X0 + 80, X1 - 80), y = r.range(200, 900), len = r.range(30, 80), ang = r.range(-0.6, 0.6) + Math.PI / 2
+          const g = c.createLinearGradient(x - Math.cos(ang) * len / 2, y - Math.sin(ang) * len / 2, x + Math.cos(ang) * len / 2, y + Math.sin(ang) * len / 2)
+          g.addColorStop(0, rgba(mud, 0.05)); g.addColorStop(1, rgba(shade(mud, -0.15), r.range(0.2, 0.35)))
+          c.strokeStyle = g; c.lineWidth = r.range(12, 24)
+          c.beginPath(); c.moveTo(x - Math.cos(ang) * len / 2, y - Math.sin(ang) * len / 2); c.lineTo(x + Math.cos(ang) * len / 2, y + Math.sin(ang) * len / 2); c.stroke()
+        }
+      })
+      toes.forEach((t, i) => {
+        const nl = toeNail(t), hw = nl.halfWidth, ang = Math.atan2(nl.dir.y, nl.dir.x) + Math.PI / 2
+        blurred(l, 1.5, () => {
+          l.strokeStyle = rgba(shade(mud, -0.4), 0.9); l.lineWidth = Math.max(3, hw * 0.28); l.lineCap = 'round'
+          l.beginPath(); l.ellipse(nl.tip.x - nl.dir.x * hw * 0.25, nl.tip.y - nl.dir.y * hw * 0.25, hw * 0.85, hw * 0.3, ang, Math.PI * 0.08, Math.PI * 0.92); l.stroke()
+          l.strokeStyle = rgba(shade(mud, -0.3), 0.55); l.lineWidth = 2
+          l.beginPath(); smoothPath(l, nailOutline(nl, a.shape.nailShape, i)); l.stroke()
+        })
+        dots(l, shade(mud, -0.2), 30, () => { const q = alongToe(t, r.range(0.85, 1.05), r.range(-0.9, 0.9)); return { x: q.x, y: q.y, r: r.range(0.8, 2.2), a: r.range(0.4, 0.9) } }, 2)
+      })
+    }),
+    // Hair: a little tuft on the big toe, a few on the smaller toes, fine and sparse over the top and the ankle.
+    hair: () => sheet(foot, l => {
+      const r = makeRng(seed + 61)
+      // Close to the skin's own deep tone: fine, soft body hair (long dark strokes read as insect legs).
+      const col = mixRGB(mixRGB(hair.dark, hair.base, 0.4), skin.deep, 0.5)
+      const put: { x: number; y: number; a: number; len: number }[] = []
+      const n = p.hair
+      const tuft = (t: Toe, count: number, u0: number, u1: number) => { const d = toeDir(t); for (let k = 0; k < count; k++) { const sd = r.range(-0.7, 0.7), q = alongToe(t, r.range(u0, u1), sd); put.push({ x: q.x, y: q.y, a: Math.atan2(d.y, d.x) - sd * 0.5 + r.range(-0.3, 0.3), len: r.range(5, 10) }) } }
+      tuft(toes[0], Math.round(40 * n), 0.06, 0.4)
+      for (const t of toes.slice(1, 4)) tuft(t, Math.round(10 * n), 0.08, 0.34)
+      // Sparse over the top of the foot, thicker toward the ankle and the shin.
+      for (let k = 0; k < Math.round(160 * n); k++) {
+        const y = CUFF_Y + 10 + (r() ** 1.4) * 480, x = r.range(250, 780)
+        put.push({ x, y, a: Math.PI / 2 + (x - 512) / 500 + r.range(-0.3, 0.3), len: r.range(5, 9) * (y < 300 ? 1.3 : 1) })
+      }
+      const dark = new Path2D(), lit = new Path2D()
+      for (const h of put) {
+        const ex = h.x + Math.cos(h.a) * h.len, ey = h.y + Math.sin(h.a) * h.len, cx = h.x + Math.cos(h.a + 0.3) * h.len * 0.5, cy = h.y + Math.sin(h.a + 0.3) * h.len * 0.5
+        dark.moveTo(h.x, h.y); dark.quadraticCurveTo(cx, cy, ex, ey)
+        lit.moveTo(h.x - 0.6, h.y - 0.6); lit.quadraticCurveTo(cx - 0.6, cy - 0.6, ex - 0.6, ey - 0.6)
+      }
+      l.lineCap = 'round'
+      l.strokeStyle = rgba(col, 0.42); l.lineWidth = 0.9; l.stroke(dark)
+      l.strokeStyle = rgba(mixRGB(hair.light, skin.light, 0.6), 0.2); l.lineWidth = 0.5; l.stroke(lit)
+    }),
+    wet: () => sheet(foot, l => paintWet(l, seed, X0, X1, Y0, Y1)),
+    // Antiseptic: an amber wash of iodine, darker where it pooled at its edges.
+    antiseptic: () => sheet(foot, l => {
+      l.drawImage(tintedByNoise(S, [214, 128, 48], fbm(S, 40, 3, seed + 81), 0.28, 0.45), 0, 0)
+      const r = makeRng(seed + 82)
+      softBatch(l, 3, c => { c.strokeStyle = 'rgba(170,86,30,0.35)'; c.lineWidth = 4; for (let i = 0; i < 20; i++) { c.beginPath(); c.arc(r.range(X0, X1), r.range(300, 980), r.range(20, 60), r() * 6, r() * 6 + 2); c.stroke() } })
+    }, 3),
+    cream: () => sheet(foot, l => paintCream(l, seed, X0, X1, Y0, Y1), 6),
+    // Antifungal cream: dense and white, over the toes and nails.
+    antifungal: () => sheet(toesMask, l => paintCream(l, seed + 7, X0, X1, 600, Y1, [252, 252, 250]), 4),
+    oil: () => sheet(foot, l => {
+      l.drawImage(tintedByNoise(S, [250, 226, 160], fbm(S, 36, 3, seed + 41), 0.06, 0.22), 0, 0)
+      const r = makeRng(seed + 42)
+      softBatch(l, 4, c => { c.strokeStyle = 'rgba(255,248,220,0.5)'; c.lineWidth = 5; for (let i = 0; i < 26; i++) { const x = r.range(X0, X1), y = r.range(200, 960); c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + r.range(-20, 20), y + 30, x + r.range(-30, 30), y + r.range(50, 90)); c.stroke() } })
+    }),
+    mask: () => sheet(foot, l => paintGelMask(l, seed, X0, X1, Y0, Y1), 3),
+    scrub: () => sheet(foot, l => paintFoam(l, seed, X0, X1, Y0, Y1), 8),
+    salt: () => sheet(foot, l => paintSalt(l, seed, X0, X1, Y0, Y1), 3),
+    base: () => sheet(nails, l => { l.fillStyle = 'rgba(255,250,252,0.3)'; l.fillRect(0, 0, S, S) }),
+    // Colour: painted at 90% grey; the layer shader maps it to the chosen colour (as for the hand).
+    color: () => sheet(nails, l => {
+      l.fillStyle = 'rgb(230,230,230)'
+      l.fillRect(0, 0, S, S)
+      toes.forEach((t, i) => {
+        const nl = toeNail(t), hw = nl.halfWidth, outline = nailOutline(nl, a.shape.nailShape, i)
+        l.save()
+        l.beginPath(); smoothPath(l, outline); l.clip()
+        blurred(l, i === 0 ? 5 : 3, () => { l.strokeStyle = 'rgb(170,170,170)'; l.lineWidth = i === 0 ? 12 : 7; l.beginPath(); smoothPath(l, outline); l.stroke() })
+        const at = (u: number, side: number) => ({ x: nl.base.x + (nl.tip.x - nl.base.x) * u - nl.dir.y * side * hw, y: nl.base.y + (nl.tip.y - nl.base.y) * u + nl.dir.x * side * hw })
+        const g0 = at(0.18, 0.4), g1 = at(0.72, 0.36)
+        blurred(l, i === 0 ? 2.5 : 1.5, () => { l.strokeStyle = 'rgb(255,255,255)'; l.lineWidth = i === 0 ? 6 : 3.5; l.lineCap = 'round'; l.beginPath(); l.moveTo(g0.x, g0.y); l.lineTo(g1.x, g1.y); l.stroke() })
+        const gd = at(0.25, -0.3)
+        blob(l, gd.x, gd.y, i === 0 ? 3.5 : 2, i === 0 ? 2.5 : 1.5, [255, 255, 255], 1)
+        l.restore()
+      })
+    }),
+    top: () => sheet(nails, l => {
+      l.fillStyle = 'rgba(255,255,255,0.07)'; l.fillRect(0, 0, S, S)
+      toes.forEach(t => {
+        const nl = toeNail(t), hw = nl.halfWidth
+        const at = (u: number, side: number) => ({ x: nl.base.x + (nl.tip.x - nl.base.x) * u - nl.dir.y * side * hw, y: nl.base.y + (nl.tip.y - nl.base.y) * u + nl.dir.x * side * hw })
+        const g0 = at(0.12, 0.3), g1 = at(0.8, 0.28)
+        blurred(l, 2.5, () => { l.strokeStyle = 'rgba(255,255,255,0.55)'; l.lineWidth = Math.max(2, hw * 0.12); l.lineCap = 'round'; l.beginPath(); l.moveTo(g0.x, g0.y); l.lineTo(g1.x, g1.y); l.stroke() })
+      })
+    }),
+    water: () => sheet(whole(), l => paintWater(l, seed)),
+  }
+}
+
+function soleLayers(sole: SkinTone, seed: number, a: FootAnatomy, sil: HTMLCanvasElement, p: FootProfile): Record<string, () => HTMLCanvasElement> {
+  const w = a.shape.width, sx = (x: number) => 512 + (x - 512) * w
+  const toes = a.shape.soleToes
+  const X0 = 300, X1 = 760, Y0 = 60, Y1 = 1000
+  const heel = { x: sx(552), y: 862, rx: 132 * w, ry: 118 }
+  const ball = { x: sx(540), y: 392, rx: 190 * w, ry: 72 }
+  // Where the sole carries weight (calluses, dirt): the heel, the ball, the outer edge and the toe pads.
+  const weight = (c: Ctx, k: number) => {
+    c.beginPath(); c.ellipse(heel.x, heel.y + 10, heel.rx * 0.95, heel.ry * 0.95, 0, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.ellipse(ball.x, ball.y, ball.rx * 0.95, ball.ry * 1.05, 0.12, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.ellipse(sx(688), 640, 28 * w, 190, 0.05, 0, Math.PI * 2); c.fill()
+    for (const t of toes) { const q = alongToe(t, 0.78); c.beginPath(); c.arc(q.x, q.y, t.r1 * 0.85 * k, 0, Math.PI * 2); c.fill() }
+  }
+  return {
+    // Calluses: hard, thick, yellowed skin where it rubs: the heel, under the big toe's joint and across the
+    // ball, the side of the big toe and the outer edge. Mottled, rough, a little raised and matte.
+    callus: () => sheet(sil, l => {
+      const k = p.calluses
+      const yel: RGB = mixRGB(mixRGB(sole.base, [236, 212, 150], 0.6), sole.light, 0.1)
+      softBatch(l, 14, c => {
+        c.fillStyle = rgba(yel, 0.55 + 0.4 * k)
+        c.beginPath(); c.ellipse(heel.x, heel.y + 16, heel.rx * (0.8 + 0.2 * k), heel.ry * (0.78 + 0.2 * k), 0, 0, Math.PI * 2); c.fill()
+        c.beginPath(); c.ellipse(sx(410), 392, 64 * w, 52, 0, 0, Math.PI * 2); c.fill()
+        c.beginPath(); c.ellipse(sx(520), 382, 90 * w, 44, 0.1, 0, Math.PI * 2); c.fill()
+        c.beginPath(); c.ellipse(sx(708), 452, 30 * w, 50, 0.1, 0, Math.PI * 2); c.fill()
+        const q = alongToe(toes[0], 0.6, 0.75); c.beginPath(); c.ellipse(q.x, q.y, 24, 40, 0, 0, Math.PI * 2); c.fill()
+      })
+      l.globalCompositeOperation = 'destination-in'
+      l.drawImage(tintedByNoise(S, [255, 255, 255], fbm(S, 22, 3, seed + 91), 0.55, 1), 0, 0)
+      l.globalCompositeOperation = 'source-over'
+      // Thicker, yellower cores; a waxy, tone-on-tone surface with fine lines worn into it.
+      softBatch(l, 8, c => { c.fillStyle = rgba(shade(yel, -0.08), 0.3 * k + 0.15); c.beginPath(); c.ellipse(heel.x, heel.y + 40, heel.rx * 0.6, heel.ry * 0.45, 0, 0, Math.PI * 2); c.fill(); c.beginPath(); c.ellipse(sx(410), 396, 36 * w, 30, 0, 0, Math.PI * 2); c.fill() }, 'source-atop')
+      const r = makeRng(seed + 92)
+      l.save()
+      l.globalCompositeOperation = 'source-atop'
+      l.globalAlpha = 0.35
+      l.drawImage(fbm(S, 8, 3, seed + 93), 0, 0)
+      l.globalAlpha = 1
+      l.lineWidth = 1
+      l.strokeStyle = rgba(shade(yel, -0.3), 0.22)
+      const lines = new Path2D()
+      for (let i = 0; i < 260; i++) { const c2 = r() < 0.6 ? heel : ball, ang = r.range(0, Math.PI * 2), d = Math.sqrt(r()) * 0.95, x = c2.x + Math.cos(ang) * c2.rx * d, y = c2.y + Math.sin(ang) * c2.ry * d, len = r.range(6, 16), t = r.range(-0.4, 0.4); lines.moveTo(x - len, y - t * len); lines.lineTo(x + len, y + t * len) }
+      l.stroke(lines)
+      l.restore()
+    }),
+    // Dry skin: pale, flaking patches over the heel and the ball.
+    dry: () => sheet(sil, l => {
+      const r = makeRng(seed + 71)
+      const pale = mixRGB(sole.light, [255, 248, 240], 0.55)
+      softBatch(l, 16, c => { c.fillStyle = rgba(pale, 0.3 + 0.3 * p.dry); weight(c, 0.8) })
+      l.globalCompositeOperation = 'destination-in'
+      l.drawImage(tintedByNoise(S, [255, 255, 255], fbm(S, 30, 3, seed + 72), 0.3, 1), 0, 0)
+      l.globalCompositeOperation = 'source-over'
+      const flakes = Array.from({ length: Math.round(160 + 360 * p.dry) }, () => {
+        const c = r() < 0.55 ? heel : ball, ang = r.range(0, Math.PI * 2), d = Math.sqrt(r())
+        return { x: c.x + Math.cos(ang) * c.rx * d, y: c.y + Math.sin(ang) * c.ry * d, s: r.range(2, 5.5) }
+      })
+      const tri = (path: Path2D, x: number, y: number, s: number) => { path.moveTo(x, y); path.lineTo(x + s, y - 1); path.lineTo(x + s * 0.6, y + s * 0.7); path.closePath() }
+      const sh = new Path2D(), li = new Path2D()
+      for (const f of flakes) { tri(sh, f.x + 1, f.y + 1.5, f.s); tri(li, f.x, f.y, f.s) }
+      l.fillStyle = rgba(shade(sole.shadow, -0.1), 0.2); l.fill(sh)
+      l.fillStyle = 'rgba(255,252,246,0.6)'; l.fill(li)
+    }),
+    // Cracked heels: fissures running in from the heel's rim, each a wedge (widest at the rim, closing inward),
+    // dark red-brown inside, its lower wall catching the light and a pale, dry margin around it.
+    cracks: () => sheet(sil, l => {
+      const r = makeRng(seed + 81)
+      const k = p.cracks
+      const count = Math.round(5 + 9 * k)
+      const wedges: number[][] = []
+      const walls: { x: number; y: number }[][] = []
+      for (let i = 0; i < count; i++) {
+        // Around the back and the sides of the heel, where the skin splits.
+        const ang = r.range(0.05, Math.PI - 0.05) + (r() < 0.25 ? Math.PI * r.range(0.9, 1.1) : 0)
+        let x = heel.x + Math.cos(ang) * heel.rx * 0.98, y = heel.y + Math.sin(ang) * heel.ry * 0.98 + 8
+        const len = r.range(40, 70 + 70 * k), w0 = r.range(2.5, 4) + 3.5 * k
+        let dirA = Math.atan2(heel.y - 20 - y, heel.x - x) + r.range(-0.35, 0.35)
+        const center: { x: number; y: number }[] = [{ x, y }]
+        let run = 0
+        while (run < len) { const st = r.range(7, 12); dirA += r.range(-0.35, 0.35); x += Math.cos(dirA) * st; y += Math.sin(dirA) * st; run += st; center.push({ x, y }) }
+        const left: number[] = [], right: number[] = []
+        center.forEach((q, j) => {
+          const nq = center[Math.min(center.length - 1, j + 1)], pq = center[Math.max(0, j - 1)]
+          const dx = nq.x - pq.x, dy = nq.y - pq.y, dl = Math.hypot(dx, dy) || 1
+          const wd = w0 * (1 - j / (center.length - 1)) ** 0.8 * (0.8 + 0.4 * Math.sin(j * 1.7))
+          left.push(q.x - (dy / dl) * wd, q.y + (dx / dl) * wd)
+          right.unshift(q.x + (dy / dl) * wd, q.y - (dx / dl) * wd)
+        })
+        wedges.push([...left, ...right])
+        walls.push(center)
+      }
+      const fillAll = (c: Ctx, dx: number, dy: number) => { for (const pts of wedges) { c.beginPath(); for (let j = 0; j < pts.length; j += 2) (j ? c.lineTo(pts[j] + dx, pts[j + 1] + dy) : c.moveTo(pts[j] + dx, pts[j + 1] + dy)); c.closePath(); c.fill() } }
+      softBatch(l, 5, c => { c.fillStyle = rgba(mixRGB(sole.light, [252, 242, 226], 0.6), 0.85); c.lineWidth = 10; c.strokeStyle = rgba(mixRGB(sole.light, [252, 242, 226], 0.6), 0.85); for (const pts of wedges) { c.beginPath(); for (let j = 0; j < pts.length; j += 2) (j ? c.lineTo(pts[j], pts[j + 1]) : c.moveTo(pts[j], pts[j + 1])); c.closePath(); c.fill(); c.stroke() } })
+      softBatch(l, 0.6, c => { c.fillStyle = rgba(mixRGB(sole.light, [255, 250, 240], 0.5), 0.9); fillAll(c, 1.2, 1.8) })
+      softBatch(l, 0.5, c => { c.fillStyle = rgba(mixRGB(sole.deep, [110, 36, 36], 0.45), 0.95); fillAll(c, 0, 0) })
+      void walls
+    }),
+    // Dirt: grey-brown grime on everything that touches the floor; the arch stays clean.
+    dirt: () => sheet(sil, l => {
+      const kf = clamp01((fairOf(sole) - 0.45) / 0.4)
+      const mud = mixRGB([70, 52, 40], [110, 90, 72], kf)
+      softBatch(l, 22, c => { c.fillStyle = rgba(mud, 0.35 + 0.45 * p.dirt); weight(c, 1) })
+      l.globalCompositeOperation = 'destination-in'
+      l.drawImage(tintedByNoise(S, [255, 255, 255], fbm(S, 34, 4, seed + 33), 0.35, 1), 0, 0)
+      l.globalCompositeOperation = 'source-over'
+      l.drawImage(tintedByNoise(S, mud, fbm(S, 70, 3, seed + 34), 0.03, 0.12 + 0.12 * p.dirt), 0, 0)
+      const r = makeRng(seed + 35)
+      dots(l, shade(mud, -0.1), Math.round(300 * p.dirt + 60), () => { const c2 = r() < 0.5 ? heel : ball, ang = r.range(0, Math.PI * 2), d = Math.sqrt(r()); return { x: c2.x + Math.cos(ang) * c2.rx * d, y: c2.y + Math.sin(ang) * c2.ry * d, r: r.range(0.8, 1.8), a: r.range(0.12, 0.35) } }, 3)
+      // Grime packed into the creases under the toes.
+      softBatch(l, 3, c => { for (const t of toes) { const d = toeDir(t), n = { x: -d.y, y: d.x }, q = alongToe(t, 0.06), cw = t.r0 * 0.95; c.strokeStyle = rgba(shade(mud, -0.2), 0.3 * p.dirt + 0.1); c.lineWidth = 6; c.beginPath(); c.moveTo(q.x - n.x * cw, q.y - n.y * cw); c.quadraticCurveTo(q.x - d.x * 24, q.y - d.y * 24, q.x + n.x * cw, q.y + n.y * cw); c.stroke() } })
+    }),
+    wet: () => sheet(sil, l => paintWet(l, seed, X0, X1, Y0, Y1)),
+    antiseptic: () => sheet(sil, l => l.drawImage(tintedByNoise(S, [214, 128, 48], fbm(S, 40, 3, seed + 81), 0.28, 0.45), 0, 0), 3),
+    cream: () => sheet(sil, l => paintCream(l, seed, X0, X1, Y0, Y1), 6),
+    oil: () => sheet(sil, l => l.drawImage(tintedByNoise(S, [250, 226, 160], fbm(S, 36, 3, seed + 41), 0.06, 0.22), 0, 0)),
+    mask: () => sheet(sil, l => paintGelMask(l, seed, X0, X1, Y0, Y1), 3),
+    scrub: () => sheet(sil, l => paintFoam(l, seed, X0, X1, Y0, Y1), 8),
+    salt: () => sheet(sil, l => paintSalt(l, seed, X0, X1, Y0, Y1), 3),
+    water: () => sheet(whole(), l => paintWater(l, seed)),
+  }
+}
+
+// ---------------------------------------------------------------- tips, spots and shards
+
+/**
+ * The overgrown free edge of each toenail, to clip: the nail plate running on past the toe, ivory and a little
+ * translucent (fungal ones thick, yellow and ragged), drawn pointing up with the nail's tip point at (0, 0);
+ * `y` is how far above the crop's bottom that point sits, as for the hand's tips.
+ */
+function paintTips(a: FootAnatomy, p: FootProfile): (Crop | null)[] {
+  return a.shape.toes.map((t, i) => {
+    const len = p.grown[i]
+    if (len < 4) return null
+    const nl = toeNail(t)
+    const hw = nl.halfWidth, ov = Math.round(hw * 0.6)
+    const fung = p.fungus[i]
+    const W = Math.ceil(hw * 2 + 20), H = Math.ceil(len + 24 + ov)
+    const [c, ctx] = canvas(W, H)
+    ctx.translate(W / 2, H - 6 - ov)
+    const r = makeRng(Math.round(p.grown[i] * 100) + i)
+    const edge: [number, number][] = []
+    const steps = fung ? 7 : 1
+    for (let k = 0; k <= steps; k++) { const u = k / steps; edge.push([-hw * 0.94 + u * hw * 1.88, -len * (0.9 + 0.1 * Math.sin(u * Math.PI)) + (fung ? r.range(-len * 0.12, len * 0.08) : 0)]) }
+    const outline = () => {
+      ctx.beginPath()
+      ctx.moveTo(-hw * 0.99, ov)
+      ctx.bezierCurveTo(-hw, -len * 0.4, -hw * 0.98, -len * 0.8, edge[0][0], edge[0][1])
+      if (!fung) ctx.quadraticCurveTo(0, -len - 4, edge[1][0], edge[1][1])
+      else for (const q of edge.slice(1)) ctx.lineTo(q[0], q[1])
+      ctx.bezierCurveTo(hw * 0.98, -len * 0.8, hw, -len * 0.4, hw * 0.99, ov)
+      ctx.closePath()
+    }
+    blurred(ctx, 3, () => { ctx.save(); ctx.translate(2, 4); outline(); ctx.fillStyle = 'rgba(90,60,70,0.25)'; ctx.fill(); ctx.restore() })
+    outline()
+    // The free edge is polished like the rest of the nail when there is old polish on it.
+    const body: RGB = p.polish ? shade(hex(POLISH_COLORS[p.polish.color % POLISH_COLORS.length].hex), -0.05) : fung ? mixRGB([240, 226, 190], [214, 172, 84], fung) : [246, 238, 220]
+    const g = ctx.createLinearGradient(0, ov, 0, -len)
+    g.addColorStop(0, rgba(body, 0)); g.addColorStop(Math.min(0.9, ov / (ov + len) + 0.02), rgba(body, p.polish ? 0.95 : 0.85)); g.addColorStop(1, rgba(shade(body, -0.05), p.polish ? 0.95 : 0.8))
+    ctx.fillStyle = g
+    ctx.fill()
+    ctx.save()
+    outline(); ctx.clip()
+    const sg = ctx.createLinearGradient(-hw, 0, hw, 0)
+    sg.addColorStop(0, 'rgba(255,255,255,0.3)'); sg.addColorStop(0.4, 'rgba(255,255,255,0)'); sg.addColorStop(0.8, 'rgba(0,0,0,0)'); sg.addColorStop(1, 'rgba(120,90,50,0.3)')
+    ctx.fillStyle = sg
+    ctx.fillRect(-hw, -len - 10, hw * 2, len + 10 + ov)
+    if (fung) {
+      ctx.strokeStyle = rgba([120, 80, 30], 0.6 * fung); ctx.lineWidth = 1.2
+      for (let k = 0; k < 3 + Math.round(fung * 4); k++) { const x = r.range(-hw * 0.8, hw * 0.8), y = r.range(-len, 0); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + r.range(-6, 6), y - r.range(4, 10)); ctx.stroke() }
+      dots(ctx, [255, 248, 220], 30, () => ({ x: r.range(-hw, hw), y: r.range(-len, -len * 0.5), r: r.range(0.8, 2), a: r.range(0.4, 0.9) }), 2)
+    }
+    ctx.restore()
+    ctx.strokeStyle = fung ? rgba([150, 110, 50], 0.6) : 'rgba(196,176,160,0.55)'; ctx.lineWidth = 1.3
+    outline(); ctx.stroke()
+    blurred(ctx, 1, () => { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(hw * 0.55, -len * 0.1); ctx.quadraticCurveTo(hw * 0.65, -len * 0.6, hw * 0.2, -len * 0.88); ctx.stroke() })
+    return { canvas: c, x: 0, y: 6 + ov }
+  })
+}
+
+/** Corns, splinters and a plaster, each centred on its own small canvas and painted for this skin. */
 function paintSpots(skin: SkinTone): FootArt['spots'] {
-  const one = (size: number) => canvas(size)[0]
-  void skin
-  return { corn: one(8), cornCore: one(8), cornMark: one(8), splinter: one(8), splinterHalo: one(8), splinterMark: one(8), plaster: one(8) }
+  const one = (size: number, draw: (c: Ctx, m: number) => void) => { const [c, ctx] = canvas(size); draw(ctx, size / 2); return c }
+  const inflamed = inflamedOf(skin)
+  const hard = mixRGB(skin.base, [214, 186, 120], 0.5)
+  return {
+    // A corn: a hard, raised, yellowish dome, lit from the top left, on a red-rimmed base.
+    corn: one(96, (c, m) => {
+      blob(c, m, m + 2, 46, 44, inflamed, 0.4)
+      blob(c, m + 7, m + 10, 34, 28, shade(skin.shadow, -0.2), 0.35)
+      // The dome grows out of the skin (soft edge) and hardens toward a waxy, yellow-grey centre.
+      const g = c.createRadialGradient(m - 8, m - 10, 2, m, m, 36)
+      g.addColorStop(0, rgba(mixRGB(hard, [255, 248, 230], 0.35))); g.addColorStop(0.35, rgba(hard)); g.addColorStop(0.7, rgba(mixRGB(hard, skin.base, 0.6), 0.9)); g.addColorStop(1, rgba(skin.base, 0))
+      c.fillStyle = g
+      c.beginPath(); c.arc(m, m, 36, 0, Math.PI * 2); c.fill()
+      c.strokeStyle = rgba(shade(hard, -0.25), 0.3); c.lineWidth = 1.2
+      for (const rr of [20, 13]) { c.beginPath(); c.arc(m + 1, m + 1, rr, Math.PI * 0.1, Math.PI * 1.7); c.stroke() }
+      blob(c, m - 10, m - 12, 10, 6, [255, 252, 240], 0.55)
+    }),
+    // Its core: the hard, glassy plug in the middle that the tool lifts out.
+    cornCore: one(48, (c, m) => {
+      const g = c.createRadialGradient(m - 3, m - 3, 1, m, m, 11)
+      g.addColorStop(0, 'rgba(236,214,160,0.9)'); g.addColorStop(0.55, 'rgba(184,152,96,0.85)'); g.addColorStop(1, 'rgba(150,120,70,0)')
+      c.fillStyle = g
+      c.beginPath(); c.arc(m, m, 11, 0, Math.PI * 2); c.fill()
+      blob(c, m - 3, m - 4, 3, 2, [255, 255, 255], 0.9)
+    }),
+    // Where a corn was: a soft pink, smooth little hollow.
+    cornMark: one(96, (c, m) => { blob(c, m, m, 28, 26, mixRGB(skin.blush, [240, 150, 150], 0.4), 0.6); blob(c, m + 2, m + 3, 12, 11, mixRGB(skin.blush, [220, 110, 120], 0.4), 0.45) }),
+    // A splinter under the skin: a thin sliver of wood, seen through the skin where it is buried, its end out and lit.
+    splinter: one(128, (c, m) => {
+      c.save(); c.translate(m, m)
+      softBatch(c, 2, k => { k.strokeStyle = 'rgba(90,50,40,0.35)'; k.lineWidth = 7; k.lineCap = 'round'; k.beginPath(); k.moveTo(-40, 3); k.lineTo(34, 3); k.stroke() })
+      c.strokeStyle = rgba(mixRGB([120, 80, 50], skin.base, 0.45), 0.9); c.lineWidth = 5; c.lineCap = 'round'
+      c.beginPath(); c.moveTo(-38, 0); c.lineTo(10, 0); c.stroke()
+      const g = c.createLinearGradient(0, -4, 0, 4)
+      g.addColorStop(0, '#d9a870'); g.addColorStop(0.5, '#a8743f'); g.addColorStop(1, '#6f4a28')
+      c.fillStyle = g
+      c.beginPath(); c.moveTo(6, -3.5); c.lineTo(40, -2); c.lineTo(46, 0); c.lineTo(40, 2.5); c.lineTo(6, 3.5); c.closePath(); c.fill()
+      c.strokeStyle = 'rgba(255,236,200,0.8)'; c.lineWidth = 1; c.beginPath(); c.moveTo(10, -2.5); c.lineTo(40, -1.5); c.stroke()
+      c.strokeStyle = 'rgba(90,56,30,0.6)'; c.beginPath(); c.moveTo(14, 1); c.lineTo(36, 1.2); c.stroke()
+      c.restore()
+    }),
+    splinterHalo: one(128, (c, m) => { blob(c, m, m, 58, 30, inflamed, 0.4); blob(c, m + 8, m, 16, 12, mixRGB(inflamed, [210, 70, 90], 0.3), 0.45) }),
+    splinterMark: one(64, (c, m) => { blob(c, m, m, 14, 12, [226, 80, 96], 0.7); blob(c, m, m, 5, 5, [190, 50, 70], 0.8) }),
+    // A round plaster: a soft beige patch with a padded middle and tiny breathing holes.
+    plaster: one(128, (c, m) => {
+      blob(c, m + 4, m + 7, 50, 50, [120, 70, 60], 0.35)
+      c.fillStyle = '#f2d2b8'
+      c.beginPath(); c.arc(m, m, 46, 0, Math.PI * 2); c.fill()
+      const g = c.createRadialGradient(m - 6, m - 8, 4, m, m, 24)
+      g.addColorStop(0, '#fffaf4'); g.addColorStop(1, '#f1e4da')
+      c.fillStyle = g
+      c.beginPath(); c.arc(m, m, 22, 0, Math.PI * 2); c.fill()
+      c.fillStyle = 'rgba(170,120,100,0.35)'
+      for (let k = 0; k < 16; k++) { const aa = (k / 16) * Math.PI * 2; c.beginPath(); c.arc(m + Math.cos(aa) * 34, m + Math.sin(aa) * 34, 1.3, 0, Math.PI * 2); c.fill() }
+      blob(c, m - 18, m - 22, 14, 7, [255, 255, 255], 0.6)
+    }),
+  }
 }
 
+/** Clipped bits of nail: thin ivory crescents, and chunky yellow crumbs from fungal nails. */
 function paintShards(seed: number): FootArt['shards'] {
-  void seed
-  return { clean: [], fungal: [] }
+  const r = makeRng(seed + 999)
+  const piece = (fungal: boolean) => {
+    const [c, ctx] = canvas(48)
+    const col: RGB = fungal ? mixRGB([232, 196, 110], [206, 160, 80], r()) : [246, 238, 222]
+    ctx.translate(24, 24)
+    ctx.rotate(r.range(0, Math.PI * 2))
+    ctx.beginPath()
+    if (fungal) {
+      const n = r.int(5, 7)
+      for (let k = 0; k < n; k++) { const aa = (k / n) * Math.PI * 2, d = r.range(7, 15); if (k === 0) ctx.moveTo(Math.cos(aa) * d, Math.sin(aa) * d); else ctx.lineTo(Math.cos(aa) * d, Math.sin(aa) * d * 0.8) }
+      ctx.closePath()
+    } else { ctx.arc(0, 6, 16, Math.PI * 1.15, Math.PI * 1.85); ctx.arc(0, 10, 14, Math.PI * 1.8, Math.PI * 1.2, true); ctx.closePath() }
+    const g = ctx.createLinearGradient(-12, -12, 12, 12)
+    g.addColorStop(0, rgba(shade(col, 0.3))); g.addColorStop(1, rgba(shade(col, -0.2)))
+    ctx.fillStyle = g
+    ctx.fill()
+    ctx.strokeStyle = rgba(shade(col, -0.4), 0.7); ctx.lineWidth = 1
+    ctx.stroke()
+    if (fungal) { ctx.strokeStyle = rgba([120, 80, 30], 0.6); ctx.beginPath(); ctx.moveTo(-6, -2); ctx.lineTo(3, 4); ctx.stroke() }
+    return c
+  }
+  return { clean: Array.from({ length: 5 }, () => piece(false)), fungal: Array.from({ length: 6 }, () => piece(true)) }
 }
-
-void HAIR; void POLISH_COLORS; void tintedByNoise; void warm; void clamp01

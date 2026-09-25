@@ -52,6 +52,18 @@ export type FootShape = {
 
 // ---------------------------------------------------------------- the seeded shape
 
+/**
+ * The top view is framed close, like a pedicure game's shot: the forefoot fills the sheet and the ankle runs off
+ * the top under a draped towel. Its geometry is designed as a whole foot and mapped into art space by this scale
+ * about a point near the toe tips.
+ */
+export const TOP_SCALE = 1.42
+const TOP_PIVOT = { x: 512, y: 988 }
+export function topPoint(x: number, y: number): Point { return { x: TOP_PIVOT.x + (x - TOP_PIVOT.x) * TOP_SCALE, y: TOP_PIVOT.y + (y - TOP_PIVOT.y) * TOP_SCALE } }
+
+/** The hanging edge of the towel draped over the ankle (top view): layers stop above it. */
+export function drapeY(x: number) { return 150 + 34 * Math.exp(-(((x - 560) / 240) ** 2)) + 9 * Math.sin(x / 58) }
+
 type ToeSpec = { base: [number, number]; tip: [number, number]; r0: number; r1: number; nl: number; nw: number }
 /** Top view, before variation. */
 const TOP_TOES: ToeSpec[] = [
@@ -81,12 +93,14 @@ export function footShape(seed: number): FootShape {
   const thick = TOE_NAMES.map(() => r.range(0.94, 1.06))
   const make = (spec: ToeSpec[], sole: boolean): Toe[] => spec.map((s, i) => {
     const sx = (x: number) => 512 + (x - 512) * width
-    const base = { x: sx(s.base[0]), y: s.base[1] }
-    let tip = { x: sx(s.tip[0]), y: s.tip[1] }
+    const k = sole ? 1 : TOP_SCALE
+    const map = (x: number, y: number) => (sole ? { x, y } : topPoint(x, y))
+    const base = map(sx(s.base[0]), s.base[1])
+    let tip = map(sx(s.tip[0]), s.tip[1])
     tip = { x: base.x + (tip.x - base.x) * len[i], y: base.y + (tip.y - base.y) * len[i] }
     // A bunion tips the big toe toward the second (toward the middle of the foot).
-    if (i === 0 && bunion) tip.x += (sole ? 1 : -1) * 30 * bunion
-    return { name: TOE_NAMES[i], base, tip, r0: s.r0 * thick[i] * width, r1: s.r1 * thick[i] * width, nailLength: s.nl * len[i] ** 0.5, nailWidth: s.nw * thick[i] * width }
+    if (i === 0 && bunion) tip.x += (sole ? 1 : -1) * 30 * k * bunion
+    return { name: TOE_NAMES[i], base, tip, r0: s.r0 * thick[i] * width * k, r1: s.r1 * thick[i] * width * k, nailLength: s.nl * k * len[i] ** 0.5, nailWidth: s.nw * k * thick[i] * width }
   })
   return { seed, width, bunion, longSecond, nailShape, toes: make(TOP_TOES, false), soleToes: make(SOLE_TOES, true) }
 }
@@ -128,13 +142,16 @@ export function topOutline(f: FootShape): number[] {
   const w = f.width, sx = (x: number) => 512 + (x - 512) * w
   const b = f.bunion
   const t = f.toes
+  const P = (x: number, y: number): [number, number] => { const q = topPoint(x, y); return [q.x, q.y] }
   const pts: [number, number][] = [
-    [sx(378), -40], [sx(376), 60], [sx(372), 140], [sx(356), 196], [sx(350), 250], [sx(344), 330], [sx(326), 430], [sx(306), 530], [sx(292), 610],
+    // The outer edge runs nearly straight from the ankle to the little toe's joint.
+    P(sx(370), -60), P(sx(368), 40), P(sx(364), 120), P(sx(352), 200), P(sx(344), 280), P(sx(336), 360), P(sx(322), 450), P(sx(304), 540), P(sx(292), 610),
     [t[4].base.x - t[4].r0 * 1.05, t[4].base.y - 8],
     [t[4].base.x + 4, t[4].base.y + t[4].r0 * 0.9], [t[3].base.x, t[3].base.y + t[3].r0 * 0.9], [t[2].base.x, t[2].base.y + t[2].r0 * 0.9], [t[1].base.x, t[1].base.y + t[1].r0 * 0.85],
     [t[0].base.x - t[0].r0 * 0.3, t[0].base.y + t[0].r0 * 0.9],
-    [t[0].base.x + t[0].r0 * 0.9 + b * 30, t[0].base.y - 10],
-    [sx(720) + b * 34, 640], [sx(706) + b * 10, 540], [sx(690), 440], [sx(676), 340], [sx(668), 250], [sx(672), 180], [sx(656), 120], [sx(648), 60], [sx(646), -40],
+    [t[0].base.x + t[0].r0 * 0.9 + b * 40, t[0].base.y - 10],
+    // The inner edge curves in along the arch, then out to the big toe's joint.
+    P(sx(724) + b * 34, 640), P(sx(702) + b * 10, 560), P(sx(684), 470), P(sx(674), 380), P(sx(676), 290), P(sx(684), 200), P(sx(682), 120), P(sx(676), 40), P(sx(672), -60),
   ]
   return pts.flat()
 }
@@ -162,8 +179,8 @@ export type FootTopRegion = 'foot' | 'toes' | 'nails' | 'tips' | 'cuticles' | 'n
 export type FootSoleRegion = 'sole' | 'toePads' | 'ball' | 'arch' | 'heel' | 'heelRim' | 'calluses' | 'everywhere'
 
 const EVERYWHERE: Shape = { t: 'poly', pts: [0, 0, 1024, 0, 1024, 1024, 0, 1024] }
-/** The cuff at the top of the top view: layers stop below it. */
-export const CUFF_Y = 96
+/** Above this the draped towel covers everything in the top view (its edge dips lower in places, see drapeY). */
+export const CUFF_Y = 140
 
 export function footAnatomy(seed: number) {
   const f = footShape(seed)
@@ -179,19 +196,23 @@ export function footAnatomy(seed: number) {
   const big = nails[0]
   const fold = (side: number): Shape => {
     const nx = -big.dir.y * side, ny = big.dir.x * side, o = big.halfWidth * 0.98
-    return { t: 'capsule', x0: big.base.x + nx * o + big.dir.x * 14, y0: big.base.y + ny * o + big.dir.y * 14, x1: big.tip.x + nx * o * 0.95 - big.dir.x * 6, y1: big.tip.y + ny * o * 0.95 - big.dir.y * 6, r0: 9, r1: 12 }
+    return { t: 'capsule', x0: big.base.x + nx * o + big.dir.x * 20, y0: big.base.y + ny * o + big.dir.y * 20, x1: big.tip.x + nx * o * 0.95 - big.dir.x * 8, y1: big.tip.y + ny * o * 0.95 - big.dir.y * 8, r0: 13, r1: 17 }
   }
   // Corns sit on the knuckle (the middle joint) on top of the smaller toes, and on the outer side of the little toe.
   const knuckleShapes: Shape[] = top.slice(1).map(t => { const p = alongToe(t, 0.44); return { t: 'ellipse', cx: p.x, cy: p.y, rx: t.r0 * 0.85, ry: t.r0 * 0.7 } })
   const lp = alongToe(top[4], 0.5, -0.95)
-  knuckleShapes.push({ t: 'ellipse', cx: lp.x, cy: lp.y, rx: 16, ry: 22 })
+  knuckleShapes.push({ t: 'ellipse', cx: lp.x, cy: lp.y, rx: 22, ry: 30 })
   const between: Shape[] = top.slice(0, 4).map((t, i) => {
     const n = top[i + 1], a = alongToe(t, 0.12), b = alongToe(n, 0.12)
-    return { t: 'ellipse', cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 + 20, rx: 16, ry: 46, rot: Math.atan2(t.tip.x - t.base.x, t.base.y - t.tip.y) }
+    return { t: 'ellipse', cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 + 28, rx: 22, ry: 64, rot: Math.atan2(t.tip.x - t.base.x, t.base.y - t.tip.y) }
   })
   const topOut: Shape = { t: 'poly', pts: topOutline(f) }
   const soleOut: Shape = { t: 'poly', pts: soleOutline(f) }
-  const cuff: Shape = { t: 'poly', pts: [0, -100, 1024, -100, 1024, CUFF_Y, 0, CUFF_Y] }
+  const cuffPts = [0, -100, 1024, -100]
+  for (let x = 1024; x >= 0; x -= 32) cuffPts.push(x, drapeY(x) + 4)
+  const cuff: Shape = { t: 'poly', pts: cuffPts }
+  const T = (x: number, y: number) => topPoint(512 + (x - 512) * w, y)
+  const K = TOP_SCALE
   const w = f.width, sx = (x: number) => 512 + (x - 512) * w
   const heel: Shape = { t: 'ellipse', cx: sx(552), cy: 862, rx: 132 * w, ry: 118 }
   const heelInner: Shape = { t: 'ellipse', cx: sx(556), cy: 850, rx: 92 * w, ry: 80 }
@@ -207,8 +228,8 @@ export function footAnatomy(seed: number) {
     nailFolds: { include: [fold(-1), fold(1)] },
     knuckles: { include: knuckleShapes },
     betweenToes: { include: between },
-    instep: { include: [{ t: 'ellipse', cx: sx(512), cy: 500, rx: 180 * w, ry: 230 }], exclude: [cuff] },
-    ankle: { include: [{ t: 'poly', pts: [sx(360), CUFF_Y, sx(660), CUFF_Y, sx(670), 290, sx(350), 290] }] },
+    instep: { include: [{ t: 'ellipse', cx: T(512, 520).x, cy: T(512, 520).y, rx: 170 * w * K, ry: 200 * K }], exclude: [cuff] },
+    ankle: { include: [{ t: 'poly', pts: [T(356, 250).x, CUFF_Y, T(676, 250).x, CUFF_Y, T(690, 525).x, T(690, 525).y, T(330, 525).x, T(330, 525).y] }], exclude: [cuff] },
     everywhere: { include: [EVERYWHERE] },
   }
   const SOLE: Record<FootSoleRegion, Region> = {
