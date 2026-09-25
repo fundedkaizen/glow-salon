@@ -19,7 +19,7 @@ export type SeatKind3 = 'sofa' | 'chair' | 'stool' | 'pedicure'
 export type Tool3 = 'brush' | 'file' | 'footBrush' | null
 
 /** People stand a little taller than life against the furniture, as game characters do, so faces read. */
-export const GAME_SCALE = 1.1
+export const GAME_SCALE = 1.22
 
 export const PERSON_MAT = new MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0 })
 

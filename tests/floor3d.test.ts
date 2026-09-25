@@ -1,6 +1,6 @@
 import { check, near } from './harness.ts'
 import { Vector3 } from 'three'
-import { COMPUTER_SPOT, DESK, FLOOR_H, FLOOR_W, SLOTS, SOFA_SEATS, spawnPoint, stationSpot, WALL_H } from '../src/core/floor.ts'
+import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, DOOR_INSIDE, findPath, FLOOR_H, FLOOR_W, PARTITIONS, SLOTS, SOFA_SEATS, spawnPoint, STANDING, stationSeat, stationSpot, WALL_H, type Pt } from '../src/core/floor.ts'
 import { DEPTH_K, lenX, lenZ, ROOM3, toSim, toWorld, turnTo, UNITS_PER_M, wallHeight, yawFor } from '../src/render3d/mapping.ts'
 import { CameraRig } from '../src/render3d/camera.ts'
 
@@ -29,7 +29,28 @@ export function run() {
   check('every station slot is inside the room', SLOTS.every(s => inside(s.x, s.y)))
   check('every work spot is inside the room', SLOTS.every((_, i) => { const p = stationSpot(i); return inside(p.x, p.y) }))
   check('sofa seats, the computer and the spawn points are inside', [...SOFA_SEATS, COMPUTER_SPOT, spawnPoint(0), spawnPoint(3)].every(p => inside(p.x, p.y)))
-  check('the desk stands against the back wall', toWorld(DESK.x, DESK.y).z < 0.5)
+  // ---- the reception: the desk stands out from the wall; the computer is used from behind it
+  check('the desk stands out from the back wall, with a gap behind', DESK.y - WALL_H >= 64)
+  check('the computer spot is behind the desk', COMPUTER_SPOT.y < DESK.y && COMPUTER_SPOT.x > DESK.x && COMPUTER_SPOT.x < DESK.x + DESK.w)
+  const allSlots = SLOTS.map((_, i) => i)
+  for (const [label, grid] of [['empty salon', blockedGrid([0], [])], ['full salon', blockedGrid(allSlots, ['plant', 'aquarium'])]] as const) {
+    const cellOpen = (p: Pt) => !grid[Math.floor(p.y / CELL) * COLS + Math.floor(p.x / CELL)]
+    check(`${label}: the computer spot is open floor`, cellOpen(COMPUTER_SPOT))
+    // The player gets there from anywhere they start the day.
+    const toPc = findPath(grid, spawnPoint(0), COMPUTER_SPOT)
+    // findPath answers [to] alone when there is no way through.
+    check(`${label}: a path from the spawn point to the computer`, toPc.length > 1 && toPc.every(p => p === COMPUTER_SPOT || cellOpen(p)), toPc)
+    // Customers never cut through behind the desk: no path of theirs enters the staff gap.
+    const behind = (p: Pt) => p.y < DESK.y && p.x > DESK.x - 4 && p.x < DESK.x + DESK.w + 4
+    const trips: [Pt, Pt][] = []
+    for (const seat of [...SOFA_SEATS, ...STANDING]) trips.push([DOOR_INSIDE, seat])
+    for (const i of allSlots) { trips.push([DOOR_INSIDE, stationSeat(i)]); for (const seat of SOFA_SEATS) trips.push([seat, stationSeat(i)]); trips.push([stationSeat(i), DOOR_INSIDE]) }
+    const cut = trips.filter(([a, b]) => findPath(grid, a, b).some(behind))
+    check(`${label}: no customer route passes behind the desk`, cut.length === 0, cut.slice(0, 3))
+    // Staff and players still reach every station's work spot.
+    check(`${label}: every work spot is reachable`, allSlots.every(i => { const w = stationSpot(i); const path = findPath(grid, spawnPoint(0), w); return path.length > 0 && cellOpen(path[Math.max(0, path.length - 2)]) }))
+  }
+  check('partitions stand inside the room', PARTITIONS.every(p => p.x >= 0 && p.x + p.w <= FLOOR_W && p.y >= WALL_H && p.y + p.h <= FLOOR_H))
   // Wall pieces hang between the floor and the top of the wall; higher on the 2D band means higher on the wall.
   check('wall height is inside the wall', [0, 40, 66, 120, 176].every(y => wallHeight(y) > 0.2 && wallHeight(y) < ROOM3.wallH))
   check('wall height falls as the band goes down', wallHeight(40) > wallHeight(66) && wallHeight(66) > wallHeight(120))
@@ -61,8 +82,9 @@ export function run() {
   }
   check('phone: the player stays on screen anywhere in the salon', allSeen)
   check('the camera never turns (fixed yaw and pitch)', rig.yaw === yaw && rig.pitch === pitch)
-  // Phone portrait: the whole depth of the room fits (only sideways panning is needed).
-  rig.update(1, toWorld(640, 500))
-  const depth = [new Vector3(0, 0, 0.1), new Vector3(0, 0, ROOM3.d - 0.1)].map(p => p.clone().project(rig.camera).y)
-  check('phone: the room is framed front to back', depth.every(y => Math.abs(y) <= 1.001), depth)
+  // Phone portrait: most of the salon shows at once (Serenity shows the whole salon; a phone shows most of it).
+  for (let i = 0; i < 90; i++) rig.update(1 / 30, toWorld(640, 500))
+  let seen = 0, all = 0
+  for (let x = 40; x < FLOOR_W; x += 80) for (let y = WALL_H + 20; y < FLOOR_H; y += 60) { all++; const w = toWorld(x, y); if (onScreen(new Vector3(w.x, 0, w.z))) seen++ }
+  check('phone: at least half of the floor shows at once', seen / all >= 0.5, seen / all)
 }

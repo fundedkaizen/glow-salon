@@ -11,7 +11,7 @@ export type Tier = 'matte' | 'satin' | 'gloss' | 'metal' | 'glass' | 'glow'
 
 export const MAT: Record<Tier, Material> = {
   matte: new MeshStandardMaterial({ vertexColors: true, roughness: 0.86, metalness: 0 }),
-  satin: new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0 }),
+  satin: new MeshStandardMaterial({ vertexColors: true, roughness: 0.38, metalness: 0 }),
   gloss: new MeshStandardMaterial({ vertexColors: true, roughness: 0.2, metalness: 0 }),
   metal: new MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 1 }),
   glass: new MeshStandardMaterial({ vertexColors: true, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.32, depthWrite: false }),

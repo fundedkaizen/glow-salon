@@ -1,7 +1,8 @@
 import { CanvasTexture, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, MultiplyBlending, PlaneGeometry, type Object3D } from 'three'
 import { DOOR_Y0, DOOR_Y1, WINDOWS } from '../art/salon/room.ts'
 import { G, Kit, tf } from './kit.ts'
-import { ROOM3, toWorld } from './mapping.ts'
+import { PARTITIONS } from '../core/floor.ts'
+import { lenX, lenZ, ROOM3, toWorld, UNITS_PER_M } from './mapping.ts'
 import { lawnTexture, paintShade, pavingTexture, wallTexture, windowView, woodTexture, type ShadeBlob } from './textures.ts'
 
 /**
@@ -10,12 +11,12 @@ import { lawnTexture, paintShade, pavingTexture, wallTexture, windowView, woodTe
  * ledge, and the glass door in the left wall. Outside: a pavement to the door, a lawn and a hedge.
  */
 export const COLORS = {
-  wallCut: 0xf6d6df,
+  wallCut: 0xfdf3ee,
   cap: 0xfffaf6,
   trim: 0xfff6ef,
   frame: 0xffffff,
-  hedge: 0x8cc47e,
-  hedgeDark: 0x76b26a,
+  hedge: 0x7cc06e,
+  hedgeDark: 0x62ad5c,
   gold: 0xe6bd6a,
   brass: 0xd9a84e,
 }
@@ -102,11 +103,13 @@ export function buildRoom(): RoomParts {
   // Right wall: inner face X = W/2, from the back wall to the front ledge.
   kit.add(G.box(T, H, D + T, 0.01), COLORS.wallCut, 'matte', tf(W / 2 + T / 2, H / 2, (D - T) / 2 + T / 2))
   // Painted inner faces.
-  const backFace = new Mesh(new PlaneGeometry(W, H), new MeshStandardMaterial({ map: wallTexture(W, H, 'right'), roughness: 0.92 }))
+  // Arched niches: behind the reception, around the wall decor spots, between the windows.
+  const backArches = [200, 402, 612, 866, 1052].map(x => x / UNITS_PER_M)
+  const backFace = new Mesh(new PlaneGeometry(W, H), new MeshStandardMaterial({ map: wallTexture(W, H, 'right', backArches), roughness: 0.92 }))
   backFace.position.set(0, H / 2, 0.002)
   backFace.receiveShadow = true
   group.add(backFace)
-  const rightFace = new Mesh(new PlaneGeometry(D, H), new MeshStandardMaterial({ map: wallTexture(D, H, 'left'), roughness: 0.92 }))
+  const rightFace = new Mesh(new PlaneGeometry(D, H), new MeshStandardMaterial({ map: wallTexture(D, H, 'left', [3.4, 5.2]), roughness: 0.92 }))
   rightFace.rotation.y = -Math.PI / 2
   rightFace.position.set(W / 2 - 0.002, H / 2, D / 2)
   rightFace.receiveShadow = true
@@ -116,8 +119,6 @@ export function buildRoom(): RoomParts {
   kit.add(G.box(T + 0.08, 0.1, D + T + 0.06, 0.04), COLORS.cap, 'satin', tf(W / 2 + T / 2, H + 0.03, (D - T) / 2 + T / 2))
   kit.add(G.box(W, 0.14, 0.035, 0.012), COLORS.trim, 'satin', tf(0, 0.07, 0.018))
   kit.add(G.box(0.035, 0.14, D, 0.012), COLORS.trim, 'satin', tf(W / 2 - 0.018, 0.07, D / 2))
-  kit.add(G.box(W, 0.05, 0.04, 0.015), COLORS.trim, 'satin', tf(0, 1.0, 0.02))
-  kit.add(G.box(0.04, 0.05, D, 0.015), COLORS.trim, 'satin', tf(W / 2 - 0.02, 1.0, D / 2))
   // Crown moulding.
   kit.add(G.box(W, 0.07, 0.06, 0.02), COLORS.trim, 'satin', tf(0, H - 0.05, 0.03))
   kit.add(G.box(0.06, 0.07, D, 0.02), COLORS.trim, 'satin', tf(W / 2 - 0.03, H - 0.05, D / 2))
@@ -133,36 +134,36 @@ export function buildRoom(): RoomParts {
   // The left wall's join with the back wall rises as a short pillar, so the cut reads as a cut.
   kit.add(G.box(T + 0.06, H + 0.1, T + 0.06, 0.04), COLORS.cap, 'satin', tf(-W / 2 - T / 2, (H + 0.1) / 2, -T / 2))
 
-  // ---- the door: a white frame with a glass leaf that swings in
-  const frameH = 2.3
-  for (const z of [doorZ0, doorZ1]) kit.add(G.box(T + 0.1, frameH, 0.1, 0.03), COLORS.frame, 'satin', tf(-W / 2 - T / 2, frameH / 2, z + (z === doorZ0 ? -0.05 : 0.05)))
-  kit.add(G.box(T + 0.1, 0.14, doorZ1 - doorZ0 + 0.3, 0.04), COLORS.frame, 'satin', tf(-W / 2 - T / 2, frameH + 0.05, (doorZ0 + doorZ1) / 2))
-  // A little awning over the door, outside.
-  kit.add(G.box(0.7, 0.06, doorZ1 - doorZ0 + 0.5, 0.03), 0xf3a9c0, 'satin', tf(-W / 2 - T - 0.3, frameH + 0.24, (doorZ0 + doorZ1) / 2, 0, 0, -0.35))
+  // ---- the entrance: the cut wall opens between two round pillars; a low glass gate swings in as people pass
+  const postH = 1.25
+  for (const z of [doorZ0 - 0.06, doorZ1 + 0.06]) {
+    kit.add(G.cyl(0.13, 0.15, postH, 20), COLORS.frame, 'satin', tf(-W / 2 - T / 2, postH / 2, z))
+    kit.add(G.cyl(0.16, 0.16, 0.06, 20), COLORS.gold, 'metal', tf(-W / 2 - T / 2, postH + 0.03, z))
+    kit.add(G.sphere(0.09, 12), COLORS.gold, 'metal', tf(-W / 2 - T / 2, postH + 0.12, z))
+  }
   // A doormat.
   kit.add(G.box(0.8, 0.015, doorZ1 - doorZ0 - 0.2, 0.01), 0xd98fa6, 'matte', tf(-W / 2 + 0.45, 0.008, (doorZ0 + doorZ1) / 2))
   const door = new Group()
-  door.position.set(-W / 2 - T / 2, 0, doorZ0)
-  const leafLen = doorZ1 - doorZ0 - 0.04
+  door.position.set(-W / 2 - T / 2, 0, doorZ0 + 0.08)
+  const leafLen = doorZ1 - doorZ0 - 0.16
   const leaf = new Kit()
-  // Stiles and rails around a glass pane.
-  leaf.add(G.box(0.06, 2.18, 0.1, 0.02), COLORS.frame, 'satin', tf(0, 1.1, 0.05))
-  leaf.add(G.box(0.06, 2.18, 0.1, 0.02), COLORS.frame, 'satin', tf(0, 1.1, leafLen - 0.05))
-  leaf.add(G.box(0.06, 0.12, leafLen, 0.02), COLORS.frame, 'satin', tf(0, 2.13, leafLen / 2))
-  leaf.add(G.box(0.06, 0.26, leafLen, 0.02), COLORS.frame, 'satin', tf(0, 0.14, leafLen / 2))
-  leaf.add(G.box(0.02, 1.8, leafLen - 0.2, 0.005), 0xcfe8f4, 'glass', tf(0, 1.17, leafLen / 2))
-  leaf.add(G.box(0.08, 0.28, 0.04, 0.015), COLORS.brass, 'metal', tf(0.05, 1.05, leafLen - 0.12))
-  leaf.add(G.box(0.08, 0.28, 0.04, 0.015), COLORS.brass, 'metal', tf(-0.05, 1.05, leafLen - 0.12))
+  leaf.add(G.box(0.06, 0.9, 0.08, 0.03), COLORS.frame, 'satin', tf(0, 0.5, 0.04))
+  leaf.add(G.box(0.06, 0.9, 0.08, 0.03), COLORS.frame, 'satin', tf(0, 0.5, leafLen - 0.04))
+  leaf.add(G.box(0.07, 0.08, leafLen, 0.03), COLORS.frame, 'satin', tf(0, 0.94, leafLen / 2))
+  leaf.add(G.box(0.07, 0.08, leafLen, 0.03), COLORS.frame, 'satin', tf(0, 0.1, leafLen / 2))
+  leaf.add(G.box(0.02, 0.76, leafLen - 0.12, 0.005), 0xcfe8f4, 'glass', tf(0, 0.52, leafLen / 2))
+  leaf.add(G.box(0.03, 0.02, leafLen - 0.1, 0.005), COLORS.gold, 'metal', tf(0.02, 0.52, leafLen / 2))
   door.add(leaf.build())
   group.add(door)
-  // The shop bell over the door, inside.
+  // The shop bell, on a little gold bracket from the inner pillar.
   const bell = new Group()
-  bell.position.set(-W / 2 + 0.12, frameH - 0.06, doorZ0 + 0.25)
+  bell.position.set(-W / 2 + 0.1, postH + 0.02, doorZ0 - 0.06)
   const bk = new Kit()
   bk.add(G.lathe('bell', [[0, -0.16], [0.07, -0.16], [0.065, -0.12], [0.045, -0.06], [0.03, -0.03], [0, -0.02]]), COLORS.gold, 'metal')
   bk.add(G.sphere(0.018, 8), COLORS.brass, 'metal', tf(0, -0.17, 0))
   bk.add(G.cyl(0.004, 0.004, 0.02, 6), COLORS.brass, 'metal', tf(0, -0.01, 0))
   bell.add(bk.build(false))
+  kit.add(G.box(0.26, 0.025, 0.025, 0.01), COLORS.gold, 'metal', tf(-W / 2 - T / 2 + 0.13, postH + 0.03, doorZ0 - 0.06))
   group.add(bell)
 
   // ---- windows: two arched windows on the back wall and two on the right wall
@@ -195,7 +196,42 @@ export function buildRoom(): RoomParts {
     kit.add(G.sphere(0.09, 12), 0xfff1d6, 'glow', tf(0, 2.08, 0.11, 0, 0, 0, 1, 0.8, 1))
     kit.add(G.cyl(0.11, 0.06, 0.1, 14), COLORS.gold, 'metal', tf(0, 2.0, 0.11))
   })
-  sconce(W / 2, toWorld(0, 520).z, -Math.PI / 2)
+  for (const x of [322, 508, 736, 958]) sconce(-W / 2 + x / UNITS_PER_M, 0, 0)
+  sconce(W / 2, 4.3, -Math.PI / 2)
+  sconce(W / 2, 0.9, -Math.PI / 2)
+
+  // ---- partitions: low white walls with rounded ends that split the salon into zones
+  for (const p of PARTITIONS) {
+    const a = toWorld(p.x + p.w / 2, p.y + p.h / 2)
+    const alongX = p.w >= p.h
+    const len = alongX ? lenX(p.w) : lenZ(p.h)
+    const th = 0.2, ph = 0.95
+    const ry = alongX ? 0 : Math.PI / 2
+    kit.at(tf(a.x, 0, a.z, 0, ry, 0), () => {
+      kit.add(G.box(len - th, ph, th, 0.03), COLORS.cap, 'satin', tf(0, ph / 2, 0))
+      for (const s of [-1, 1]) kit.add(G.cyl(th / 2, th / 2, ph, 16), COLORS.cap, 'satin', tf(s * (len - th) / 2, ph / 2, 0))
+      kit.add(G.box(len - th, 0.05, th + 0.04, 0.02), 0xf6d2c8, 'satin', tf(0, ph + 0.01, 0))
+      for (const s of [-1, 1]) kit.add(G.cyl(th / 2 + 0.02, th / 2 + 0.02, 0.05, 16), 0xf6d2c8, 'satin', tf(s * (len - th) / 2, ph + 0.01, 0))
+      kit.add(G.box(len - th, 0.03, th + 0.01, 0.01), COLORS.gold, 'metal', tf(0, 0.12, 0))
+    })
+  }
+
+  // ---- flower beds outside the cut walls, as in Serenity's gardens
+  const bed = (x: number, z: number, w: number, d: number, seed: number) => {
+    kit.add(G.box(w, 0.22, d, 0.06), 0xfff4ee, 'satin', tf(x, 0.11, z))
+    kit.add(G.box(w - 0.12, 0.08, d - 0.12, 0.03), 0x6a4a3e, 'matte', tf(x, 0.2, z))
+    let k = seed
+    const rnd = () => { k = (k * 16807) % 2147483647; return k / 2147483647 }
+    const n = Math.floor(w * d * 7)
+    for (let i = 0; i < n; i++) {
+      const fx = x + (rnd() - 0.5) * (w - 0.25), fz = z + (rnd() - 0.5) * (d - 0.25)
+      kit.add(G.sphere(0.13 + rnd() * 0.06, 7), rnd() < 0.5 ? COLORS.hedge : COLORS.hedgeDark, 'matte', tf(fx, 0.3, fz, 0, 0, 0, 1, 0.8, 1))
+      if (rnd() < 0.75) kit.add(G.sphere(0.045, 6), [0xf48fb1, 0xffffff, 0xf7b7cc, 0xffd35a][Math.floor(rnd() * 4)], 'matte', tf(fx + 0.05, 0.43, fz + 0.03))
+    }
+  }
+  bed(0.8, D + T + 0.62, W - 1.2, 0.9, 7)
+  bed(-W / 2 - T - 0.62, doorZ0 / 2 + 0.1, 0.9, doorZ0 - 0.4, 11)
+  bed(-W / 2 - T - 0.62, (doorZ1 + D) / 2 + 0.3, 0.9, Math.max(0.6, D - doorZ1 - 0.2), 13)
 
   group.add(kit.build())
   return { group, door, bell, setShade }

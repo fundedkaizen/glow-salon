@@ -19,7 +19,7 @@ import { playerLook, type FloorHooks, type FloorState } from '../render/floor-vi
 import { Particles, easeOutBack } from '../render/particles.ts'
 import { CameraRig } from './camera.ts'
 import { Cat3D } from './cat3d.ts'
-import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, floorLamp, giftStand, glowSign, nailDesk, pedicureChair, sideTable, sofa, soonScreen, succulent, teaCart, welcomeSign, type Build, type Node3, type StationNodes } from './furniture.ts'
+import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, floorLamp, giftStand, glowSign, lounge, nailDesk, pedicureChair, sideTable, soonScreen, succulent, teaCart, topiary, welcomeSign, type Build, type Node3, type StationNodes } from './furniture.ts'
 import { disposeGroup, G, Kit, tf } from './kit.ts'
 import { lenX, lenZ, ROOM3, toSim, toWorld, turnTo, wallHeight, yawFor } from './mapping.ts'
 import { moodBubble, nameTag, speech, toolBubble, waitDots } from './overlay.ts'
@@ -59,6 +59,8 @@ export class FloorView3D {
   private furnitureKey = ''
   private stations = new Map<string, StationView>()
   private deskBox = new Box3()
+  /** The reception counter's centre on the floor (metres). */
+  private deskTop = { x: 0, z: 0 }
   private sofaSeats: Node3[] = []
   private uiLayer = new Container()
   private fxLayer = new Container()
@@ -105,6 +107,7 @@ export class FloorView3D {
   private neon: Mesh | null = null
   private glows: { s: Sprite; base: number; ph: number; flicker?: boolean }[] = []
   private fish: InstancedMesh | null = null
+  private twinkle: Points | null = null
   private fishAt = new Vector3()
   private motes: Points
   private blobs: InstancedMesh
@@ -124,18 +127,24 @@ export class FloorView3D {
     this.stage.onEnv(env => { this.scene.environment = env; this.scene.environmentIntensity = 0.4 })
     this.scene.add(new HemisphereLight(0xfff2ee, 0xd9a896, 0.55))
     const key = new DirectionalLight(0xffeedd, 1.9)
-    key.position.set(-8.5, 14, RD / 2 + 5.5)
+    // High and a little to the front left: short, soft shadows under things, as at midday.
+    key.position.set(-5, 17, RD / 2 + 4.5)
     key.target.position.set(0.5, 0, RD / 2)
     key.castShadow = true
     const hi = this.stage.quality === 'high'
     key.shadow.mapSize.set(hi ? 2048 : 1024, hi ? 2048 : 1024)
     const sc = key.shadow.camera
     sc.left = -12; sc.right = 12; sc.top = 9; sc.bottom = -9; sc.near = 4; sc.far = 34
-    key.shadow.radius = hi ? 3 : 2
+    key.shadow.radius = hi ? 6 : 3
     key.shadow.bias = -0.0004
     key.shadow.normalBias = 0.025
     this.scene.add(key, key.target)
     this.key = key
+    // A soft fill from the camera's side, no shadows: walls and faces turned to the viewer stay bright and even.
+    const fill = new DirectionalLight(0xfff3ec, 0.85)
+    fill.position.set(-8, 7, RD / 2 + 8)
+    fill.target.position.set(0, 0, RD / 2)
+    this.scene.add(fill, fill.target)
     // ---- the room
     this.room = buildRoom()
     this.scene.add(this.room.group)
@@ -241,32 +250,39 @@ export class FloorView3D {
     this.neon = null
     this.glows = []
     this.fish = null
+    this.twinkle = null
     const b: Build = { kit: new Kit(), extra: new Group(), blobs: [] }
     const w = (x: number, y: number) => toWorld(x, y)
-    // ---- front of house
-    const deskC = w(DESK.x + DESK.w / 2, DESK.y)
-    desk(b, deskC.x, 0.46, lenX(DESK.w) - 0.2)
-    this.deskBox.set(new Vector3(deskC.x - lenX(DESK.w) / 2, 0, 0), new Vector3(deskC.x + lenX(DESK.w) / 2, 1.5, 1.0))
+    // ---- front of house: the reception out from the wall (the computer faces the staff gap behind it)
+    const deskC = w(DESK.x + DESK.w / 2, DESK.y + DESK.h / 2)
+    const deskW = lenX(DESK.w) - 0.1, deskD = Math.min(0.85, lenZ(DESK.h) - 0.1)
+    desk(b, deskC.x, deskC.z, deskW, deskD)
+    this.deskBox.set(new Vector3(deskC.x - deskW / 2 - 0.1, 0, deskC.z - deskD / 2 - 0.1), new Vector3(deskC.x + deskW / 2 + 0.1, 1.5, deskC.z + deskD / 2 + 0.1))
+    this.deskTop = { x: deskC.x, z: deskC.z }
     const plaque = plaqueTexture(state.ext?.salonName ?? 'Glow Salon')
-    const ph = 0.2, pw = Math.min(lenX(DESK.w) - 0.6, ph * plaque.aspect)
+    const pw = Math.min(deskW - 0.8, 0.2 * plaque.aspect)
     const pm = new Mesh(new PlaneGeometry(pw, pw / plaque.aspect), new MeshBasicMaterial({ map: plaque.tex, transparent: true, toneMapped: false }))
-    pm.position.set(deskC.x - 0.1, 0.62, 0.46 + 0.39 + 0.03)
+    pm.position.set(deskC.x - 0.35, 0.8, deskC.z + deskD / 2 + 0.012)
     b.extra.add(pm)
-    const sofaC = w(SOFA.x + SOFA.w / 2, SOFA.y)
-    this.sofaSeats = sofa(b, sofaC.x, 0.55, lenX(SOFA.w) - 0.1, SOFA_SEATS.map(s => w(s.x, s.y).x))
-    floorLamp(b, w(646, 0).x + 0.25, 0.5)
-    this.lampGlow(b, w(646, 0).x + 0.25, 1.5, 0.5, 0.7)
+    // The waiting lounge: a teal cloud sofa in an arc on a round rug, plants at its ends.
+    const sofaZ = 0.62
+    this.sofaSeats = lounge(b, sofaZ, SOFA_SEATS.map(s => w(s.x, s.y).x))
+    const lc = w(SOFA.x + SOFA.w / 2, 0)
+    floorDecal(b, rugTexture('round', '#bfeee4', '#7fd4c2', '#ffffff'), lc.x, sofaZ + 0.55, lenX(SOFA.w) + 0.4, 1.9, 0.004)
+    teaCart(b, w(352, 0).x, 0.42, 0)
+    floorLamp(b, w(646, 0).x, 0.42, 0xfff0e6)
+    this.lampGlow(b, w(646, 0).x, 1.5, 0.42, 0.7)
     welcomeSign(b, w(118, 704).x + 0.3, w(118, 704).z + 0.2, 1.1)
-    sideTable(b, w(352, 0).x - 0.05, 0.62)
-    teaCart(b, w(54, 334).x + 0.35, w(54, 334).z, Math.PI / 2)
     floorLamp(b, w(652, 792).x, RD - 0.45, 0xfbe0e8)
     this.lampGlow(b, w(652, 792).x, 1.5, RD - 0.45, 0.6)
     sideTable(b, w(1228, 770).x - 0.2, RD - 0.55)
+    // Topiaries along the walls and by the partitions.
+    for (const [px, py] of [[660, 196], [720, 196], [1250, 690], [1250, 250], [44, 214], [980, 196]] as const) { const a = w(px, py); topiary(b, a.x, Math.max(0.32, a.z)) }
     // The base rug under the middle of the salon, and a runner by the front.
     const baseRug = w(560, 430)
-    floorDecal(b, rugTexture('round', '#f9dbe4', '#f2b7c9', '#ffffff'), baseRug.x, baseRug.z, 3.6, 2.5, 0.004)
+    floorDecal(b, rugTexture('round', '#fbe3ea', '#f5b3c6', '#ffffff'), baseRug.x, baseRug.z, 3.4, 2.3, 0.004)
     const runner = w(440, 700)
-    floorDecal(b, rugTexture('runner', '#e8f4ee', '#a9e3cf', '#f7c6d4'), runner.x, runner.z, 3.4, 1.1, 0.005)
+    floorDecal(b, rugTexture('runner', '#fff3e6', '#ffc94d', '#f7a9bd'), runner.x, runner.z, 3.4, 1.1, 0.005)
     // ---- stations and the empty slots
     const usedSlots = new Set(state.stations.map(s => s.slot))
     const unplaced = this.demo ? undefined : state.stations.find(s => s.slot < 0)
@@ -327,26 +343,28 @@ export class FloorView3D {
     if (owned.has('rug')) { const a = w(420, 560); floorDecal(b, rugTexture('cloud', '#fdf6fb', '#f3c9da', '#f7b7cc'), a.x, a.z, 2.6, 1.9, 0.006) }
     if (owned.has('plant')) { const a = w(1215, 0); bigPlant(b, RW / 2 - 0.45, 0.45, 0xf7d9e2, 1.1); void a }
     if (owned.has('candles')) {
-      const a = w(290, 0)
+      const a = { x: this.deskTop.x + 0.75, z: this.deskTop.z + 0.12 }
       for (const [dx, h] of [[0, 0.16], [0.08, 0.11], [-0.07, 0.09]] as const) {
-        b.kit.add(G.cyl(0.03, 0.03, h, 10), 0xfff4e6, 'satin', tf(a.x + dx, 1.055 + h / 2, 0.55))
-        b.kit.add(G.sphere(0.014, 6), 0xffc27a, 'glow', tf(a.x + dx, 1.07 + h, 0.55, 0, 0, 0, 0.8, 1.4, 0.8))
+        b.kit.add(G.cyl(0.03, 0.03, h, 10), 0xfff4e6, 'satin', tf(a.x + dx, 1.055 + h / 2, a.z))
+        b.kit.add(G.sphere(0.014, 6), 0xffc27a, 'glow', tf(a.x + dx, 1.07 + h, a.z, 0, 0, 0, 0.8, 1.4, 0.8))
       }
-      this.lampGlow(b, a.x, 1.25, 0.55, 0.25)
+      this.lampGlow(b, a.x, 1.25, a.z, 0.25)
     }
     if (owned.has('art')) wallPic(cachedPiece('art', paintWallArt), 960, 66, 1.3)
     if (owned.has('lights')) {
-      // Fairy lights swag along the top of the back wall.
+      // Fairy lights swag along the top of the back wall; each bulb's halo twinkles on its own.
+      const halo: number[] = [], tw: number[] = []
       for (let i = 0; i <= 40; i++) {
         const x = -RW / 2 + 0.3 + (i / 40) * (RW - 0.6)
         const sag = 0.18 * Math.sin(((i % 8) / 8) * Math.PI)
         b.kit.add(G.sphere(0.028, 6), i % 3 ? 0xffd9a0 : 0xffc0d0, 'glow', tf(x, 2.55 - sag, 0.05))
+        halo.push(x, 2.55 - sag, 0.07)
+        tw.push(Math.random() * 10)
       }
-      const s = this.glowSprite(0xffc27a, 0.16)
-      s.scale.set(RW, 0.5, 1)
-      s.position.set(0, 2.5, 0.08)
-      b.extra.add(s)
-      this.glows.push({ s, base: 0.16, ph: 0 })
+      const hg = new BufferGeometry()
+      hg.setAttribute('position', new Float32BufferAttribute(halo, 3))
+      this.twinkle = new Points(hg, new PointsMaterial({ map: glowTex(), size: 0.22, transparent: true, depthWrite: false, blending: AdditiveBlending, color: 0xffc27a, opacity: 0.5, toneMapped: false }))
+      b.extra.add(this.twinkle)
     }
     if (owned.has('neon')) {
       const a = w(505, 0)
@@ -381,7 +399,7 @@ export class FloorView3D {
         for (const wz of [330, 700]) decorItem(b, 'curtains', pal, RW / 2 - 0.02, 2.72, w(0, wz).z, -Math.PI / 2)
       } else if (item.place === 'wall') decorItem(b, item.kind, pal, a.x, wallHeight(d.y), 0.0)
       else if (item.place === 'ceiling') decorItem(b, item.kind, pal, a.x, 2.3, 1.2)
-      else if (item.place === 'table') decorItem(b, item.kind, pal, d.slot === 0 ? w(DESK.x + 40, 0).x : w(352, 0).x - 0.05, d.slot === 0 ? 1.055 : 0.575, d.slot === 0 ? 0.5 : 0.62)
+      else if (item.place === 'table') decorItem(b, item.kind, pal, d.slot === 0 ? this.deskTop.x - 0.55 : w(352, 0).x, d.slot === 0 ? 1.055 : 0.76, d.slot === 0 ? this.deskTop.z : 0.42)
       else if (item.place === 'rug') floorDecal(b, rugTexture(item.kind === 'sand' ? 'plain' : 'round', css(pal[0]), css(pal[1]), css(pal[2])), a.x, a.z, item.size === 2 ? 3.2 : 2.4, item.size === 2 ? 2.2 : 1.6, 0.007)
       else {
         const front = a.z > RD / 2
@@ -786,7 +804,7 @@ export class FloorView3D {
       p.opacity = v.alpha
       p.update(dt)
       p.headTop(v.head)
-      if (v.alpha > 0.5 && !seat) blob(x, z, 0.62)
+      if (v.alpha > 0.5) blob(x, z, seat ? 0.9 : 0.7)
       // Sparkles while being treated.
       if (c.state === 'treating' && Math.random() < dt * 3) this.burst(_v.set(v.head.x + (Math.random() - 0.5) * 0.4, v.head.y - 0.2, v.head.z), 'sparkle', 1)
     }
@@ -870,12 +888,14 @@ export class FloorView3D {
       const x = work ? wp.x + (work.x - wp.x) * v.workK : wp.x, z = work ? wp.z + (work.z - wp.z) * v.workK : wp.z
       if (sv) v.yaw = FloorView3D.turn(v.yaw, work ? work.yaw : Math.atan2(sv.nodes.seat.x - x, sv.nodes.seat.z - z), dt, 8)
       else if (mine && moving) v.yaw = FloorView3D.turn(v.yaw, this.meYaw, dt, 12)
+      // At the computer: face its screen.
+      else if (mine && Math.hypot(v.x - COMPUTER_SPOT.x, v.y - COMPUTER_SPOT.y) < 30) v.yaw = FloorView3D.turn(v.yaw, 0, dt, 8)
       else if (moving && speed > 20) v.yaw = FloorView3D.turn(v.yaw, yawFor(dxs, dys), dt)
       person.root.position.set(x, 0, z)
       person.root.rotation.y = v.yaw
       person.update(dt)
       person.headTop(v.head)
-      blob(x, z, 0.62)
+      blob(x, z, 0.7)
     }
   }
 
@@ -930,7 +950,7 @@ export class FloorView3D {
       v.person.root.rotation.y = v.yaw
       v.person.update(dt)
       v.person.headTop(v.head)
-      blob(x, z, 0.62)
+      blob(x, z, 0.7)
       v.tea.visible = onBreak
       v.tool.root.visible = working
       if (working && st && sv) {
@@ -1037,7 +1057,7 @@ export class FloorView3D {
     this.promptBg.circle(-w / 2 + 20, 0, 13).fill({ color: 0xe98aa8 })
     this.promptKey.position.set(-w / 2 + 20, 0)
     this.promptText.position.set(-w / 2 + 40, 0)
-    const anchor = best.kind === 'station' ? _v.copy(this.stations.get(best.id)?.center ?? _v2.set(0, 0, 0)).setY(2.55) : best.kind === 'computer' ? _v.set(toWorld(DESK.x + DESK.w / 2, 0).x, 2.25, 0.5) : (() => { const p = this.catWorld(); return _v.set(p.x, p.y + 0.85, p.z) })()
+    const anchor = best.kind === 'station' ? _v.copy(this.stations.get(best.id)?.center ?? _v2.set(0, 0, 0)).setY(2.55) : best.kind === 'computer' ? _v.set(this.deskTop.x, 2.25, this.deskTop.z) : (() => { const p = this.catWorld(); return _v.set(p.x, p.y + 0.85, p.z) })()
     this.pin(this.prompt, anchor, 0, Math.sin(this.t * 3) * 2)
     this.prompt.scale.set(easeOutBack(this.promptPop) * Math.max(0.85, this.ui))
     this.prompt.visible = true
@@ -1049,7 +1069,7 @@ export class FloorView3D {
     const m = h.material as MeshBasicMaterial
     if (!t) { m.opacity = Math.max(0, m.opacity - 0.08); h.visible = m.opacity > 0.01; return }
     if (t.kind === 'station') { const c = this.stations.get(t.id)?.center; if (!c) return; h.position.set(c.x, 0.016, c.z); h.scale.set(2.7, 1, 1.9) }
-    else if (t.kind === 'computer') { h.position.set(toWorld(DESK.x + DESK.w / 2, 0).x, 0.016, 0.5); h.scale.set(3.3, 1, 1.5) }
+    else if (t.kind === 'computer') { h.position.set(this.deskTop.x, 0.016, this.deskTop.z - 0.2); h.scale.set(3.1, 1, 1.9) }
     else { const p = this.catWorld(); h.position.set(p.x, p.y + 0.016, p.z); h.scale.set(0.8, 1, 0.8) }
     m.color.setHex(PLAYER_COLORS[Math.max(0, this.playerId) % 4])
     const want = strong ? 0.55 + Math.sin(this.t * 4) * 0.12 : 0.35
@@ -1079,6 +1099,7 @@ export class FloorView3D {
     pos.needsUpdate = true
     ;(this.motes.material as PointsMaterial).opacity = 0.35 + 0.15 * Math.sin(this.t * 0.9)
     for (const g of this.glows) (g.s.material as SpriteMaterial).opacity = g.base * (0.8 + 0.2 * Math.sin(this.t * 2.1 + g.ph))
+    if (this.twinkle) (this.twinkle.material as PointsMaterial).opacity = 0.42 + 0.18 * Math.sin(this.t * 2.1)
     if (this.neon) (this.neon.material as MeshBasicMaterial).opacity = 0.88 + Math.sin(this.t * 1.7) * 0.08 + (Math.random() < 0.01 ? -0.35 : 0)
     if (this.fish) {
       const m = new Matrix4()

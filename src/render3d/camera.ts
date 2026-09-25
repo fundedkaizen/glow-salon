@@ -1,26 +1,30 @@
-import { PerspectiveCamera, Vector3 } from 'three'
+import { OrthographicCamera, Vector3 } from 'three'
 import { ROOM3 } from './mapping.ts'
 
 /**
- * The salon camera: tilted down at the room from the front left, the way Serenity's Spa looks at its salon, with
- * a long lens so furniture keeps its shape across the room. `frame()` fits the room to the screen (under the
- * HUD) in landscape and on a portrait phone; when the fit would make people too small to read, it moves in and
- * follows the local player, never showing past the room. `focus()` glides in on something new for a moment.
+ * The salon camera, as in Serenity's Spa: an isometric diagonal view. The room is turned 45 degrees so the two
+ * tall walls meet in a V near the top of the screen, looked down on at about 35 degrees, through an orthographic
+ * lens so the lines stay parallel. It never turns. `frame()` fits the room under the HUD; on a portrait phone it
+ * shows most of the salon and pans with the local player, never past the room. `focus()` glides in on something
+ * new for a moment.
  */
 export type Frame = { w: number; h: number; top: number; bottom: number; side: number }
 
 const _v = new Vector3()
+/** Orthographic size per unit of "distance", so the fitting maths reads like a camera stepping back. */
+const SPAN = Math.tan((24 * Math.PI) / 360)
 
 export class CameraRig {
-  readonly camera = new PerspectiveCamera(28, 1, 0.5, 200)
-  /** The camera's bearing around the room: negative puts it at the front left. */
-  yaw = -0.3
+  readonly camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 400)
+  /** The camera's bearing: -45 degrees puts it at the front left, looking into the back right corner. */
+  readonly yaw = -Math.PI / 4
   /** How steeply it looks down (radians above the horizon). */
-  pitch = 0.9
+  readonly pitch = (35 * Math.PI) / 180
   private target = new Vector3()
   private dist = 30
   private view: Frame = { w: 1280, h: 800, top: 70, bottom: 12, side: 12 }
-  // Fitted framing for the current screen: the room's centre, the fit distance, and how far it may pan.
+  private aspect = 1.6
+  // Fitted framing for the current screen: the room's centre, the fit size, and how far it may pan.
   private fitT = new Vector3()
   private fitD = 30
   private useD = 30
@@ -28,30 +32,39 @@ export class CameraRig {
   private panF: [number, number] = [0, 0]
   private pan = { r: 0, f: 0 }
   private focusAt: { p: Vector3; t: number; dur: number } | null = null
-  /** The points that must show: the floor's corners, the tall walls' tops, the door path outside. */
+  /** The points that must show: the floor's corners and the tall walls' tops. */
   private points: Vector3[]
+  private right = new Vector3()
+  /** Towards the back corner on the ground (panning this way moves the room down the screen). */
+  private back = new Vector3()
 
   constructor() {
     const { w: W, d: D, wallH: H } = ROOM3
     this.points = [
-      new Vector3(-W / 2 - 0.3, 0, 0), new Vector3(W / 2, 0, 0), new Vector3(-W / 2 - 0.3, 0, D + 0.3), new Vector3(W / 2, 0, D + 0.3),
-      new Vector3(-W / 2, H * 0.72, 0), new Vector3(W / 2, H * 0.72, 0), new Vector3(W / 2, H * 0.72, D * 0.5),
+      new Vector3(-W / 2 - 0.4, 0, 0), new Vector3(W / 2 + 0.3, 0, 0), new Vector3(-W / 2 - 0.4, 0, D + 0.4), new Vector3(W / 2 + 0.3, 0, D + 0.4),
+      new Vector3(-W / 2, H + 0.1, 0), new Vector3(W / 2 + 0.3, H + 0.1, -0.3), new Vector3(W / 2, H + 0.1, D),
     ]
+    this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
+    this.back.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
   }
-
-  private right = new Vector3()
-  private fwd = new Vector3()
-  /** Towards the back wall on the ground (panning this way moves the room down the screen). */
-  private back = new Vector3()
 
   private place(target: Vector3, d: number) {
     const cp = Math.cos(this.pitch)
-    this.camera.position.set(target.x + Math.sin(this.yaw) * cp * d, target.y + Math.sin(this.pitch) * d, target.z + Math.cos(this.yaw) * cp * d)
+    const far = 60
+    this.camera.position.set(target.x + Math.sin(this.yaw) * cp * far, target.y + Math.sin(this.pitch) * far, target.z + Math.cos(this.yaw) * cp * far)
     this.camera.lookAt(target)
+    const halfH = SPAN * d
+    this.camera.top = halfH
+    this.camera.bottom = -halfH
+    this.camera.left = -halfH * this.aspect
+    this.camera.right = halfH * this.aspect
+    this.camera.near = 1
+    this.camera.far = far * 2 + 40
+    this.camera.updateProjectionMatrix()
     this.camera.updateMatrixWorld(true)
   }
 
-  /** The room's bounds on screen (NDC) from a target and distance. */
+  /** The room's bounds on screen (NDC) from a target and size. */
   private bounds(target: Vector3, d: number) {
     this.place(target, d)
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
@@ -68,25 +81,20 @@ export class CameraRig {
     return { x0: -1 + (2 * side) / w, x1: 1 - (2 * side) / w, y0: -1 + (2 * bottom) / h, y1: 1 - (2 * top) / h }
   }
 
-  /** New screen size: fit the room again. `demo`: the title backdrop (cover the screen, no player to follow). */
+  /** New screen size: fit the room again. `demo`: the title backdrop (fill the screen, no player to follow). */
   frame(view: Frame, demo: boolean) {
     this.view = view
-    this.camera.aspect = view.w / Math.max(1, view.h)
-    this.camera.updateProjectionMatrix()
-    this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
-    this.fwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw))
-    this.back.copy(this.fwd).negate()
+    this.aspect = view.w / Math.max(1, view.h)
     const a = this.area()
-    // Fit: centre the room's bounds in the usable area, and find the distance at which they just fit.
     const t = new Vector3(0, 0.4, ROOM3.d / 2)
-    const fitAt = (mode: 'all' | 'cover' | 'depth') => {
-      let lo = 4, hi = 120
+    const fitAt = (mode: 'all' | 'cover') => {
+      let lo = 2, hi = 120
       for (let i = 0; i < 26; i++) {
         const d = (lo + hi) / 2
         this.centre(t, d, a)
         const b = this.bounds(t, d)
         const kx = (b.x1 - b.x0) / (a.x1 - a.x0), ky = (b.y1 - b.y0) / (a.y1 - a.y0)
-        const k = mode === 'cover' ? Math.min(kx, ky) : mode === 'depth' ? ky : Math.max(kx, ky)
+        const k = mode === 'cover' ? Math.min(kx, ky) : Math.max(kx, ky)
         if (k > 1) lo = d; else hi = d
       }
       return hi
@@ -94,12 +102,10 @@ export class CameraRig {
     this.fitD = fitAt('all')
     this.centre(t, this.fitD, a)
     this.fitT.copy(t)
-    // A phone (portrait, or a short landscape screen) frames the room front to back and pans sideways with the
-    // player, as the 2D floor does; a desktop sees the whole room. The angle never changes.
-    const small = view.h > view.w * 1.2 || view.h < 560
-    this.useD = demo ? Math.min(this.fitD, fitAt('cover')) : small ? Math.min(this.fitD, fitAt('depth')) : this.fitD
-    this.useD = Math.max(this.useD, 9)
-    // How far the camera may pan (sideways and in depth) at that distance without showing past the room.
+    // A portrait phone shows most of the salon (the whole diamond would make people too small to read) and pans
+    // with the player; a landscape screen sees the whole room, like Serenity's.
+    const portrait = view.h > view.w * 1.2
+    this.useD = demo ? Math.min(this.fitD, fitAt('cover')) : portrait ? this.fitD * 0.6 : this.fitD
     this.panR = this.panRange(this.right, a, 'x')
     this.panF = this.panRange(this.back, a, 'y')
   }
@@ -109,11 +115,10 @@ export class CameraRig {
     for (let i = 0; i < 4; i++) {
       const b = this.bounds(t, d)
       const ox = (b.x0 + b.x1) / 2 - (a.x0 + a.x1) / 2, oy = (b.y0 + b.y1) / 2 - (a.y0 + a.y1) / 2
-      const halfW = Math.tan((this.camera.fov * Math.PI) / 360) * d * this.camera.aspect
-      const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * d
+      const halfH = SPAN * d, halfW = halfH * this.aspect
       t.addScaledVector(this.right, ox * halfW)
-      // Moving the target along the ground's forward axis moves it on screen by about sin(pitch).
-      t.addScaledVector(this.fwd, (-oy * halfH) / Math.sin(this.pitch))
+      // Moving the target along the ground moves it on screen by sin(pitch).
+      t.addScaledVector(this.back, (oy * halfH) / Math.sin(this.pitch))
     }
   }
 
@@ -159,19 +164,15 @@ export class CameraRig {
       f.t += dt
       const e = f.t < 0.6 ? ease(f.t / 0.6) : f.t > f.dur - 0.7 ? ease(Math.max(0, (f.dur - f.t) / 0.7)) : 1
       this.target.lerp(f.p, e)
-      d = d * (1 - 0.38 * e)
+      d = d * (1 - 0.3 * e)
       if (f.t >= f.dur) this.focusAt = null
     }
     this.dist = d
     this.place(this.target, this.dist)
   }
 
-  /** Metres per CSS pixel at a point (for sizing what floats over the scene). */
-  pixelScale(p: Vector3) {
-    const d = this.camera.position.distanceTo(p)
-    const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * d
-    return (2 * halfH) / this.view.h
-  }
+  /** Metres per CSS pixel on screen (for sizing what floats over the scene). */
+  pixelScale() { return (2 * SPAN * this.dist) / this.view.h }
 }
 
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)

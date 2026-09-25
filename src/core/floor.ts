@@ -14,10 +14,25 @@ export type Pt = { x: number; y: number }
 export const DOOR: Pt = { x: -30, y: 610 }
 export const DOOR_INSIDE: Pt = { x: 70, y: 610 }
 
-export const DESK = { x: 110, y: 196, w: 210, h: 92 }
+/**
+ * The reception desk stands out from the back wall, with a staff gap behind it: the computer's screen faces the
+ * gap, the player uses it standing behind the desk, and customers come to the front.
+ */
+export const DESK = { x: 100, y: 256, w: 206, h: 80 }
 const DESK_BOTTOM = DESK.y + DESK.h
-/** Where a player stands to use the salon computer. */
-export const COMPUTER_SPOT: Pt = { x: 215, y: 326 }
+/** Where a player stands to use the salon computer: behind the desk, facing the screen. */
+export const COMPUTER_SPOT: Pt = { x: 200, y: 208 }
+
+/**
+ * Low partition walls with rounded ends that split the salon into zones. They block walking. The first closes
+ * the staff gap behind the desk on the lounge side, so the gap is a nook entered from the door side only and
+ * nobody cuts through behind the desk; the others divide the lounge from the stations, and the two station rows.
+ */
+export const PARTITIONS: Rect[] = [
+  { x: 306, y: 176, w: 20, h: 130 },
+  { x: 680, y: 176, w: 20, h: 96 },
+  { x: 1112, y: 500, w: 168, h: 20 },
+]
 
 export const SOFA = { x: 380, y: 196, w: 250, h: 92 }
 export const SOFA_SEATS: Pt[] = [{ x: 420, y: 262 }, { x: 480, y: 262 }, { x: 540, y: 262 }, { x: 600, y: 262 }]
@@ -85,6 +100,7 @@ export function blockedGrid(slots: number[], props: string[]): Uint8Array {
   block({ x: FLOOR_W - 16, y: 0, w: 16, h: FLOOR_H }, 0)
   block(DESK)
   block(SOFA)
+  for (const p of PARTITIONS) block(p, 4)
   for (const slot of slots) if (slot >= 0 && slot < SLOTS.length) block(stationRect(slot), 4)
   for (const prop of props) if (PROP_BLOCK[prop]) block(PROP_BLOCK[prop])
   return grid

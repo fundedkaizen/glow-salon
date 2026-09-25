@@ -14,12 +14,15 @@ function canvas(w: number, h: number): [HTMLCanvasElement, Ctx] {
   return [c, c.getContext('2d')!]
 }
 
+/** The GPU's best anisotropic filtering, set by the stage once the renderer exists (sharp floors at a slant). */
+export const TEX = { maxAniso: 8 }
+
 export function tex(c: HTMLCanvasElement, opts: { repeat?: boolean; color?: boolean; aniso?: number } = {}): CanvasTexture {
   const t = new CanvasTexture(c)
   if (opts.color !== false) t.colorSpace = SRGBColorSpace
   t.wrapS = t.wrapT = opts.repeat ? RepeatWrapping : ClampToEdgeWrapping
   t.minFilter = LinearMipmapLinearFilter
-  t.anisotropy = opts.aniso ?? 8
+  t.anisotropy = Math.min(TEX.maxAniso, opts.aniso ?? 8)
   t.generateMipmaps = true
   return t
 }
@@ -39,7 +42,7 @@ export function woodTexture(): CanvasTexture {
   const r = rng(7)
   const rows = 9
   const ph = S / rows
-  const base = [228, 168, 126]
+  const base = [240, 194, 160]
   for (let row = 0; row < rows; row++) {
     let x = -r() * 400
     while (x < S) {
@@ -115,61 +118,57 @@ export function lawnTexture(): CanvasTexture {
 }
 
 /**
- * A wall's inner face: blush plaster above a cream panelled wainscot with a chair rail, and soft occlusion
- * where it meets the floor and the other wall. `w` and `h` in metres; `cornerAt` darkens the end at that side.
+ * A tall wall's inner face, as Serenity's Spa paints its salons: warm coral plaster with arched niches (centred at
+ * `arches`, metres from the wall's left end), a white skirting board, and soft occlusion where the wall meets the
+ * floor and the other wall. `w` and `h` in metres; `cornerAt` darkens the end at that side.
  */
-export function wallTexture(w: number, h: number, cornerAt: 'left' | 'right' | null, doors: { x0: number; x1: number; top: number }[] = []): CanvasTexture {
+export function wallTexture(w: number, h: number, cornerAt: 'left' | 'right' | null, arches: number[] = []): CanvasTexture {
   const PX = 96
   const [c, ctx] = canvas(Math.round(w * PX), Math.round(h * PX))
   const W = c.width, H = c.height
   const y = (m: number) => H - m * PX
-  // Plaster, a little lighter towards the top.
   const g = ctx.createLinearGradient(0, 0, 0, H)
-  g.addColorStop(0, rgb(252, 226, 232))
-  g.addColorStop(1, rgb(246, 206, 218))
+  g.addColorStop(0, rgb(255, 196, 184))
+  g.addColorStop(1, rgb(250, 176, 164))
   ctx.fillStyle = g
   ctx.fillRect(0, 0, W, H)
-  // A faint damask dot pattern.
-  ctx.fillStyle = rgb(255, 255, 255, 0.28)
-  for (let yy = 18; yy < y(1.05); yy += 36) for (let xx = (yy / 36) % 2 ? 18 : 0; xx < W; xx += 36) { ctx.beginPath(); ctx.arc(xx, yy, 2.2, 0, Math.PI * 2); ctx.fill() }
-  // Wainscot: cream panels with a raised moulding.
-  const top = y(1.0)
-  ctx.fillStyle = rgb(255, 248, 242)
-  ctx.fillRect(0, top, W, H - top)
-  const pw = 0.9 * PX
-  for (let x = 12; x + pw - 24 < W; x += pw) {
-    ctx.strokeStyle = rgb(232, 206, 206, 0.9)
-    ctx.lineWidth = 3
-    ctx.strokeRect(x + 10, top + 16, pw - 24, H - top - 16 - 0.2 * PX)
-    ctx.strokeStyle = rgb(255, 255, 255, 0.9)
-    ctx.lineWidth = 1.5
-    ctx.strokeRect(x + 12, top + 18, pw - 24, H - top - 16 - 0.2 * PX)
+  // A faint plaster mottle.
+  const r = rng(21)
+  for (let i = 0; i < 900; i++) { ctx.fillStyle = rgb(255, 230, 222, 0.05 + r() * 0.05); ctx.beginPath(); ctx.arc(r() * W, r() * H, 6 + r() * 16, 0, Math.PI * 2); ctx.fill() }
+  // Arched niches.
+  for (const ax of arches) {
+    const cx = ax * PX, aw = 0.92 * PX, bottom = y(0.2), top = y(2.28)
+    const path = () => { ctx.beginPath(); ctx.moveTo(cx - aw / 2, bottom); ctx.lineTo(cx - aw / 2, top + aw / 2); ctx.arc(cx, top + aw / 2, aw / 2, Math.PI, 0); ctx.lineTo(cx + aw / 2, bottom); ctx.closePath() }
+    path()
+    const ng = ctx.createLinearGradient(0, top, 0, bottom)
+    ng.addColorStop(0, rgb(238, 146, 140))
+    ng.addColorStop(0.35, rgb(246, 160, 150))
+    ng.addColorStop(1, rgb(250, 170, 158))
+    ctx.fillStyle = ng
+    ctx.fill()
+    // The niche's depth: shade inside the top and the left edge, a lit rim on the right.
+    ctx.save(); path(); ctx.clip()
+    ctx.strokeStyle = rgb(170, 80, 86, 0.28); ctx.lineWidth = 16; path(); ctx.stroke()
+    ctx.restore()
+    ctx.strokeStyle = rgb(255, 214, 204, 0.9); ctx.lineWidth = 4; path(); ctx.stroke()
   }
-  // The chair rail's shadow on the plaster.
-  const sg = ctx.createLinearGradient(0, top - 18, 0, top)
-  sg.addColorStop(0, rgb(180, 110, 130, 0))
-  sg.addColorStop(1, rgb(180, 110, 130, 0.22))
-  ctx.fillStyle = sg
-  ctx.fillRect(0, top - 18, W, 18)
+  // White skirting.
+  ctx.fillStyle = rgb(255, 250, 246)
+  ctx.fillRect(0, y(0.16), W, 0.16 * PX)
+  ctx.fillStyle = rgb(210, 150, 150, 0.4)
+  ctx.fillRect(0, y(0.16), W, 3)
   // Soft occlusion along the floor.
-  const fg = ctx.createLinearGradient(0, H - 0.5 * PX, 0, H)
-  fg.addColorStop(0, rgb(120, 60, 84, 0))
-  fg.addColorStop(1, rgb(120, 60, 84, 0.3))
+  const fg = ctx.createLinearGradient(0, H - 0.45 * PX, 0, H)
+  fg.addColorStop(0, rgb(120, 60, 70, 0))
+  fg.addColorStop(1, rgb(120, 60, 70, 0.22))
   ctx.fillStyle = fg
-  ctx.fillRect(0, H - 0.5 * PX, W, 0.5 * PX)
-  // And in the corner.
+  ctx.fillRect(0, H - 0.45 * PX, W, 0.45 * PX)
   if (cornerAt) {
-    const x0 = cornerAt === 'left' ? 0 : W
-    const cg = ctx.createLinearGradient(x0, 0, cornerAt === 'left' ? 0.7 * PX : W - 0.7 * PX, 0)
-    cg.addColorStop(0, rgb(120, 60, 84, 0.28))
-    cg.addColorStop(1, rgb(120, 60, 84, 0))
+    const cg = ctx.createLinearGradient(cornerAt === 'left' ? 0 : W, 0, cornerAt === 'left' ? 0.7 * PX : W - 0.7 * PX, 0)
+    cg.addColorStop(0, rgb(130, 60, 70, 0.26))
+    cg.addColorStop(1, rgb(130, 60, 70, 0))
     ctx.fillStyle = cg
     ctx.fillRect(cornerAt === 'left' ? 0 : W - 0.7 * PX, 0, 0.7 * PX, H)
-  }
-  // Occlusion around door openings.
-  for (const d of doors) {
-    ctx.fillStyle = rgb(120, 60, 84, 0.12)
-    ctx.fillRect(d.x0 * PX - 10, y(d.top) - 10, (d.x1 - d.x0) * PX + 20, d.top * PX + 10)
   }
   return tex(c)
 }
@@ -272,8 +271,8 @@ export function glowTexture(): Texture {
 export function blobTexture(): Texture {
   const [c, ctx] = canvas(64, 64)
   const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32)
-  g.addColorStop(0, 'rgba(80,40,56,0.55)')
-  g.addColorStop(0.5, 'rgba(80,40,56,0.3)')
+  g.addColorStop(0, 'rgba(80,40,56,0.62)')
+  g.addColorStop(0.45, 'rgba(80,40,56,0.38)')
   g.addColorStop(1, 'rgba(80,40,56,0)')
   ctx.fillStyle = g
   ctx.fillRect(0, 0, 64, 64)

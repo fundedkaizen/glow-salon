@@ -18,7 +18,7 @@ const SPOTS: Spot[] = [
   { x: 1100, y: 470 },
   { x: 250, y: 470 },
   { x: 402, y: 244, up: 0.64 },
-  { x: 128, y: 214, up: 1.06, sleep: true },
+  { x: 128, y: 296, up: 1.06, sleep: true },
 ]
 
 const FUR = 0xf3b270, CREAM = 0xfff0de, STRIPE = 0xd6844a, PINK = 0xf7b7c4

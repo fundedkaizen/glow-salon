@@ -1,6 +1,7 @@
 import type { Application, WebGLRenderer as PixiGL } from 'pixi.js'
 import { ACESFilmicToneMapping, AgXToneMapping, EquirectangularReflectionMapping, NeutralToneMapping, PCFShadowMap, PMREMGenerator, SRGBColorSpace, WebGLRenderer, type Camera, type Scene, type Texture } from 'three'
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'
+import { TEX } from './textures.ts'
 
 /**
  * The one three.js renderer, drawing into Pixi's own canvas and WebGL2 context (the pattern Pixi documents for
@@ -34,6 +35,7 @@ export class Stage {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = PCFShadowMap
     this.renderer.info.autoReset = true
+    TEX.maxAniso = this.renderer.capabilities.getMaxAnisotropy()
     // Small screens and weak GPUs: smaller shadow maps and fewer lights.
     const small = Math.min(window.innerWidth, window.innerHeight) < 600
     const cores = navigator.hardwareConcurrency ?? 8
