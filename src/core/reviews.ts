@@ -22,10 +22,12 @@ export function average(rating: Rating) { return rating.count ? Math.round((rati
 export function addReview(rating: Rating, stars: number): Rating { return { sum: rating.sum + stars, count: rating.count + 1 } }
 
 /**
- * Stars from how the visit went: thoroughness counts most, then speed against par, then the wait (mood),
- * then the salon itself. 1 to 5, whole stars.
+ * Stars from how the visit went. Every step done (nothing skipped) is always 5 stars: a cozy game never
+ * docks a star for taking your time or for the wait, which only lowers the tip. Otherwise thoroughness counts
+ * most, then speed against par, then the wait (mood), then the salon itself. 1 to 5, whole stars.
  */
-export function starsFor(result: Pick<TreatmentResult, 'thoroughness' | 'seconds' | 'par'>, mood: number, ambience: number) {
+export function starsFor(result: Pick<TreatmentResult, 'thoroughness' | 'seconds' | 'par'> & Partial<Pick<TreatmentResult, 'done' | 'required' | 'skipped'>>, mood: number, ambience: number) {
+  if (result.required && result.done !== undefined && result.done >= result.required && !result.skipped) return 5
   const speed = speedScore(result.seconds, result.par)
   const score = 0.55 * result.thoroughness + 0.2 * speed + 0.17 * clamp(mood) + 0.08 * clamp((ambience - 1) / 4)
   return clamp(Math.round(1 + score * 4.35), 1, 5)

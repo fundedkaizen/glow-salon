@@ -15,6 +15,7 @@ export const DOOR: Pt = { x: -30, y: 610 }
 export const DOOR_INSIDE: Pt = { x: 70, y: 610 }
 
 export const DESK = { x: 110, y: 196, w: 210, h: 92 }
+const DESK_BOTTOM = DESK.y + DESK.h
 /** Where a player stands to use the salon computer. */
 export const COMPUTER_SPOT: Pt = { x: 215, y: 326 }
 
@@ -23,11 +24,17 @@ export const SOFA_SEATS: Pt[] = [{ x: 420, y: 262 }, { x: 480, y: 262 }, { x: 54
 /** More customers than seats wait standing near the sofa. */
 export const STANDING: Pt[] = [{ x: 360, y: 350 }, { x: 430, y: 360 }, { x: 500, y: 355 }, { x: 570, y: 360 }, { x: 640, y: 350 }]
 
-/** Station slots: two rows of three. */
+/** Station slots: two rows of three on the right, then two more along the front of the salon. */
 export const SLOTS: Pt[] = [
   { x: 760, y: 360 }, { x: 960, y: 360 }, { x: 1160, y: 360 },
   { x: 760, y: 610 }, { x: 960, y: 610 }, { x: 1160, y: 610 },
+  { x: 330, y: 690 }, { x: 540, y: 690 },
 ]
+
+/** Where a player appears at the start of a day: in front of the reception desk, side by side. */
+export function spawnPoint(id: number): Pt {
+  return { x: 150 + (Math.max(0, id) % 4) * 56, y: DESK_BOTTOM + 60 }
+}
 export const STATION_W = 150
 export const STATION_H = 110
 
@@ -75,7 +82,7 @@ export function blockedGrid(slots: number[], props: string[]): Uint8Array {
   block({ x: FLOOR_W - 16, y: 0, w: 16, h: FLOOR_H }, 0)
   block(DESK)
   block(SOFA)
-  for (const slot of slots) block(stationRect(slot), 4)
+  for (const slot of slots) if (slot >= 0 && slot < SLOTS.length) block(stationRect(slot), 4)
   for (const prop of props) if (PROP_BLOCK[prop]) block(PROP_BLOCK[prop])
   return grid
 }

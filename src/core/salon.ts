@@ -1,8 +1,12 @@
-import { planDay, type CustomerPlan } from './customers.ts'
+import { firstNameOf, planDay, type CustomerPlan } from './customers.ts'
+import { regularChance, setPayMult, setStarBonus, setTipMult, vipBoost } from './decor.ts'
 import { ambienceStars, canBuy, customersPerDay, ITEM_BY_ID, needsConfirm, payFor, START_MONEY, tipFor, treatmentsUnlocked, type StationKind } from './economy.ts'
-import { blockedGrid, DOOR, DOOR_INSIDE, findPath, SLOTS, SOFA_SEATS, STANDING, stationSeat, walk, type Pt } from './floor.ts'
+import { blockedGrid, DOOR, DOOR_INSIDE, findPath, SLOTS, SOFA_SEATS, spawnPoint, STANDING, stationSeat, walk, type Pt } from './floor.ts'
+import { campaignBias } from './marketing.ts'
 import { addReview, average, starsFor, type Rating, type Review } from './reviews.ts'
-import { ext, extOnClose, extOnStartDay, extraCustomers, extReview, extTick, reduceExt, saveExt, type ExtAction, type SalonExt } from './salon-ext.ts'
+import { ext, extOnClose, extOnStartDay, extraCustomers, extReview, extTick, reduceExt, saveExt, staffAvailableAt, staffShare, type ExtAction, type SalonExt } from './salon-ext.ts'
+import { STAFF_ID_BASE } from './staff.ts'
+import { stepCount } from './treatments/plan.ts'
 import { TREATMENTS } from './treatments/registry.ts'
 import type { TreatmentResult } from './treatments/session.ts'
 import type { TreatmentId } from './treatments/types.ts'
@@ -17,6 +21,7 @@ export type Phase = 'prep' | 'open' | 'closing' | 'receipt'
 export type Station = {
   id: string
   kind: StationKind
+  /** Where it stands (an index into SLOTS), or -1 while a new station waits to be placed. */
   slot: number
   customer: number | null
   /** The player running the treatment, and any helpers (four hands). */
@@ -62,7 +67,7 @@ export type DayStats = {
 
 export type Pending = { id: number; item: string; by: number; yes: number[] }
 
-export type GameEvent = { seq: number; kind: 'arrive' | 'paid' | 'bought' | 'vote' | 'declined' | 'phase' | 'unlock'; text: string; x?: number; y?: number; amount?: number; player?: number }
+export type GameEvent = { seq: number; kind: 'arrive' | 'paid' | 'bought' | 'vote' | 'declined' | 'phase' | 'unlock' | 'placed' | 'goal' | 'gift'; text: string; x?: number; y?: number; amount?: number; player?: number; item?: string }
 
 /** What is saved, and what a save code carries. */
 export type SaveData = {
@@ -109,6 +114,8 @@ export type Action =
   | { a: 'buy'; item: string }
   | { a: 'vote'; id: number; yes: boolean }
   | { a: 'swap'; station: string; slot: number }
+  /** Put a new station in an empty slot (or move one that has nobody in it). */
+  | { a: 'place'; station: string; slot: number }
   | { a: 'next' }
   | ExtAction
 
@@ -128,13 +135,19 @@ export function stationKinds(owned: readonly string[]): StationKind[] {
   return kinds
 }
 
-function freeSlot(taken: number[]) { return SLOTS.findIndex((_, i) => !taken.includes(i)) }
+export function freeSlot(taken: number[]) { return SLOTS.findIndex((_, i) => !taken.includes(i)) }
 
 function buildStations(save: SaveData): Station[] {
   const kinds = stationKinds(save.owned)
   const slots = [...save.slots]
   while (slots.length < kinds.length) slots.push(freeSlot(slots))
   return kinds.map((kind, i) => ({ id: `s${i}`, kind, slot: slots[i], customer: null, lead: null, helpers: [], step: 0, steps: TREATMENTS[kind === 'facial' ? 'facial' : 'nails'].steps.length, progress: 0 }))
+}
+
+/** Names used in the week before `day`, so no new customer shares a first name with one from this week. */
+function namesThisWeek(e: SalonExt, day: number) {
+  e.names = (e.names ?? []).filter(n => n.d < day && n.d > day - 7)
+  return e.names.map(n => n.n)
 }
 
 function emptyStats(state: { rating: Rating }, players: Player[]): DayStats {
@@ -158,9 +171,15 @@ export function startDay(save: SaveData, players: Player[] = []): SalonState {
     stats: emptyStats(save, players), pending: null, nextId: 1, events: [], seq: 0,
   }
   state.slots = state.stations.map(s => s.slot)
-  state.schedule = planDay({ day: state.day, seed: state.seed, count: customersPerDay(state.owned) + extraCustomers(state), treatments: bookable(state), met: state.met })
+  const e = ext(state)
+  const count = customersPerDay(state.owned, state.day, state.stations.length) + extraCustomers(state)
+  state.schedule = planDay({
+    day: state.day, seed: state.seed, count, treatments: bookable(state), met: state.met, rating: average(state.rating), bias: campaignBias(e.campaigns),
+    avoidNames: namesThisWeek(e, state.day), regularChance: regularChance(state.owned, e.loyalty), vip: vipBoost(state.owned),
+  })
+  for (const p of state.schedule) if (!p.regular) e.names.push({ n: firstNameOf(p.name), d: state.day })
   extOnStartDay(state)
-  for (const p of players) { p.station = null }
+  players.forEach(p => { p.station = null; const at = spawnPoint(p.id); p.x = at.x; p.y = at.y })
   return state
 }
 
@@ -198,7 +217,8 @@ export function reduce(state: SalonState, by: number, action: Action): boolean {
       const name = cleanName(action.name) || `Player ${by + 1}`
       const existing = state.players.find(p => p.id === by)
       if (existing) { existing.name = name; return true }
-      state.players.push({ id: by, name, x: 240 + by * 50, y: 420, facing: 1, moving: false, station: null })
+      const at = spawnPoint(by)
+      state.players.push({ id: by, name, x: at.x, y: at.y, facing: 1, moving: false, station: null })
       state.stats.byPlayer[by] ??= blankStats(name)
       return true
     }
@@ -222,6 +242,9 @@ export function reduce(state: SalonState, by: number, action: Action): boolean {
     }
     case 'open': {
       if (state.phase !== 'prep') return false
+      // A station still waiting for a spot goes to the first free one, so customers can use it.
+      for (const s of state.stations) if (s.slot < 0) s.slot = freeSlot(state.stations.map(o => o.slot))
+      state.slots = state.stations.map(s => s.slot)
       state.phase = 'open'
       state.clock = 0
       event(state, { kind: 'phase', text: 'The salon is open!' })
@@ -280,6 +303,18 @@ export function reduce(state: SalonState, by: number, action: Action): boolean {
       state.slots = state.stations.map(st => st.slot)
       return true
     }
+    case 'place': {
+      const s = state.stations.find(st => st.id === action.station)
+      if (!s || !Number.isInteger(action.slot) || action.slot < 0 || action.slot >= SLOTS.length) return false
+      if (state.stations.some(st => st.slot === action.slot)) return false
+      if (s.slot >= 0 && (s.customer !== null || (state.phase !== 'prep' && state.phase !== 'receipt'))) return false
+      const first = s.slot < 0
+      s.slot = action.slot
+      state.slots = state.stations.map(st => st.slot)
+      const p = SLOTS[action.slot]
+      if (first) event(state, { kind: 'placed', text: `The new ${s.kind === 'facial' ? 'facial chair' : 'nail desk'} is ready`, x: p.x, y: p.y, player: by, item: s.id })
+      return true
+    }
     case 'next': {
       if (state.phase !== 'receipt') return false
       const players = state.players
@@ -303,7 +338,7 @@ function releaseFromStation(s: Station, by: number) {
 }
 
 function buy(state: SalonState, by: number, id: string): boolean {
-  const check = canBuy(state.owned, state.money, id)
+  const check = canBuy(state.owned, state.money, id, state.day)
   if (!check.ok) return false
   if (state.pending) return false
   if (needsConfirm(id) && state.players.length > 1) {
@@ -322,22 +357,26 @@ function settleVote(state: SalonState) {
   const present = state.players.map(p => p.id)
   if (present.every(id => pending.yes.includes(id))) {
     state.pending = null
-    if (canBuy(state.owned, state.money, pending.item).ok) complete(state, pending.item, pending.by)
+    if (canBuy(state.owned, state.money, pending.item, state.day).ok) complete(state, pending.item, pending.by)
   }
 }
 
 function complete(state: SalonState, id: string, by: number) {
   const item = ITEM_BY_ID[id]
   state.money -= item.price
-  state.owned.push(id)
-  if (item.effect.kind === 'station') {
+  // A bundle brings its parts (the nail bar comes with its desk).
+  for (const got of [id, ...(item.includes ?? [])]) {
+    if (state.owned.includes(got)) continue
+    state.owned.push(got)
+    if (ITEM_BY_ID[got]?.effect.kind !== 'station') continue
+    // A new station waits for the players to tap a free spot for it (or takes the first one at opening).
     const kinds = stationKinds(state.owned)
-    const slot = freeSlot(state.stations.map(s => s.slot))
     const kind = kinds[kinds.length - 1]
+    const slot = state.phase === 'prep' || state.phase === 'receipt' ? -1 : freeSlot(state.stations.map(s => s.slot))
     state.stations.push({ id: `s${state.stations.length}`, kind, slot, customer: null, lead: null, helpers: [], step: 0, steps: TREATMENTS[kind === 'facial' ? 'facial' : 'nails'].steps.length, progress: 0 })
     state.slots = state.stations.map(s => s.slot)
   }
-  event(state, { kind: 'bought', text: `Bought ${item.name}`, amount: item.price, player: by })
+  event(state, { kind: 'bought', text: `Bought ${item.name}`, amount: item.price, player: by, item: id })
 }
 
 function finish(state: SalonState, by: number, stationId: string, result: TreatmentResult, foam: number): boolean {
@@ -347,9 +386,13 @@ function finish(state: SalonState, by: number, stationId: string, result: Treatm
   if (!c) return false
   const def = TREATMENTS[c.plan.treatment]
   const amb = ambienceStars(state.owned)
-  const stars = starsFor(result, c.mood, amb)
-  const price = payFor(def.basePrice, state.owned, c.plan.disaster)
-  const tip = tipFor(price, stars, c.mood, state.owned)
+  const stars = Math.min(5, starsFor(result, c.mood, amb) + setStarBonus(state.owned, c.plan.treatment))
+  let price = Math.round(payFor(def.basePrice, state.owned, c.plan.disaster) * setPayMult(state.owned, state.day))
+  const mid = state.schedule[Math.floor(state.schedule.length / 2)]
+  let tipMult = setTipMult(state.owned, c.plan.archetype ?? '', !!mid && c.plan.arriveAt >= mid.arriveAt)
+  // Staff take a share: the salon keeps less of a staff treatment than one the players do themselves.
+  if (by >= STAFF_ID_BASE) { const share = staffShare(state, by, stars, c.plan.treatment); price = Math.round(price * share.revenue); tipMult *= share.tips }
+  const tip = tipFor(price, stars, c.mood, state.owned, tipMult)
   state.money += price + tip - def.productCost
   state.stats.revenue += price
   state.stats.tips += tip
@@ -410,15 +453,17 @@ export function tick(state: SalonState, dt: number) {
       if (!s || s.lead === null) c.mood = Math.max(MOOD_FLOOR, c.mood - MOOD_DRAIN_SEATED * dt)
     }
   }
-  // Free stations call the next waiting customer who wants what they do (first come, first served).
-  for (const s of state.stations) {
-    if (s.customer !== null) continue
+  // Free stations call the next waiting customer who wants what they do (first come, first served). A
+  // station with a staff member ready calls first, so staff are never idle while a player's chair fills.
+  const free = state.stations.filter(s => s.customer === null && s.slot >= 0)
+  free.sort((a, b) => Number(staffAvailableAt(state, b.id)) - Number(staffAvailableAt(state, a.id)))
+  for (const s of free) {
     const next = state.customers.find(c => (c.state === 'waiting' || c.state === 'entering') && TREATMENTS[c.plan.treatment].station === s.kind)
     if (!next) continue
     s.customer = next.id
     s.step = 0
     s.progress = 0
-    s.steps = TREATMENTS[next.plan.treatment].steps.length
+    s.steps = stepCount(next.plan.treatment, next.plan.seed, next.plan.disaster)
     next.station = s.id
     next.seat = null
     next.state = 'toStation'

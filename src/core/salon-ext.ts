@@ -1,11 +1,12 @@
-import type { CustomerPlan } from './customers.ts'
+import { withLookDefaults, type CustomerPlan } from './customers.ts'
 import { advanceCampaigns, campaignBias, campaignCustomers, canRunCampaign, CAMPAIGN_BY_ID, type ActiveCampaign } from './marketing.ts'
-import { DECOR_ITEM_BY_ID } from './decor.ts'
+import { DECOR_ITEM_BY_ID, GIFT_BY_ID, GIFT_BY_REGULAR } from './decor.ts'
 import { CONFIRM_PRICE } from './economy.ts'
+import { goalFor, goalTally, type DailyGoal } from './goals.ts'
 import { personaFor, type Persona } from './persona.ts'
 import { writeGoogleReview, type GoogleReview } from './review-writer.ts'
 import { MOOD_DRAIN_WAITING, reduce, type Customer, type SalonState } from './salon.ts'
-import { candidatesFor, cleanStaffName, gainXp, hire, MAX_STAFF, rest, staffDuration, staffResult, STAFF_GRACE, STAFF_ID_BASE, tire, weekOf, type Candidate, type StaffMember } from './staff.ts'
+import { candidatesFor, cleanStaffName, gainXp, has, hire, MAX_STAFF, rest, staffDuration, staffResult, STAFF_GRACE, STAFF_ID_BASE, tire, weekOf, type Candidate, type StaffMember } from './staff.ts'
 import { TREATMENTS } from './treatments/registry.ts'
 import type { TreatmentResult } from './treatments/session.ts'
 
@@ -36,7 +37,13 @@ export type SalonExt = {
   stars: number[]
   /** The last day the day-start rules ran (so reloading a day does not run them twice). */
   lastDay: number
-  today: { ready: number[]; wages: number; pets: number; levelUps: string[]; bias: string[]; seatedAt: Record<string, number>; friendUps: { name: string; level: number; gift: string | null }[] }
+  /** First names of this week's customers, by day, so a name is not used twice in a week. */
+  names: { n: string; d: number }[]
+  today: {
+    ready: number[]; wages: number; pets: number; levelUps: string[]; bias: string[]; seatedAt: Record<string, number>; friendUps: { name: string; level: number; gift: string | null }[]
+    /** Today's relaxed goal and whether it is reached. */
+    goal: DailyGoal | null
+  }
   vote: ExtVote | null
 }
 
@@ -56,10 +63,10 @@ export type ExtAction =
 export const DEFAULT_SALON_NAME = 'Glow Salon'
 export const DEFAULT_CAT_NAME = 'Mochi'
 
-const emptyToday = (): SalonExt['today'] => ({ ready: [], wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [] })
+const emptyToday = (): SalonExt['today'] => ({ ready: [], wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [], goal: null })
 
 export function newExt(): SalonExt {
-  return { salonName: DEFAULT_SALON_NAME, catName: DEFAULT_CAT_NAME, staff: [], hired: [], week: -1, campaigns: [], loyalty: false, friends: {}, decorOrder: [], recent: [], stars: [0, 0, 0, 0, 0], lastDay: 0, today: emptyToday(), vote: null }
+  return { salonName: DEFAULT_SALON_NAME, catName: DEFAULT_CAT_NAME, staff: [], hired: [], week: -1, campaigns: [], loyalty: false, friends: {}, decorOrder: [], recent: [], stars: [0, 0, 0, 0, 0], lastDay: 0, names: [], today: emptyToday(), vote: null }
 }
 
 /** The ext of a state, created on first use (older saves have none). */
@@ -75,7 +82,7 @@ export function validateExt(raw: unknown): SalonExt {
   const str = (v: unknown, fallback: string, max = 20) => (typeof v === 'string' && v.trim() ? v.replace(/[<>&"]/g, '').trim().slice(0, max) : fallback)
   e.salonName = str(d.salonName, DEFAULT_SALON_NAME)
   e.catName = str(d.catName, DEFAULT_CAT_NAME, 12)
-  e.staff = Array.isArray(d.staff) ? d.staff.filter(s => s && typeof s.name === 'string' && Number.isInteger(s.id) && s.skills && s.look).slice(0, MAX_STAFF).map(s => ({ ...s, name: cleanStaffName(s.name) || 'Staff', task: null, breakLeft: 0, energy: 1 })) : []
+  e.staff = Array.isArray(d.staff) ? d.staff.filter(s => s && typeof s.name === 'string' && Number.isInteger(s.id) && s.skills && s.look).slice(0, MAX_STAFF).map(s => ({ ...s, look: withLookDefaults(s.look), name: cleanStaffName(s.name) || 'Staff', task: null, breakLeft: 0, energy: 1 })) : []
   e.hired = Array.isArray(d.hired) ? d.hired.filter(n => Number.isInteger(n) && n >= 0 && n < 3) : []
   e.week = Number.isInteger(d.week) ? d.week! : -1
   e.campaigns = Array.isArray(d.campaigns) ? d.campaigns.filter(c => c && CAMPAIGN_BY_ID[c.id] && Number.isInteger(c.day) && c.day >= 0) : []
@@ -85,6 +92,7 @@ export function validateExt(raw: unknown): SalonExt {
   e.recent = Array.isArray(d.recent) ? d.recent.filter(l => typeof l === 'string').slice(-40) : []
   e.stars = Array.isArray(d.stars) && d.stars.length === 5 && d.stars.every(n => Number.isInteger(n) && n >= 0) ? [...d.stars] : [0, 0, 0, 0, 0]
   e.lastDay = Number.isInteger(d.lastDay) ? d.lastDay! : 0
+  e.names = Array.isArray(d.names) ? d.names.filter(n => n && typeof n.n === 'string' && Number.isInteger(n.d)).slice(-120) : []
   return e
 }
 
@@ -114,6 +122,7 @@ export function extOnStartDay(state: SalonState) {
   if (week !== e.week) { e.week = week; e.hired = [] }
   // Staff whose station was sold or swapped away go back to reception.
   for (const s of e.staff) if (s.station && !state.stations.some(st => st.id === s.station)) s.station = null
+  e.today.goal = goalFor(state.seed, state.day, state.schedule.length, state.owned.includes('treat-nails'))
 }
 
 /** Who a customer is (archetype, voice, traits), the same on every screen. */
@@ -162,7 +171,7 @@ function doHire(state: SalonState, idx: number, by: number) {
 function doCampaign(state: SalonState, id: string, by: number) {
   const e = ext(state)
   const c = CAMPAIGN_BY_ID[id]
-  if (!canRunCampaign(id, e.campaigns, e.loyalty, state.money).ok) return false
+  if (!canRunCampaign(id, e.campaigns, e.loyalty, state.money, state.day).ok) return false
   state.money -= c.price
   if (c.permanent) e.loyalty = true
   else e.campaigns.push({ id, day: 0 })
@@ -196,7 +205,7 @@ export function reduceExt(state: SalonState, by: number, action: ExtAction): boo
       return doHire(state, action.idx, by)
     }
     case 'campaign': {
-      if (!canRunCampaign(action.id, e.campaigns, e.loyalty, state.money).ok || e.vote || state.pending) return false
+      if (!canRunCampaign(action.id, e.campaigns, e.loyalty, state.money, state.day).ok || e.vote || state.pending) return false
       const c = CAMPAIGN_BY_ID[action.id]
       if (state.players.length > 1 && c.price >= CONFIRM_PRICE) {
         e.vote = { kind: 'campaign', ref: action.id, label: `run ${c.label}`, by, yes: [by] }
@@ -257,12 +266,63 @@ export function reduceExt(state: SalonState, by: number, action: ExtAction): boo
   }
 }
 
-/** Staff at work, tea breaks, and cheerful staff keeping the waiting room happy. */
+/** A staff member who could start at this station right now (their own station, free and fresh). */
+export function staffAvailableAt(state: SalonState, stationId: string): boolean {
+  return !!state.ext?.staff.some(m => m.station === stationId && !m.task && m.breakLeft <= 0)
+}
+
+/**
+ * The salon's share of a treatment done by staff: revenue x (0.6 + 0.1 x stars), never more than a player
+ * would earn, and half the tip (calm staff keep facial customers relaxed: a little more). Doing it yourself
+ * stays the best paid.
+ */
+export function staffShare(state: SalonState, staffId: number, stars: number, treatment: string): { revenue: number; tips: number } {
+  const s = state.ext?.staff.find(m => m.id === staffId)
+  return { revenue: Math.min(1, 0.6 + 0.1 * stars), tips: 0.5 * (s && has(s, 'calm') && treatment === 'facial' ? 1.3 : 1) }
+}
+
+/** Staff skilled enough for a treatment to take it at a station that is not theirs. */
+const SKILLED = 2
+
+/** The station an idle staff member should start at now, if any: their own first, then any skilled one nobody else covers. */
+function workFor(state: SalonState, s: StaffMember): string | null {
+  const e = ext(state)
+  const seated = (st: SalonState['stations'][number]) => {
+    if (st.customer === null || st.lead !== null || st.slot < 0) return false
+    const c = state.customers.find(x => x.id === st.customer)
+    return !!c && c.state === 'seated'
+  }
+  const ready = (st: SalonState['stations'][number], grace: number) => {
+    const since = (e.today.seatedAt[st.id] ??= state.clock)
+    return state.clock - since >= grace
+  }
+  const home = s.station ? state.stations.find(x => x.id === s.station) : null
+  if (home && seated(home)) return ready(home, STAFF_GRACE) ? home.id : null
+  // Anywhere else they are skilled for, that no free colleague calls home: a little longer to let a player come.
+  for (const st of state.stations) {
+    if (st === home || !seated(st)) continue
+    const c = state.customers.find(x => x.id === st.customer)!
+    if ((s.skills[c.plan.treatment] ?? 0) < SKILLED) continue
+    if (e.staff.some(m => m !== s && m.station === st.id && !m.task && m.breakLeft <= 0)) continue
+    if (ready(st, STAFF_GRACE * 2)) return st.id
+  }
+  return null
+}
+
+/** Staff at work, tea breaks, and cheerful staff keeping the waiting room happy. Also today's goal. */
 export function extTick(state: SalonState, dt: number) {
   const e = ext(state)
+  const goal = e.today.goal
+  if (goal && !goal.done && goalTally(state)[goal.kind] >= goal.target) {
+    goal.done = true
+    state.money += goal.reward
+    state.seq++
+    state.events.push({ seq: state.seq, kind: 'goal', text: `Goal reached: ${goal.text}. +$${goal.reward}`, amount: goal.reward })
+    if (state.events.length > 24) state.events.splice(0, state.events.length - 24)
+  }
   // A treatment everyone walked away from waits, seated, for whoever comes next.
   for (const st of state.stations) {
-    if (st.lead !== null || st.customer === null) continue
+    if (st.lead !== null || st.customer === null) { delete e.today.seatedAt[st.id]; continue }
     const c = state.customers.find(x => x.id === st.customer)
     if (c && c.state === 'treating') c.state = 'seated'
   }
@@ -272,7 +332,7 @@ export function extTick(state: SalonState, dt: number) {
     for (const c of state.customers) if (c.state === 'waiting') c.mood = Math.min(1, c.mood + MOOD_DRAIN_WAITING * 0.4 * dt)
   }
   for (const s of e.staff) {
-    rest(s, dt, false)
+    rest(s, dt, e.today.pets > 0)
     if (s.task) {
       const st = state.stations.find(x => x.id === s.task!.station)
       if (!st || st.lead !== s.id || st.customer === null) { s.task = null; continue }
@@ -282,13 +342,11 @@ export function extTick(state: SalonState, dt: number) {
       if (s.task.t >= s.task.dur) finishForStaff(state, s, st.id)
       continue
     }
-    if (s.breakLeft > 0 || !s.station) continue
-    const st = state.stations.find(x => x.id === s.station)
-    if (!st || st.customer === null || st.lead !== null) { if (st) delete e.today.seatedAt[st.id]; continue }
-    const c = state.customers.find(x => x.id === st.customer)
-    if (!c || c.state !== 'seated') continue
-    const since = (e.today.seatedAt[st.id] ??= state.clock)
-    if (state.clock - since < STAFF_GRACE) continue
+    if (s.breakLeft > 0) continue
+    const at = workFor(state, s)
+    if (!at) continue
+    const st = state.stations.find(x => x.id === at)!
+    const c = state.customers.find(x => x.id === st.customer)!
     delete e.today.seatedAt[st.id]
     st.lead = s.id
     c.state = 'treating'
@@ -335,12 +393,24 @@ export function extReview(state: SalonState, c: Customer, by: number, stars: num
   e.stars[Math.max(1, Math.min(5, review.stars)) - 1]++
   if (c.plan.regular && stars >= 4) {
     const before = e.friends[c.plan.regular] ?? 0
-    const level = Math.min(5, before + 1)
+    // A chatterbox on the team makes friends twice as fast.
+    const staffer = e.staff.find(s => s.id === by)
+    const level = Math.min(5, before + (staffer && has(staffer, 'chatterbox') ? 2 : 1))
     e.friends[c.plan.regular] = level
-    if (level > before) e.today.friendUps.push({ name: c.plan.name, level, gift: level === 5 && persona.story ? persona.story.gift : null })
+    const gift = level === 5 && before < 5 ? GIFT_BY_REGULAR[c.plan.regular] : null
+    if (gift && !state.owned.includes(gift.id)) {
+      // The gift is real: it joins the salon's things, on the gift shelf.
+      state.owned.push(gift.id)
+      state.seq++
+      state.events.push({ seq: state.seq, kind: 'gift', text: `${c.plan.name} left you a gift: ${gift.label}`, item: gift.id })
+    }
+    if (level > before) e.today.friendUps.push({ name: c.plan.name, level, gift: gift ? gift.label : null })
   }
   return review
 }
+
+/** The gift item of a regular, if they have given it (for the shop's gift shelf). */
+export const giftOf = (id: string) => GIFT_BY_ID[id] ?? null
 
 /** Closing time: the day's wages. */
 export function extOnClose(state: SalonState) {

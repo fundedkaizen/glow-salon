@@ -1,6 +1,6 @@
 import { check, near } from './harness.ts'
 import { TreatmentSession, regionMask, zonesOf, type Op, type SessionEvent } from '../src/core/treatments/session.ts'
-import { TREATMENTS } from '../src/core/treatments/registry.ts'
+import { planTreatment } from '../src/core/treatments/plan.ts'
 import { faceProfile, handProfile } from '../src/core/treatments/profile.ts'
 import { GRID, CELL, stamp, encodeGrid, decodeGrid } from '../src/core/treatments/grid.ts'
 import { REGIONS, HAND, bandEdge, nailOf } from '../src/core/treatments/anatomy.ts'
@@ -14,7 +14,8 @@ function cellsOf(regionId: keyof typeof REGIONS) {
   return pts
 }
 
-const stepIndex = (treatment: 'facial' | 'nails', id: string) => TREATMENTS[treatment].steps.findIndex(s => s.id === id)
+/** Where a step is in this customer's own treatment (every customer's list differs, see plan.ts). */
+const stepIndex = (s: TreatmentSession, id: string) => s.def.steps.findIndex(x => x.id === id)
 
 /** Play the current step the way a player would, with ops only. Returns the ops used. */
 function playStep(s: TreatmentSession, ops: Op[] = []): Op[] {
@@ -143,26 +144,26 @@ export function run() {
   // Disaster cases get the extra steps; normal ones do not.
   const dis = new TreatmentSession({ treatment: 'facial', seed: 77, disaster: true })
   playAll(dis)
-  check('disaster: second cleanse done', dis.status[stepIndex('facial', 'cleanse2')] === 'done' && dis.status[stepIndex('facial', 'rinse2')] === 'done')
+  check('disaster: second cleanse done', dis.status[stepIndex(dis, 'cleanse2')] === 'done' && dis.status[stepIndex(dis, 'rinse2')] === 'done')
   const norm = new TreatmentSession({ treatment: 'facial', seed: 1234 })
   playAll(norm)
-  check('normal: no second cleanse', norm.status[stepIndex('facial', 'cleanse2')] === 'na')
-  check('na steps are not required', norm.result().required < TREATMENTS.facial.steps.filter(s => !s.optional).length)
+  check('normal: no second cleanse', !norm.def.steps.some(x => x.id === 'cleanse2'))
+  check('na steps are not required', norm.result().required === norm.def.steps.filter((x, i) => !x.optional && norm.status[i] !== 'na').length)
 
   // A customer with no whiteheads skips the pop step; one with no polish skips the remover.
   const noPimples = seedWhere(seed => faceProfile(seed, false).whiteheads === 0 && faceProfile(seed, false).deep === 0)
   const np = new TreatmentSession({ treatment: 'facial', seed: noPimples })
   playAll(np)
-  check('no pimples: pop step drops out', np.status[stepIndex('facial', 'pop')] === 'na')
-  check('no pops: no patches', np.status[stepIndex('facial', 'patches')] === 'na')
+  check('no pimples: pop step drops out', np.status[stepIndex(np, 'pop')] === 'na')
+  check('no pops: no patches', np.status[stepIndex(np, 'patches')] === 'na')
   const bare = seedWhere(seed => handProfile(seed, false).polish === null)
   const bs = new TreatmentSession({ treatment: 'nails', seed: bare })
   playAll(bs)
-  check('bare nails: remover drops out', bs.status[stepIndex('nails', 'remove')] === 'na')
+  check('bare nails: remover drops out', bs.status[stepIndex(bs, 'remove')] === 'na')
   const dirty = seedWhere(seed => handProfile(seed, false).dirt > 0.3)
   const ds = new TreatmentSession({ treatment: 'nails', seed: dirty })
   playAll(ds)
-  check('dirty nails: under-nail step done', ds.status[stepIndex('nails', 'under')] === 'done')
+  check('dirty nails: under-nail step done', ds.status[stepIndex(ds, 'under')] === 'done')
 
   // ---------------------------------------------------------------- facial specifics
   const popSeed = seedWhere(seed => faceProfile(seed, false).whiteheads >= 4 && faceProfile(seed, false).deep >= 1 && faceProfile(seed, false).blackheads >= 8)
@@ -174,7 +175,7 @@ export function run() {
   check('facial: whiteheads on skin', whiteheads.every(t => inRegion(REGIONS.skin, t.x, t.y)))
   while (f.current?.id !== 'pop') f.apply({ k: 'advance', s: f.step })
   f.drain()
-  const pop = stepIndex('facial', 'pop')
+  const pop = stepIndex(f, 'pop')
   const w = f.stepTargets().find(t => !t.stage)!
   f.apply({ k: 'hold', s: pop, x: w.x, y: w.y, dt: 0.1 })
   check('facial: pressing swells', w.progress > 0 && !w.done)
@@ -200,7 +201,8 @@ export function run() {
   check('skipping everything is not thorough', skip.result().thoroughness < 0.1 && skip.result().skipped > 5)
 
   // Auto-complete: an erase step is ready at 95% and the rest settles on advance.
-  const r2 = new TreatmentSession({ treatment: 'facial', seed: 3 })
+  const steamFirst = seedWhere(seed => { const st = planTreatment('facial', seed, false).def.steps; return st[0].id === 'steam' && st[1].id === 'cleanse' })
+  const r2 = new TreatmentSession({ treatment: 'facial', seed: steamFirst })
   r2.apply({ k: 'advance', s: 0 })
   playStep(r2)
   r2.apply({ k: 'advance', s: 1 })
@@ -211,8 +213,9 @@ export function run() {
   check('rinse clears foam and grime', r2.layers.foam.every(v => v === 0) && r2.layers.grime.every(v => v === 0))
 
   // Peel: it sticks first, then follows slowly, then releases.
-  const peel = stepIndex('facial', 'peel')
-  const p = new TreatmentSession({ treatment: 'facial', seed: 5, startStep: peel })
+  const claySeed = seedWhere(seed => planTreatment('facial', seed, false).mask === 'clay')
+  const peel = planTreatment('facial', claySeed, false).def.steps.findIndex(x => x.id === 'peel')
+  const p = new TreatmentSession({ treatment: 'facial', seed: claySeed, startStep: peel })
   check('resume at a later step', p.current?.id === 'peel' && p.status.slice(0, peel).every(x => x === 'done' || x === 'na'))
   p.apply({ k: 'peel', s: peel, v: 0.05, dt: 0.1 })
   check('peel sticks at first', p.peel.progress === 0)
@@ -224,8 +227,8 @@ export function run() {
   check('peel releases', p.peel.released && p.ready)
 
   // Tool tiers make coverage faster.
-  const slow = new TreatmentSession({ treatment: 'facial', seed: 11, startStep: 1, tier: 1 })
-  const fast = new TreatmentSession({ treatment: 'facial', seed: 11, startStep: 1, tier: 3 })
+  const slow = new TreatmentSession({ treatment: 'facial', seed: steamFirst, startStep: 1, tier: 1 })
+  const fast = new TreatmentSession({ treatment: 'facial', seed: steamFirst, startStep: 1, tier: 3 })
   for (const s of [slow, fast]) for (let k = 0; k < 20; k++) s.apply({ k: 'stroke', s: 1, x0: 300, y0: 400 + k * 20, x1: 720, y1: 400 + k * 20 })
   check('higher tier covers faster', fast.progress() > slow.progress(), [slow.progress(), fast.progress()])
 
@@ -250,7 +253,7 @@ export function run() {
   check('nails: one tip per long nail', n.targets.filter(t => t.kind === 'tip').length === handProfile(21, false).grown.filter(x => x > 0).length)
   // Lamp (four hands) doubles the loop's speed.
   const lampSeed = seedWhere(seed => faceProfile(seed, false).blackheads >= 6)
-  const extract = stepIndex('facial', 'extract')
+  const extract = planTreatment('facial', lampSeed, false).def.steps.findIndex(x => x.id === 'extract')
   const solo = new TreatmentSession({ treatment: 'facial', seed: lampSeed, startStep: extract })
   const duo = new TreatmentSession({ treatment: 'facial', seed: lampSeed, startStep: extract })
   const bh = solo.stepTargets()[0]

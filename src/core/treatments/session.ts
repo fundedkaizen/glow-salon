@@ -2,8 +2,8 @@ import { clamp, dist, inRegion } from '../geometry.ts'
 import { makeRng, type Rng } from '../rng.ts'
 import { FACE, HAND, REGIONS, bandEdge, freeEdgeOf, nailOf, type RegionId } from './anatomy.ts'
 import { GRID, decodeGrid, encodeGrid, paintedShare, rasterize, stamp, sumIn } from './grid.ts'
+import { planTreatment, type TreatmentPlan } from './plan.ts'
 import { profileFor, type FaceProfile, type HandProfile, type Profile } from './profile.ts'
-import { TREATMENTS } from './registry.ts'
 import type { StepDef, TargetKind, TreatmentDef, TreatmentId } from './types.ts'
 
 /**
@@ -29,6 +29,8 @@ export type Target = {
   /** Deep pimples: squeezes still needed (2, then 1). A new press is needed for the second. */
   stage?: number
   gripped?: boolean
+  /** Which step's targets these are, when two steps share a kind (under-eye patches are 'eye'). */
+  tag?: string
 }
 
 export type Op =
@@ -63,7 +65,7 @@ export type SessionOptions = {
   seed: number
   /** A "disaster case": extreme grime, extra steps, bigger pay. */
   disaster?: boolean
-  /** Tool tier, 1 to 3: faster and prettier. */
+  /** Tool tier, 1 to 4: faster and prettier. */
   tier?: number
   /** The polish colour the customer asked for, if any. */
   wish?: number
@@ -91,8 +93,8 @@ export type TreatmentResult = {
   thoroughness: number
 }
 
-export const TIER_RATE = [1, 1.5, 2.1]
-export const TIER_RADIUS = [1, 1.16, 1.32]
+export const TIER_RATE = [1, 1.5, 2.1, 2.6]
+export const TIER_RADIUS = [1, 1.16, 1.32, 1.42]
 /** Pseudo-layer the renderer uses for the wet, glossy look. Not measured. */
 export const WET = '$wet'
 /** The peel line runs from the chin (progress 0) to the hairline (1). */
@@ -178,7 +180,9 @@ const ZONES: Record<string, [number, number, number, number][]> = {
 }
 
 export class TreatmentSession {
+  /** The treatment with this customer's own step list (plan.ts). */
   readonly def: TreatmentDef
+  readonly plan: TreatmentPlan
   readonly tier: number
   readonly seed: number
   readonly disaster: boolean
@@ -208,10 +212,11 @@ export class TreatmentSession {
   private rng: Rng
 
   constructor(options: SessionOptions) {
-    this.def = TREATMENTS[options.treatment]
-    this.tier = clamp(Math.round(options.tier ?? 1), 1, 3)
+    this.tier = clamp(Math.round(options.tier ?? 1), 1, TIER_RATE.length)
     this.seed = options.seed
     this.disaster = !!options.disaster
+    this.plan = planTreatment(options.treatment, options.seed, this.disaster)
+    this.def = this.plan.def
     this.wish = options.wish ?? null
     this.rng = makeRng(options.seed)
     this.profile = profileFor(this.def.bodyPart, options.seed, this.disaster)
@@ -368,7 +373,7 @@ export class TreatmentSession {
   private applies(step: StepDef): boolean {
     if (step.need === 'disaster') return this.disaster
     if (step.need === 'targets') {
-      if (step.targets === 'patch') return this.targets.some(t => t.kind === 'whitehead' && t.done)
+      if (step.targets === 'patch' && !step.targetTag) return this.targets.some(t => t.kind === 'whitehead' && t.done)
       return this.targets.some(t => t.kind === step.targets && !t.done)
     }
     if (step.need === 'layer' && step.layer) return sumIn(this.layers[step.layer], regionMask(step.region)) > 1.5
@@ -387,7 +392,8 @@ export class TreatmentSession {
     if (!step) { this.finished = true; this.emit({ e: 'done' }); return }
     this.hold = 0
     this.ready = false
-    if (step.targets === 'patch') this.makePatches()
+    if (step.targets === 'patch' && !step.targetTag) this.makePatches()
+    if (step.targetTag === 'eye') this.makeEyePatches()
     if (step.id === 'moisturize') {
       for (const [x, y, rr] of [[400, 660, 58], [624, 660, 58], [512, 392, 62]]) this.stampLayer('cream', x, y, rr, 1, 'skin')
     }
@@ -397,9 +403,15 @@ export class TreatmentSession {
     this.checkReady()
   }
 
+  /** Cooling patches under each eye. */
+  private makeEyePatches() {
+    if (this.targets.some(t => t.tag === 'eye')) return
+    for (const e of FACE.eyes) this.targets.push({ id: this.nextTarget++, kind: 'patch', x: e.x, y: e.y + 62, size: 1.3, progress: 0, done: false, tag: 'eye' })
+  }
+
   /** Patches go on the biggest spots that were popped. */
   private makePatches() {
-    if (this.targets.some(t => t.kind === 'patch')) return
+    if (this.targets.some(t => t.kind === 'patch' && !t.tag)) return
     const popped = this.targets.filter(t => t.kind === 'whitehead' && t.done).sort((a, b) => b.size - a.size).slice(0, 3)
     for (const t of popped) this.targets.push({ id: this.nextTarget++, kind: 'patch', x: t.x, y: t.y, size: t.size, progress: 0, done: false })
   }
@@ -441,7 +453,8 @@ export class TreatmentSession {
 
   stepTargets(): Target[] {
     const kind = this.current?.targets
-    return kind ? this.targets.filter(t => t.kind === kind) : []
+    const tag = this.current?.targetTag
+    return kind ? this.targets.filter(t => t.kind === kind && t.tag === tag) : []
   }
 
   private checkReady() {

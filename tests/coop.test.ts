@@ -35,8 +35,10 @@ export function run() {
 
   // Both work stations at the same time.
   reduce(state, 0, { a: 'open' })
-  for (let t = 0; t < 1200 && state.stations.some(s => s.customer === null || state.customers.find(c => c.id === s.customer)?.state !== 'seated'); t++) tick(state, 0.1)
-  check('both stations have customers', state.stations.every(s => s.customer !== null))
+  // The two facial chairs (the nail bar's desk waits for a manicure customer).
+  const chairs = state.stations.filter(s => s.kind === 'facial')
+  for (let t = 0; t < 2400 && chairs.some(s => s.customer === null || state.customers.find(c => c.id === s.customer)?.state !== 'seated'); t++) tick(state, 0.1)
+  check('both stations have customers', chairs.length === 2 && chairs.every(s => s.customer !== null))
   check('host works s0', reduce(state, 0, { a: 'work', station: 's0' }))
   handleGuestMessage(state, 1, { t: 'act', a: { a: 'work', station: 's1' } })
   check('guest works s1', state.stations[1].lead === 1 && state.players.find(p => p.id === 1)!.station === 's1')
