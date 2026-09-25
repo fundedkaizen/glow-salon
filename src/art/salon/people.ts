@@ -87,9 +87,9 @@ const ARCHETYPE_OUTFITS: Record<string, OutfitKind[]> = {
   pilot: ['suit'], streamer: ['hoodie'], royal: ['dress', 'suit'],
 }
 
-type Outfit = { kind: OutfitKind; main: RGB; second: RGB; pants: RGB; skirt: boolean; shoes: RGB; sleeve: RGB | null }
+export type Outfit = { kind: OutfitKind; main: RGB; second: RGB; pants: RGB; skirt: boolean; shoes: RGB; sleeve: RGB | null }
 
-function outfitOf(look: Look, fig: Figure, role: Role, tint: number, archetype?: string): Outfit {
+export function outfitOf(look: Look, fig: Figure, role: Role, tint: number, archetype?: string): Outfit {
   const main = hexRGB(OUTFIT[look.outfit % OUTFIT.length])
   const second = hexRGB(OUTFIT[(look.outfit + 3) % OUTFIT.length])
   const shoes = shade(hexRGB(OUTFIT[(look.outfit + 4) % OUTFIT.length]), -0.3)
@@ -130,7 +130,7 @@ function faceVarOf(look: Look, seed?: number): FaceVar {
 
 /** Glasses suit some people more than others: fewer overall, more on the teacher, the lawyer, the grandpa. */
 const GLASSES_FIT = new Set(['teacher', 'businessman', 'grandpa', 'grandma', 'lawyer', 'office', 'artist', 'gamer', 'pilot'])
-function accessoryFor(look: Look, archetype?: string): number {
+export function accessoryFor(look: Look, archetype?: string): number {
   const h = (look.skin * 7 + look.hair * 13 + look.outfit * 17 + look.hairStyle * 3) % 10
   if (look.accessory === 2 && !(archetype && GLASSES_FIT.has(archetype)) && h < 5) return 0
   if (look.accessory === 0 && archetype && GLASSES_FIT.has(archetype) && h < 3) return 2

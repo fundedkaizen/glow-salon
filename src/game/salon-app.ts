@@ -11,7 +11,8 @@ import { ext } from '../core/salon-ext.ts'
 import { exportCode, importCode, loadSave, writeSave, type Store } from '../core/save.ts'
 import type { Op, SessionSnapshot, TreatmentResult } from '../core/treatments/session.ts'
 import { CoopLink, type CoopStatus } from '../net/coop-link.ts'
-import { FloorView, type FloorCustomer, type FloorState } from '../render/floor-view.ts'
+import { FloorView, type FloorCustomer, type FloorHooks, type FloorState } from '../render/floor-view.ts'
+import { FloorView3D } from '../render3d/floor-view-3d.ts'
 import { openTreatment } from './treatment-glue.ts'
 import { warmCloseUps } from '../render/warmup.ts'
 import { Computer } from '../ui/computer.ts'
@@ -69,6 +70,15 @@ export type SalonOptions = {
 
 type Mode = 'title' | 'floor' | 'treatment'
 
+/** The salon floor: the 3D room with `?floor=3d`, else the 2D floor (the same API and hooks). */
+type Floor = FloorView | FloorView3D
+function makeFloor(app: Application, playerId: number, hooks: FloorHooks, opts: { demo?: boolean } = {}): Floor {
+  if (new URLSearchParams(location.search).get('floor') === '3d') {
+    try { return new FloorView3D(app, playerId, hooks, opts) } catch (error) { console.warn('3D floor unavailable, using the 2D floor', error) }
+  }
+  return new FloorView(app, playerId, hooks, opts)
+}
+
 const store: Store | null = (() => { try { return window.localStorage } catch { return null } })()
 
 export async function startSalon(app: Application, ui: HTMLElement, opts: SalonOptions = {}) {
@@ -85,8 +95,8 @@ export class SalonGame {
   private hostLink: HostLink | null = null
   private guestLink: GuestLink | null = null
   private joined = false
-  private floor: FloorView | null = null
-  private demo: { view: FloorView; state: SalonState } | null = null
+  private floor: Floor | null = null
+  private demo: { view: Floor; state: SalonState } | null = null
   private hud: FloorHud | null = null
   private computer: Computer | null = null
   private receipt: Receipt | null = null
@@ -155,7 +165,7 @@ export class SalonGame {
   private enterFloor() {
     this.lobby.hide()
     if (this.demo) { this.demo.view.destroy(); this.demo = null }
-    this.floor = new FloorView(this.app, this.me, {
+    this.floor = makeFloor(this.app, this.me, {
       onAction: a => this.act(a),
       onStartTreatment: (st, c) => this.startTreatment(st, c),
       onOpenComputer: tab => this.openComputer(tab),
@@ -536,7 +546,7 @@ function histBefore(s: { ext?: { stars: number[] }; reviews: { stars: number }[]
 }
 
 /** The title screen's backdrop: a busy little salon running itself, with staff at every station. */
-function makeDemo(app: Application): { view: FloorView; state: SalonState } {
+function makeDemo(app: Application): { view: Floor; state: SalonState } {
   const save = newSave(20260925)
   save.money = 99999
   save.owned = ['treat-nails', 'nail-desk', 'facial-chair-2', 'plant', 'rug', 'lights', 'candles', 'art', 'neon', 'flyers', 'social', 'pastel-pop:candy-sofa', 'pastel-pop:heart-mirror', 'pastel-pop:bubble-lamp']
@@ -548,7 +558,7 @@ function makeDemo(app: Application): { view: FloorView; state: SalonState } {
   if (free) reduce(state, 0, { a: 'assignStaff', id: free.id, station: 's0' })
   reduce(state, 0, { a: 'open' })
   for (let t = 0; t < 30; t += 0.1) tick(state, 0.1)
-  const view = new FloorView(app, -1, { onAction: () => {}, onStartTreatment: () => {}, onOpenComputer: () => {} }, { demo: true })
+  const view = makeFloor(app, -1, { onAction: () => {}, onStartTreatment: () => {}, onOpenComputer: () => {} }, { demo: true })
   view.setState(state)
   view.resize(app.screen.width, app.screen.height)
   return { view, state }

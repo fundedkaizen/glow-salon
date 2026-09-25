@@ -13,10 +13,12 @@
     "relay": "node server/coop-relay.mjs"
   },
   "dependencies": {
-    "pixi.js": "^8.21.0"
+    "pixi.js": "^8.21.0",
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
+    "@types/three": "^0.186.0",
     "@types/ws": "^8.18.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
