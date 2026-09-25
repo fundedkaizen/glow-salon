@@ -75,10 +75,16 @@ function fresh(r: Rng, lines: readonly string[], recent: string[]): string {
   return line
 }
 
+/** How the customer refers to whoever treated them ("You" is a player who has not picked a name). */
+const staffWord = (staff: string) => (!staff || staff === 'You' ? 'my stylist' : staff)
+
 function fill(text: string, input: ReviewInput) {
   const w = WORDS[input.result.treatment] ?? { treatment: 'treatment', part: 'skin' }
-  return text.replace(/\{salon\}/g, input.salon).replace(/\{staff\}/g, input.staff).replace(/\{treatment\}/g, w.treatment).replace(/\{part\}/g, w.part)
+  return text.replace(/\{salon\}/g, input.salon).replace(/\{staff\}/g, staffWord(input.staff)).replace(/\{treatment\}/g, w.treatment).replace(/\{part\}/g, w.part)
 }
+
+/** A remark starts a sentence (openers and closers keep the voice's own casing, "ngl", "no notes"). */
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** Lower-case the first letter after an opener that runs on ("ok so", "Oh my dear,"), unless it is "I" or a name. */
 function runOn(sentence: string, names: string[]) {
@@ -97,8 +103,8 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   const tags: string[] = []
 
   const opener = fill(fresh(r, g.openers[voice], input.recent), input)
-  const remarks: string[] = [fill(fresh(r, g.remarks[bucket], input.recent), input)]
-  if (stars >= 5 && result.thoroughness >= 0.9 && r.chance(0.45)) remarks.push(fill(fresh(r, g.remarks[bucket], input.recent), input))
+  const remarks: string[] = [sentence(fill(fresh(r, g.remarks[bucket], input.recent), input))]
+  if (stars >= 5 && result.thoroughness >= 0.9 && r.chance(0.45)) remarks.push(sentence(fill(fresh(r, g.remarks[bucket], input.recent), input)))
 
   // Extras: what actually happened, most notable first, at most two.
   const extras: ReviewExtra[] = []
@@ -114,10 +120,10 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   else if (input.price < expected * 0.95 && stars >= 4 && r.chance(0.5)) extras.push('bargain')
   if (!extras.length && r.chance(0.3)) extras.push(r.chance(0.5) ? 'music' : 'decor')
   const chosen = extras.slice(0, 2)
-  const extraLines = chosen.map(e => fill(fresh(r, g.extras[e], input.recent), input))
+  const extraLines = chosen.map(e => sentence(fill(fresh(r, g.extras[e], input.recent), input)))
   const closer = fill(fresh(r, g.closers[voice], input.recent), input)
 
-  const names = [input.staff, input.salon]
+  const names = [staffWord(input.staff), input.salon]
   const runsOn = !/[.!?]$/.test(opener)
   const body = [runsOn ? runOn(remarks[0], names) : remarks[0], ...remarks.slice(1), ...extraLines]
   let text = `${opener} ${body.join(' ')} ${closer}`
@@ -131,7 +137,7 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   // The categories this review speaks for.
   if (stars >= 4) tags.push(result.treatment === 'nails' ? TAGS.nails : TAGS.facial)
   if (stars >= 4 && (voice === 'sleepy' || voice === 'dreamy' || input.mood > 0.85)) tags.push(TAGS.relaxing)
-  if (stars >= 4 && remarks.some(t => t.includes(input.staff))) tags.push(TAGS.friendly)
+  if (stars >= 4 && remarks.some(t => t.toLowerCase().includes(staffWord(input.staff).toLowerCase()))) tags.push(TAGS.friendly)
   for (const e of chosen) {
     if (e === 'cat') tags.push(TAGS.cat)
     else if (e === 'decor') tags.push(TAGS.decor)

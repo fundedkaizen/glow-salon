@@ -391,7 +391,7 @@ export class SalonGame {
     const data: ReceiptData = {
       day: s.day, salonName: e?.salonName ?? 'Glow Salon', revenue: st.revenue, tips: st.tips, costs: st.costs, wages,
       net: st.revenue + st.tips - st.costs - wages, served: st.served, ratingBefore: st.ratingBefore, ratingAfter: average(s.rating),
-      reviewsTotal: s.rating.count, reviews: st.reviews, allReviews: s.reviews, awards: awards(st), players: s.players, owned: s.owned, money: s.money, news,
+      reviewsTotal: s.rating.count, histBefore: histBefore(s), reviews: st.reviews, allReviews: s.reviews, awards: awards(st), players: s.players, owned: s.owned, money: s.money, news,
     }
     this.receipt = new Receipt(this.ui, data, { onNext: () => { this.receipt = null; this.act({ a: 'next' }); this.floor?.placeMe(240, 420) } })
     this.save()
@@ -445,6 +445,15 @@ export class SalonGame {
     this.demo?.view.resize(w, h)
     this.screen?.view.resize(w, h)
   }
+}
+
+/** The star histogram as it was this morning: the saved counts minus today's reviews (older saves: from the kept reviews). */
+function histBefore(s: { ext?: { stars: number[] }; reviews: { stars: number }[]; stats: { reviews: { stars: number }[] }; rating: { count: number } }): number[] {
+  const total = s.ext?.stars.reduce((a, b) => a + b, 0) ?? 0
+  const hist = total >= s.rating.count && s.ext ? [...s.ext.stars] : [0, 0, 0, 0, 0]
+  if (!(total >= s.rating.count && s.ext)) for (const r of s.reviews) hist[Math.max(1, Math.min(5, r.stars)) - 1]++
+  for (const r of s.stats.reviews) { const i = Math.max(1, Math.min(5, r.stars)) - 1; hist[i] = Math.max(0, hist[i] - 1) }
+  return hist
 }
 
 /** The title screen's backdrop: a busy little salon running itself, with staff at every station. */

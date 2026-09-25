@@ -32,6 +32,8 @@ export type ReceiptData = {
   ratingBefore: number
   ratingAfter: number
   reviewsTotal: number
+  /** Star histogram before today (index 0 is one star). */
+  histBefore: number[]
   reviews: Review[]
   allReviews: Review[]
   awards: { title: string; name: string; value: string }[]
@@ -105,8 +107,16 @@ export class Receipt {
     // ---------------------------------------------------------------- the Google-style listing
     const side = h('div', 'gs-reviews')
     const card = h('div', 'gs-gcard')
-    card.innerHTML = `<div class="gs-g-name">${esc(d.salonName)}</div><div class="gs-g-head"><div class="gs-g-score">${d.ratingBefore ? d.ratingBefore.toFixed(1) : '0.0'}</div><div><div class="gs-g-stars">${starsHtml(d.ratingBefore)}</div><div class="gs-g-count">${Math.max(0, d.reviewsTotal - d.reviews.length)} reviews</div></div><span class="gs-g-delta"></span></div><div class="gs-g-tags"></div>`
+    const countBefore = Math.max(0, d.reviewsTotal - d.reviews.length)
+    const hist = [...d.histBefore]
+    const bars = [5, 4, 3, 2, 1].map(n => `<div class="gs-hist-row"><span>${n}</span><div class="gs-hist-bar"><i data-n="${n}"></i></div></div>`).join('')
+    card.innerHTML = `<div class="gs-g-name">${esc(d.salonName)}<small>Reviews</small></div><div class="gs-g-body"><div class="gs-hist">${bars}</div><div class="gs-g-side"><div class="gs-g-score">${d.ratingBefore ? d.ratingBefore.toFixed(1) : '0.0'}</div><div class="gs-g-stars">${starsHtml(d.ratingBefore)}</div><div class="gs-g-count">${countBefore} review${countBefore === 1 ? '' : 's'}</div></div></div><span class="gs-g-delta"></span><div class="gs-g-tags"></div>`
     side.append(card)
+    const drawHist = () => {
+      const max = Math.max(1, ...hist)
+      for (const i of card.querySelectorAll<HTMLElement>('.gs-hist-bar i')) i.style.width = `${(hist[Number(i.dataset.n) - 1] / max) * 100}%`
+    }
+    drawHist()
     wrap.append(paper, side)
     this.el.append(wrap)
     sfx.shutter()
@@ -115,6 +125,7 @@ export class Receipt {
     for (const [el, v, sign] of lines) {
       el.classList.add('in')
       await this.countUp(el.lastElementChild as HTMLElement, v, 380, v ? sign : '')
+      if (sign === '+' && v > 0) sfx.cash()
       await this.pause(120)
     }
     net.classList.add('in')
@@ -126,34 +137,37 @@ export class Receipt {
     if (d.net > 0) confetti(this.host, rectCentre(paper), 50)
     await this.pause(500)
 
-    // The rating rolls to its new value.
+    // Today's reviews land one by one: each pops in, fills its bar and nudges the rating.
     const score = card.querySelector('.gs-g-score') as HTMLElement
     const starsEl = card.querySelector('.gs-g-stars') as HTMLElement
     const count = card.querySelector('.gs-g-count') as HTMLElement
-    const from = d.ratingBefore || d.ratingAfter, to = d.ratingAfter
-    for (let i = 1; i <= 20; i++) {
-      const v = from + ((to - from) * i) / 20
-      score.textContent = v.toFixed(1)
-      starsEl.innerHTML = starsHtml(v)
-      await wait(this.fast ? 5 : 35)
+    let sum = d.ratingBefore * countBefore, n = countBefore
+    let shown = d.ratingBefore
+    const roll = async (to: number) => {
+      const from = shown
+      for (let i = 1; i <= 10; i++) { const v = from + ((to - from) * i) / 10; score.textContent = v.toFixed(1); starsEl.innerHTML = starsHtml(v); await wait(this.fast ? 4 : 28) }
+      shown = to
     }
-    count.textContent = `${d.reviewsTotal} review${d.reviewsTotal === 1 ? '' : 's'}`
-    const delta = card.querySelector('.gs-g-delta') as HTMLElement
-    const diff = Math.round((to - (d.ratingBefore || to)) * 10) / 10
-    if (d.ratingBefore && diff !== 0) { delta.textContent = `${diff > 0 ? '+' : ''}${diff.toFixed(1)} today`; delta.classList.add('in', diff > 0 ? 'up' : 'down') }
-    else if (!d.ratingBefore && d.reviewsTotal) { delta.textContent = 'Your first reviews'; delta.classList.add('in', 'up') }
-    sfx.star(to >= 4.5 ? 4 : to >= 4 ? 3 : 2)
-    const tags = card.querySelector('.gs-g-tags') as HTMLElement
-    for (const t of salonTags(d.allReviews as Partial<GoogleReview>[], 5)) tags.insertAdjacentHTML('beforeend', `<span class="gs-g-tag">${esc(t.tag)}<b>${t.count}</b></span>`)
-
-    // Today's reviews, one by one.
     if (!d.reviews.length) side.append(h('div', 'gs-empty', 'No reviews today. Tomorrow is a new day.'))
     for (const [i, r] of d.reviews.entries()) {
-      await this.pause(i ? 650 : 250)
+      await this.pause(i ? 600 : 250)
       side.append(reviewCard(r as GoogleReview))
       sfx.reviewPop(i)
       side.lastElementChild?.scrollIntoView({ block: 'nearest', behavior: this.fast ? 'auto' : 'smooth' })
+      hist[Math.max(1, Math.min(5, r.stars)) - 1]++
+      drawHist()
+      sum += r.stars; n++
+      count.textContent = `${n} review${n === 1 ? '' : 's'}`
+      await roll(i === d.reviews.length - 1 ? d.ratingAfter : Math.round((sum / n) * 10) / 10)
     }
+    const delta = card.querySelector('.gs-g-delta') as HTMLElement
+    const diff = Math.round((d.ratingAfter - d.ratingBefore) * 10) / 10
+    if (d.ratingBefore && diff !== 0) { delta.textContent = `${diff > 0 ? '+' : ''}${diff.toFixed(1)} today`; delta.classList.add('in', diff > 0 ? 'up' : 'down') }
+    else if (!d.ratingBefore && d.reviewsTotal) { delta.textContent = 'Your first reviews'; delta.classList.add('in', 'up') }
+    else if (d.reviews.length) { delta.textContent = 'Holding steady'; delta.classList.add('in', 'up') }
+    sfx.star(d.ratingAfter >= 4.5 ? 4 : d.ratingAfter >= 4 ? 3 : 2)
+    const tags = card.querySelector('.gs-g-tags') as HTMLElement
+    for (const t of salonTags(d.allReviews as Partial<GoogleReview>[], 5)) tags.insertAdjacentHTML('beforeend', `<span class="gs-g-tag">${esc(t.tag)}<b>${t.count}</b></span>`)
 
     // Awards for the players.
     if (d.awards.length) {

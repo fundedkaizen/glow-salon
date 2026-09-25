@@ -191,11 +191,22 @@
 .gs-net b { font: 700 30px var(--gs-head); color: #2f9d77; font-variant-numeric: tabular-nums; }
 .gs-net b.neg { color: #c35a7c; }
 .gs-served { text-align: center; font: 800 13px var(--gs-font); color: var(--gs-ink-soft); margin-top: 10px; }
-.gs-stamp { position: absolute; right: 18px; bottom: 44px; transform: rotate(-12deg) scale(2); opacity: 0; font: 700 15px var(--gs-head); color: var(--gs-mint-deep); border: 3px solid var(--gs-mint-deep); border-radius: 10px; padding: 4px 10px; letter-spacing: 1px; transition: all 0.35s var(--gs-ease); }
-.gs-stamp.in { transform: rotate(-12deg) scale(1); opacity: 0.85; }
+.gs-stamp { display: table; margin: 16px auto 0; transform: rotate(-8deg) scale(2); opacity: 0; font: 700 16px var(--gs-head); color: var(--gs-mint-deep); border: 3px solid var(--gs-mint-deep); border-radius: 10px; padding: 4px 12px; letter-spacing: 1.5px; transition: all 0.35s var(--gs-ease); }
+.gs-stamp.in { transform: rotate(-8deg) scale(1); opacity: 0.85; }
 .gs-reviews { flex: 1; min-width: 0; max-width: 620px; display: flex; flex-direction: column; gap: 12px; }
 .gs-gcard { background: #fff; border-radius: 22px; padding: 18px 20px; box-shadow: var(--gs-shadow); animation: gs-card-in 0.5s var(--gs-ease) both; }
 .gs-g-head { display: flex; align-items: center; gap: 16px; }
+.gs-g-name small { font: 700 12px var(--gs-font); color: var(--gs-ink-soft); margin-left: 8px; }
+.gs-g-body { display: flex; align-items: center; gap: 18px; margin-top: 10px; }
+.gs-hist { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+.gs-hist-row { display: flex; align-items: center; gap: 8px; font: 800 12px var(--gs-font); color: var(--gs-ink-soft); }
+.gs-hist-bar { flex: 1; height: 9px; border-radius: 99px; background: #eee8ef; overflow: hidden; }
+.gs-hist-bar i { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, #f7c948, #f0ad2e); transition: width 0.6s var(--gs-ease); }
+.gs-g-side { text-align: center; min-width: 118px; }
+.gs-g-side .gs-g-score { min-width: 0; }
+.gs-g-side .gs-g-stars { font-size: 18px; }
+.gs-gcard .gs-g-delta { display: inline-block; margin: 10px 0 0; }
+.gs-end .gs-section { align-self: flex-start; background: rgba(255, 255, 255, 0.95); color: #6b3f63; padding: 7px 16px; border-radius: 99px; box-shadow: var(--gs-shadow-sm); margin: 10px 0 2px; }
 .gs-g-score { font: 600 50px/1 var(--gs-head); color: var(--gs-ink); font-variant-numeric: tabular-nums; min-width: 88px; }
 .gs-g-stars { font-size: 24px; }
 .gs-g-count { font: 700 13px var(--gs-font); color: var(--gs-ink-soft); margin-top: 3px; }

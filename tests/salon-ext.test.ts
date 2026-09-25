@@ -49,6 +49,8 @@ export function run() {
   check('the loud voice shouts', loud.text === loud.text.toUpperCase())
   const four = writeGoogleReview(input({ result: result({ fourHands: true }), seed: 11 }))
   check('four hands are mentioned', REVIEWS_DATA.extras['four-hands'].some(l => four.text.includes(l)), four.text)
+  const unnamed = Array.from({ length: 30 }, (_, i) => writeGoogleReview(input({ seed: 500 + i, staff: 'You', voice: 'polite' })).text)
+  check('an unnamed player is never "You was"', unnamed.every(t => !/\bYou was\b|\byou was\b/.test(t)), unnamed.find(t => /You was/i.test(t)))
   const tags = salonTags([{ tags: ['Great for nails', 'Relaxing'] }, { tags: ['Great for nails'] }, { tags: ['Relaxing', 'Great for nails'] }, { tags: ['A bit pricey'] }])
   check('salon tags count and sort', tags[0].tag === 'Great for nails' && tags[0].count === 3 && tags[1].tag === 'Relaxing' && tags.length === 3, tags)
 
