@@ -71,6 +71,20 @@ function pad(ctx: Ctx, x: number, y: number, r: number, tint: RGB, seed: number)
   ctx.strokeStyle = 'rgba(220,210,220,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r - 1, 0, Math.PI * 2); ctx.stroke()
 }
 
+/** A polish bottle held at an angle with its brush out: body colour, cap colour, sparkle for top coat. */
+function bottleBrush(ctx: Ctx, body: RGB, cap: string, sparkle: boolean) {
+  ctx.save(); ctx.translate(56, 202); ctx.rotate(-0.78)
+  ctx.fillStyle = rgba(shade(body, -0.1)); ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(34, -10); ctx.lineTo(34, 10); ctx.lineTo(0, 3); ctx.closePath(); ctx.fill()
+  ctx.fillStyle = '#d4d4dc'; ctx.fillRect(34, -3, 30, 6)
+  const cg = ctx.createLinearGradient(0, -16, 0, 16); cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.3, cap); cg.addColorStop(1, cap)
+  ctx.fillStyle = cg; ctx.beginPath(); ctx.roundRect(64, -14, 70, 28, 8); ctx.fill()
+  const bg = ctx.createLinearGradient(0, -34, 0, 34); bg.addColorStop(0, rgba(shade(body, 0.45))); bg.addColorStop(0.5, rgba(body)); bg.addColorStop(1, rgba(shade(body, -0.3)))
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(130, -34, 86, 68, 18); ctx.fill()
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.roundRect(140, -26, 60, 10, 5); ctx.fill()
+  if (sparkle) for (let i = 0; i < 14; i++) { ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fillRect(140 + (i * 37) % 66, -24 + (i * 23) % 48, 3, 3) }
+  ctx.restore()
+}
+
 const PAINTERS: Record<string, { tip: [number, number]; draw: (ctx: Ctx) => void }> = {
   towel: { tip: [128, 128], draw: ctx => {
     ctx.fillStyle = '#fbf7f4'
@@ -209,15 +223,9 @@ const PAINTERS: Record<string, { tip: [number, number]; draw: (ctx: Ctx) => void
     const r = makeRng(4)
     for (let i = 0; i < 90; i++) { const a = r() * 6.28, d = Math.sqrt(r()) * 26; ctx.fillStyle = r() < 0.5 ? 'rgba(255,248,236,1)' : 'rgba(240,210,170,1)'; ctx.fillRect(82 + Math.cos(a) * d, 166 + Math.sin(a) * d * 0.7, 3.5, 3.5) }
   } },
-  polishBrush: { tip: [56, 202], draw: ctx => {
-    ctx.save(); ctx.translate(56, 202); ctx.rotate(-0.78)
-    ctx.fillStyle = '#f4efe8'; ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(34, -9); ctx.lineTo(34, 9); ctx.lineTo(0, 3); ctx.closePath(); ctx.fill()
-    ctx.fillStyle = '#d4d4dc'; ctx.fillRect(34, -3, 50, 6)
-    const g = ctx.createLinearGradient(0, -20, 0, 20); g.addColorStop(0, '#6d5a78'); g.addColorStop(0.5, '#3c3048'); g.addColorStop(1, '#2a2032')
-    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(84, -20, 110, 40, 10); ctx.fill()
-    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(92, -16, 94, 6)
-    ctx.restore()
-  } },
+  polishBrush: { tip: [56, 202], draw: ctx => bottleBrush(ctx, [240, 120, 160], '#3c3048', false) },
+  baseCoat: { tip: [56, 202], draw: ctx => bottleBrush(ctx, [250, 236, 240], '#f4f0f2', false) },
+  topCoat: { tip: [56, 202], draw: ctx => bottleBrush(ctx, [214, 236, 252], '#e9c46a', true) },
   uvLamp: { tip: [128, 150], draw: ctx => {
     const g = ctx.createLinearGradient(0, 60, 0, 200); g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#e4def0')
     ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(20, 200); ctx.quadraticCurveTo(20, 60, 128, 60); ctx.quadraticCurveTo(236, 60, 236, 200); ctx.closePath(); ctx.fill()

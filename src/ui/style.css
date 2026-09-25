@@ -89,7 +89,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .tool.current { transform: scale(1.14) translateY(-4px); background: linear-gradient(180deg, #fff, #fde3ec); box-shadow: 0 8px 18px rgba(226, 114, 154, 0.35); }
 .tool.pop { animation: toolpop 0.5s cubic-bezier(.3, 1.8, .5, 1); }
 @keyframes toolpop { 0% { transform: scale(0.8); } 60% { transform: scale(1.25) translateY(-6px); } 100% { transform: scale(1.14) translateY(-4px); } }
-.tool.gone { width: 0; margin-left: -8px; opacity: 0; transform: scale(0.2); overflow: hidden; }
+.tool.gone, .tool.far { width: 0; margin-left: -10px; opacity: 0; transform: scale(0.2); overflow: hidden; pointer-events: none; }
 .tool-ring { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); transform: rotate(-90deg); pointer-events: none; }
 .tool-ring circle { fill: none; stroke: var(--blush-deep); stroke-width: 3.5; stroke-linecap: round; opacity: 0; transition: stroke-dashoffset 0.15s linear; }
 .tool.current .tool-ring circle { opacity: 1; }

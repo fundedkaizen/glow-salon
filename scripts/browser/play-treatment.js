@@ -79,8 +79,14 @@
           break
         }
         default: {
-          const b = BOX[step.region] ?? BOX.face
-          await drag(zigzag(b[0], b[1], b[2], b[3], (step.radius ?? 50) * 1.1))
+          // First a broad zigzag like a person would do, then touch up whatever is left.
+          if (performance.now() - t0 < 2500) {
+            const b = BOX[step.region] ?? BOX.face
+            await drag(zigzag(b[0], b[1], b[2], b[3], (step.radius ?? 50) * 1.1))
+          } else {
+            const cells = tv().cellsToWork(60)
+            for (const [x, y] of cells.slice(0, 20)) await drag([[x - 14, y], [x, y + 4], [x + 14, y]], 16)
+          }
         }
       }
     }
@@ -96,6 +102,8 @@
     window.__playLog = log
     return log.join(' ')
   }
+  // Start playing without waiting (long runs outlast a single eval); poll window.__playing.
+  window.__run = n => { window.__playing = true; window.__play(n).then(() => { window.__playing = false }, e => { window.__playing = false; window.__playError = String(e) }); return 'started' }
   window.__doneStatus = () => ({ step: tv().session.step, finished: tv().session.finished, status: tv().session.status.join(',') })
   return 'ready'
 })()

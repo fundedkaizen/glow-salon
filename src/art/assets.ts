@@ -52,7 +52,7 @@ const HAND_STYLES: Record<string, LayerStyle> = {
   dull: { gloss: 0, relief: 0.2 },
   dirt: { gloss: 0.1, relief: 1.2 },
   dry: { gloss: 0, relief: 1.2 },
-  oldPolish: { gloss: 0.45, relief: 1.2 },
+  oldPolish: { gloss: 0.15, relief: 0.3 },
   rough: { gloss: 0, relief: 1.6 },
   cuticle: { gloss: 0.1, relief: 1.2 },
   scrub: { gloss: 0.25, relief: 2.4, brush: 'paint' },

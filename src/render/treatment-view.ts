@@ -2,7 +2,7 @@ import { Container, Graphics, Matrix, RenderTexture, Sprite, Text, type Applicat
 import type { Look } from '../core/customers.ts'
 import { FACE, HAND, fingerDir, nailOf } from '../core/treatments/anatomy.ts'
 import { GRID, CELL } from '../core/treatments/grid.ts'
-import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, type Op, type SessionEvent, type SessionSnapshot, type Target, type TreatmentResult } from '../core/treatments/session.ts'
+import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, regionMask, type Op, type SessionEvent, type SessionSnapshot, type Target, type TreatmentResult } from '../core/treatments/session.ts'
 import { POLISH_COLORS, type StepDef, type TreatmentId } from '../core/treatments/types.ts'
 import { starsFor } from '../core/reviews.ts'
 import { assetsFor, type PartAssets } from '../art/assets.ts'
@@ -337,6 +337,21 @@ export class TreatmentView {
   }
 
   snapshot(): SessionSnapshot { return this.session.snapshot() }
+
+  /** For browser checks: art-space centres of grid cells the current step still needs worked. */
+  cellsToWork(limit = 400): [number, number][] {
+    const step = this.step
+    if (!step?.layer) return []
+    const grid = this.session.layers[step.layer]
+    const region = regionMask(step.region)
+    const out: [number, number][] = []
+    for (let i = 0; i < grid.length && out.length < limit; i++) {
+      if (!region[i]) continue
+      const need = step.gesture === 'erase' ? grid[i] > 0.05 : grid[i] < 0.8
+      if (need) out.push([((i % GRID) + 0.5) * CELL, (Math.floor(i / GRID) + 0.5) * CELL])
+    }
+    return out
+  }
 
   /** For browser checks: where an art-space point is on screen (CSS pixels). */
   artToScreen(x: number, y: number) {
@@ -996,6 +1011,17 @@ export class TreatmentView {
     this.camGoal = this.opts.treatment === 'facial' ? { x: 512, y: 540, zoom: 0.9 } : { x: 480, y: 560, zoom: 0.92 }
     this.setExpr('beam')
     this.exprTimer = 0
+    // The finished look glows: a dewier skin and a soft bloom (seen on the After side of the wipe).
+    this.surface.skin.uniforms.uniforms.uSkin[3] = 1
+    const bloom = new Sprite(bits.glow())
+    bloom.anchor.set(0.5)
+    bloom.position.set(this.camGoal.x, this.camGoal.y)
+    bloom.scale.set(13, 15)
+    bloom.tint = 0xfff1f5
+    bloom.blendMode = 'add'
+    bloom.alpha = 0
+    this.overFx.addChild(bloom)
+    this.animate(1.4, t => { bloom.alpha = 0.2 * t })
   }
 
   private updateReveal(dt: number) {

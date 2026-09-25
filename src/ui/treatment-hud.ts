@@ -92,6 +92,10 @@ export class TreatmentHud {
       el.classList.toggle('skipped', status[i] === 'skipped')
       el.classList.toggle('future', i > step)
     })
+    // Only a few tools at a time: the one just used, this one and the next three.
+    const shown = [...this.tray.querySelectorAll<HTMLElement>('.tool:not(.gone)')]
+    const at = shown.findIndex(el => el.dataset.i === String(step))
+    shown.forEach((el, k) => el.classList.toggle('far', k < at - 1 || k > at + 3))
     const cur = this.tray.querySelector<HTMLElement>(`.tool[data-i="${step}"]`)
     this.ring = cur?.querySelector('circle') ?? null
     if (cur && step !== this.lastStep) {

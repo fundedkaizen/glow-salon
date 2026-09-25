@@ -146,7 +146,7 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
     const side = i === 0 ? -1 : 1
     ctx.save()
     ctx.beginPath()
-    ctx.ellipse(e.x, e.y, 44, 80, side * 0.12, 0, Math.PI * 2)
+    ctx.ellipse(e.x + side * 12, e.y + 10, 34, 62, side * 0.12, 0, Math.PI * 2)
     const eg = ctx.createRadialGradient(e.x - side * 6, e.y, 10, e.x, e.y, 84)
     eg.addColorStop(0, rgba(skin.base)); eg.addColorStop(0.7, rgba(mixRGB(skin.base, skin.blush, 0.3))); eg.addColorStop(1, rgba(skin.shadow))
     ctx.fillStyle = eg
@@ -156,11 +156,29 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
       ctx.strokeStyle = rgba(skin.deep, 0.45)
       ctx.lineWidth = 7
       ctx.beginPath()
-      ctx.ellipse(e.x + side * 6, e.y + 4, 22, 52, side * 0.12, -Math.PI * 0.6, Math.PI * 0.8)
+      ctx.ellipse(e.x + side * 16, e.y + 14, 17, 40, side * 0.12, -Math.PI * 0.6, Math.PI * 0.8)
       ctx.stroke()
     })
     blob(ctx, e.x + side * 10, e.y + 10, 16, 26, skin.deep, 0.4)
     blob(ctx, e.x, e.y - 20, 34, 40, skin.blush, 0.35)
+    ctx.restore()
+  }
+
+  // Hair falls over the top of each ear.
+  for (const [i, e] of FACE.ears.entries()) {
+    const side = i === 0 ? -1 : 1
+    ctx.save()
+    const g = ctx.createLinearGradient(e.x, e.y - 90, e.x, e.y + 20)
+    g.addColorStop(0, rgba(hair.dark)); g.addColorStop(1, rgba(hair.base))
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.moveTo(e.x - side * 20, e.y - 110)
+    ctx.bezierCurveTo(e.x + side * 60, e.y - 90, e.x + side * 64, e.y - 20, e.x + side * 40, e.y + 26)
+    ctx.bezierCurveTo(e.x + side * 20, e.y - 10, e.x + side * 4, e.y - 50, e.x - side * 30, e.y - 60)
+    ctx.closePath()
+    ctx.fill()
+    ctx.strokeStyle = rgba(hair.light, 0.35); ctx.lineWidth = 1.5
+    for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(e.x - side * (14 - k * 4), e.y - 104 + k * 6); ctx.bezierCurveTo(e.x + side * (50 - k * 4), e.y - 80, e.x + side * (54 - k * 5), e.y - 20, e.x + side * (36 - k * 3), e.y + 16 - k * 4); ctx.stroke() }
     ctx.restore()
   }
 
@@ -242,12 +260,12 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   // Blush on the cheeks and the nose tip.
   for (const x of [362, 662]) blob(ctx, x, 664, 116, 80, skin.blush, 0.22 + feat.blush * 0.26)
   // Philtrum ridges and the cupid's bow highlight, the shadow under the lower lip, the chin.
-  blob(ctx, 499, 712, 5, 24, skin.light, 0.45)
-  blob(ctx, 525, 712, 5, 24, skin.shadow, 0.3)
-  blob(ctx, 512, 716, 8, 22, skin.shadow, 0.14)
-  blob(ctx, 512, 736, 30, 5, skin.light, 0.6)
-  blob(ctx, 518, 816, 74, 16, skin.shadow, 0.45)
-  blob(ctx, 500, 866, 58, 30, skin.light, 0.55)
+  blob(ctx, 499, 700, 5, 22, skin.light, 0.45)
+  blob(ctx, 525, 700, 5, 22, skin.shadow, 0.3)
+  blob(ctx, 512, 704, 8, 20, skin.shadow, 0.14)
+  blob(ctx, 512, 722, 30, 5, skin.light, 0.6)
+  blob(ctx, 518, 800, 64, 14, skin.shadow, 0.45)
+  blob(ctx, 500, 852, 50, 28, skin.light, 0.55)
   blob(ctx, 512, 902, 150, 24, skin.shadow, 0.35)
   // Forehead: a broad soft highlight.
   blob(ctx, 480, 392, 170, 64, skin.light, 0.45)
@@ -708,8 +726,8 @@ function drawEye(ctx: Ctx, ex: number, ey: number, side: number, state: EyeState
   if (state === 'open' || state === 'wide') { drawOpenEye(ctx, ex, ey, side, state === 'wide', lashColor, skin, feat); return }
   const lash = rgba(mixRGB(lashColor, [20, 10, 16], 0.5))
   const lashLen = 0.8 + feat.lashes * 0.5
-  const inner = { x: ex - side * 58, y: ey - 2 }
-  const outer = { x: ex + side * 62, y: ey - 8 }
+  const inner = { x: ex - side * 64, y: ey - 2 }
+  const outer = { x: ex + side * 68, y: ey - 9 }
   const sag = state === 'closed' ? 22 : state === 'squeeze' ? 12 : -22
   const cx = ex + side * 4, cy = ey + sag
   const point = (t: number) => ({ x: (1 - t) ** 2 * inner.x + 2 * (1 - t) * t * cx + t * t * outer.x, y: (1 - t) ** 2 * inner.y + 2 * (1 - t) * t * cy + t * t * outer.y })
@@ -761,7 +779,7 @@ function drawEye(ctx: Ctx, ex: number, ey: number, side: number, state: EyeState
 function drawOpenEye(ctx: Ctx, ex: number, ey: number, side: number, wide: boolean, lashColor: RGB, skin: SkinTone, feat: Feat) {
   const lash = rgba(mixRGB(lashColor, [20, 10, 16], 0.55))
   const lashLen = 0.8 + feat.lashes * 0.5
-  const w = 60, top = wide ? 30 : 24, bottom = wide ? 20 : 16
+  const w = 68, top = wide ? 37 : 31, bottom = wide ? 25 : 21
   const inner = { x: ex - side * w * 0.95, y: ey + 2 }, outer = { x: ex + side * w, y: ey - 5 }
   const upper = () => { ctx.moveTo(inner.x, inner.y); ctx.bezierCurveTo(ex - side * 34, ey - top - 6, ex + side * 30, ey - top - 4, outer.x, outer.y) }
   const lower = () => { ctx.bezierCurveTo(ex + side * 30, ey + bottom + 2, ex - side * 34, ey + bottom + 4, inner.x, inner.y) }
@@ -775,7 +793,7 @@ function drawOpenEye(ctx: Ctx, ex: number, ey: number, side: number, wide: boole
   ctx.fill()
   ctx.clip()
   // Iris: limbal ring, radial fibres, a lighter lower half, the pupil.
-  const ir = wide ? 21 : 23, ix = ex + side * 2, iy = ey - (wide ? 0 : 2)
+  const ir = wide ? 26 : 29, ix = ex + side * 2, iy = ey - (wide ? 0 : 3)
   const ig = ctx.createRadialGradient(ix, iy + 6, 2, ix, iy, ir)
   ig.addColorStop(0, rgba(shade(feat.iris, 0.35))); ig.addColorStop(0.55, rgba(feat.iris)); ig.addColorStop(0.9, rgba(shade(feat.iris, -0.35))); ig.addColorStop(1, rgba(shade(feat.iris, -0.6)))
   ctx.fillStyle = ig
@@ -783,7 +801,7 @@ function drawOpenEye(ctx: Ctx, ex: number, ey: number, side: number, wide: boole
   ctx.strokeStyle = rgba(shade(feat.iris, 0.45), 0.35); ctx.lineWidth = 1
   for (let i = 0; i < 28; i++) { const a = (i / 28) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(ix + Math.cos(a) * 8, iy + Math.sin(a) * 8); ctx.lineTo(ix + Math.cos(a) * (ir - 3), iy + Math.sin(a) * (ir - 3)); ctx.stroke() }
   ctx.fillStyle = '#1e1418'
-  ctx.beginPath(); ctx.arc(ix, iy, wide ? 7 : 8.5, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(ix, iy, wide ? 8 : 10.5, 0, Math.PI * 2); ctx.fill()
   // The upper lid casts a soft shadow on the eyeball.
   const shadowG = ctx.createLinearGradient(0, ey - top, 0, ey - top + 22)
   shadowG.addColorStop(0, 'rgba(90,50,60,0.45)'); shadowG.addColorStop(1, 'rgba(90,50,60,0)')
@@ -791,8 +809,8 @@ function drawOpenEye(ctx: Ctx, ex: number, ey: number, side: number, wide: boole
   ctx.fillRect(ex - w - 4, ey - top - 8, w * 2 + 8, 34)
   // Catchlights: a big one up-left, a small one down-right.
   ctx.fillStyle = 'rgba(255,255,255,0.95)'
-  ctx.beginPath(); ctx.ellipse(ix - 8, iy - 9, 6.5, 5, -0.5, 0, Math.PI * 2); ctx.fill()
-  ctx.beginPath(); ctx.arc(ix + 8, iy + 8, 2.6, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.ellipse(ix - 10, iy - 11, 8.5, 6.5, -0.5, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(ix + 10, iy + 10, 3.4, 0, Math.PI * 2); ctx.fill()
   ctx.restore()
   // Lids: a thick upper lash line with a little wing, a fine lower line, the crease above.
   ctx.lineCap = 'round'
@@ -833,7 +851,7 @@ function drawBrow(ctx: Ctx, bx: number, by: number, side: number, state: BrowSta
   const lum = (hair.base[0] + hair.base[1] + hair.base[2]) / 3
   const color = lum > 150 ? shade(hair.base, -0.35) : hair.base
   const dark = lum > 150 ? shade(hair.dark, -0.2) : hair.dark
-  const weight = 0.75 + feat.brow * 0.55
+  const weight = 0.58 + feat.brow * 0.4
   const innerY = state === 'worried' ? by - 8 : state === 'happy' ? by + 0 : by + 10
   const peakY = state === 'worried' ? by - 4 : state === 'happy' ? by - 24 : by - 14
   const outerY = state === 'worried' ? by + 14 : state === 'happy' ? by - 4 : by + 2
@@ -858,7 +876,7 @@ function drawBrow(ctx: Ctx, bx: number, by: number, side: number, state: BrowSta
     const len = r.range(10, 20) * (1 - t * 0.4)
     const off = r.range(-1, 1) * (9 - t * 5) * weight
     const sx = p.x + (-dy / l) * off, sy = p.y + (dx / l) * off + 3
-    ctx.strokeStyle = rgba(r() < 0.5 ? dark : color, r.range(0.55, 0.9))
+    ctx.strokeStyle = rgba(r() < 0.5 ? dark : color, r.range(0.45, 0.75))
     ctx.lineWidth = r.range(1.2, 2.4)
     ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx + hx * len * 0.5, sy + hy * len * 0.5 - 2, sx + hx * len, sy + hy * len); ctx.stroke()
   }
@@ -869,8 +887,8 @@ function mouthCrop(state: MouthState, skin: SkinTone, feat: Feat): Crop {
 }
 
 function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: SkinTone, feat: Feat) {
-  const full = 0.85 + feat.lips * 0.4
-  const lip = skin.lip, lipDark = shade(lip, -0.25), lipLight = shade(lip, 0.3)
+  const full = 1.05 + feat.lips * 0.3
+  const lip = mixRGB(skin.lip, [236, 118, 140], 0.5), lipDark = shade(lip, -0.18), lipLight = shade(lip, 0.35)
   const inside: RGB = [120, 40, 52]
   if (state === 'beam' || state === 'o') {
     const w = state === 'beam' ? 80 : 26, top = state === 'beam' ? my - 14 : my - 12, bottom = state === 'beam' ? my + 40 : my + 22
@@ -938,6 +956,8 @@ function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: Sk
   ctx.lineWidth = state === 'wince' ? 3.5 : 2.6
   ctx.beginPath(); ctx.moveTo(L.x + 2, L.y); ctx.quadraticCurveTo(mx, my + lineSag + 4, R.x - 2, R.y); ctx.stroke()
   blob(ctx, mx + 6, my + lineSag + lowerH * 0.55, cw * 0.36, 5, lipLight, 0.75)
+  blob(ctx, mx - 6, my + lineSag + lowerH * 0.5, cw * 0.2, 3.5, [255, 255, 255], 0.85)
+  blob(ctx, mx + 22, my + lineSag + lowerH * 0.62, cw * 0.08, 2, [255, 255, 255], 0.7)
   blob(ctx, mx - 16, my - upperH + 6, 12, 3, lipLight, 0.5)
   for (const s of [-1, 1]) blob(ctx, mx + s * (cw + 4), my + corner, 8, 8, skin.deep, state === 'smile' ? 0.45 : 0.3)
   if (state === 'wince') { ctx.strokeStyle = rgba(skin.deep, 0.3); ctx.lineWidth = 1.5; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(mx + s * (cw + 6), my + 6); ctx.quadraticCurveTo(mx + s * (cw + 14), my + 16, mx + s * (cw + 10), my + 26); ctx.stroke() } }

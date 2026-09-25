@@ -1,7 +1,7 @@
 import type { Look } from '../core/customers.ts'
 import { makeRng } from '../core/rng.ts'
 import { OUTFIT } from './palette.ts'
-import { blob, blurred, canvas, fbm, hex, rgba, shade, smoothPath, terry, type Ctx } from './paint.ts'
+import { blob, blurred, canvas, hex, rgba, shade, smoothPath, terry, type Ctx } from './paint.ts'
 
 /**
  * What surrounds the body part in a close-up, 1600 x 1600 centred on the 1024 art sheet (so it still fills
@@ -103,53 +103,56 @@ export function paintBackdrop(kind: 'facial' | 'nails', look: Look): HTMLCanvasE
     terry(ctx, o + 60, o + 860, 904, 240, towel, 91, 0.014)
     ctx.restore()
   } else {
-    // A cream marble nail desk.
-    ctx.fillStyle = '#f7f1ee'
-    ctx.fillRect(0, 0, BACKDROP, BACKDROP)
-    ctx.globalCompositeOperation = 'multiply'
-    ctx.globalAlpha = 0.14
-    ctx.drawImage(fbm(BACKDROP, 240, 4, 77), 0, 0)
-    ctx.globalAlpha = 1
-    ctx.globalCompositeOperation = 'source-over'
-    blurred(ctx, 3, () => {
-      for (let i = 0; i < 12; i++) {
-        ctx.strokeStyle = `rgba(206,176,186,${r.range(0.15, 0.35)})`
-        ctx.lineWidth = r.range(1.5, 4)
-        ctx.beginPath()
-        let x = r.range(0, BACKDROP), y = 0
-        ctx.moveTo(x, y)
-        while (y < BACKDROP) { x += r.range(-80, 80); y += r.range(60, 160); ctx.lineTo(x, y) }
-        ctx.stroke()
-      }
-    })
-    blob(ctx, 200, 150, 700, 500, [255, 244, 226], 0.5)
-    // A folded hand towel under the hand.
-    const towel = hex(OUTFIT[(look.outfit + 2) % OUTFIT.length])
-    blurred(ctx, 24, () => { ctx.fillStyle = 'rgba(120,90,120,0.3)'; ctx.beginPath(); ctx.roundRect(o + 60, o + 150, 920, 1100, 60); ctx.fill() })
+    // The far end of the room, out of focus: a pastel wall with a shelf of polish bottles and warm light.
+    const [room, rctx] = canvas(BACKDROP)
+    const wall = rctx.createLinearGradient(0, 0, 0, 420)
+    wall.addColorStop(0, '#f3dcef'); wall.addColorStop(1, '#ecd0e4')
+    rctx.fillStyle = wall
+    rctx.fillRect(0, 0, BACKDROP, 420)
+    blob(rctx, 1300, 80, 600, 300, [255, 240, 214], 0.8)
+    rctx.fillStyle = '#fff6f9'; rctx.fillRect(120, 250, 1360, 16)
+    for (let x = 150; x < 1440; x += r.range(46, 70)) {
+      const col = hex([0xf4a6b8, 0xd83a56, 0xb79ce6, 0x94dcc0, 0xf6dd8a, 0x8ec5f2, 0xf5836b][r.int(0, 6)])
+      rctx.fillStyle = rgba(col); rctx.beginPath(); rctx.roundRect(x, 196, 34, 54, 10); rctx.fill()
+      rctx.fillStyle = '#3c3048'; rctx.fillRect(x + 11, 170, 12, 28)
+    }
+    for (let i = 0; i < 18; i++) blob(rctx, r.range(0, 1600), r.range(0, 360), r.range(14, 40), r.range(14, 40), [255, 236, 214], r.range(0.3, 0.7), 0.7)
+    ctx.save(); ctx.filter = 'blur(12px)'; ctx.drawImage(room, 0, 0); ctx.restore()
+    // The desk: a soft cream top with a gentle sheen, a little out of focus toward the far edge.
+    const [desk, dctx] = canvas(BACKDROP)
+    const dg = dctx.createLinearGradient(0, 330, 0, BACKDROP)
+    dg.addColorStop(0, '#f6e9ec'); dg.addColorStop(0.4, '#fbf3f1'); dg.addColorStop(1, '#f3e4e3')
+    dctx.fillStyle = dg
+    dctx.beginPath(); dctx.roundRect(-40, 330, BACKDROP + 80, BACKDROP, 60); dctx.fill()
+    blob(dctx, 420, 620, 520, 260, [255, 255, 255], 0.55)
+    dctx.fillStyle = 'rgba(200,160,176,0.35)'; dctx.fillRect(0, 330, BACKDROP, 10)
+    ctx.save(); ctx.filter = 'blur(3px)'; ctx.drawImage(desk, 0, 0); ctx.restore()
+    // A soft folded towel under the hand, with rolled edges.
+    const towel = shade(hex(OUTFIT[(look.outfit + 2) % OUTFIT.length]), 0.45)
+    const tx = o + 70, ty = o + 110, tw = 880, th = 1100
+    blurred(ctx, 26, () => { ctx.fillStyle = 'rgba(140,90,120,0.3)'; ctx.beginPath(); ctx.roundRect(tx + 16, ty + 26, tw, th, 70); ctx.fill() })
     ctx.save()
-    ctx.beginPath(); ctx.roundRect(o + 40, o + 120, 940, 1100, 60)
-    const tg = ctx.createLinearGradient(0, o + 120, 0, o + 1200)
-    tg.addColorStop(0, rgba(shade(towel, 0.4))); tg.addColorStop(1, rgba(shade(towel, 0.15)))
+    ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 70)
+    const tg = ctx.createLinearGradient(tx, ty, tx + tw, ty + th)
+    tg.addColorStop(0, rgba(shade(towel, 0.35))); tg.addColorStop(1, rgba(shade(towel, -0.05)))
     ctx.fillStyle = tg
     ctx.fill()
     ctx.clip()
-    terry(ctx, o + 40, o + 120, 940, 1100, shade(towel, 0.3), 13, 0.012)
-    ctx.fillStyle = rgba(shade(towel, -0.1), 0.5)
-    ctx.fillRect(o + 40, o + 1080, 940, 16)
+    terry(ctx, tx, ty, tw, th, towel, 13, 0.02)
+    blurred(ctx, 12, () => {
+      for (let i = 0; i < 5; i++) {
+        const y = ty + 180 + i * 190 + r.range(-40, 40)
+        ctx.strokeStyle = i % 2 ? rgba(shade(towel, 0.4), 0.6) : rgba(shade(towel, -0.18), 0.4)
+        ctx.lineWidth = r.range(16, 28)
+        ctx.beginPath(); ctx.moveTo(tx - 20, y); ctx.quadraticCurveTo(tx + tw / 2, y + r.range(-50, 50), tx + tw + 20, y + r.range(-30, 30)); ctx.stroke()
+      }
+    })
     ctx.restore()
-    // A glass bowl of warm water, cotton balls and polish bottles, out of focus.
-    blurred(ctx, 8, () => {
-      ctx.fillStyle = 'rgba(210,236,250,0.8)'; ctx.beginPath(); ctx.ellipse(1400, 1250, 170, 120, 0, 0, Math.PI * 2); ctx.fill()
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 10; ctx.beginPath(); ctx.ellipse(1400, 1250, 170, 120, 0, 0, Math.PI * 2); ctx.stroke()
-      blob(ctx, 1350, 1210, 60, 30, [255, 255, 255], 0.6)
-      for (let i = 0; i < 5; i++) { const x = 140 + i * 70, y = 1380 + (i % 2) * 50; blob(ctx, x, y, 34, 34, [255, 255, 255], 1, 0.6) }
-      const bottles = [0xf4a6b8, 0xb79ce6, 0x94dcc0, 0xd83a56]
-      bottles.forEach((col, i) => {
-        const x = 120 + i * 95, y = 140
-        ctx.fillStyle = rgba(hex(col)); ctx.beginPath(); ctx.roundRect(x, y, 70, 90, 16); ctx.fill()
-        ctx.fillStyle = '#3c3048'; ctx.beginPath(); ctx.roundRect(x + 18, y - 70, 34, 72, 8); ctx.fill()
-        blob(ctx, x + 22, y + 26, 10, 22, [255, 255, 255], 0.6)
-      })
+    blurred(ctx, 3, () => {
+      ctx.strokeStyle = rgba(shade(towel, 0.5), 0.95); ctx.lineWidth = 22; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(tx + 40, ty + 14); ctx.lineTo(tx + tw - 40, ty + 14); ctx.stroke()
+      ctx.strokeStyle = rgba(shade(towel, -0.2), 0.4); ctx.lineWidth = 6
+      ctx.beginPath(); ctx.moveTo(tx + 40, ty + 30); ctx.lineTo(tx + tw - 40, ty + 30); ctx.stroke()
     })
   }
   vignette(ctx)
