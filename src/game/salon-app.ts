@@ -122,6 +122,16 @@ export class SalonGame {
     window.addEventListener('resize', () => this.resize())
     window.addEventListener('beforeunload', () => this.save())
     this.app.ticker.add(t => this.frame(Math.min(0.05, t.deltaMS / 1000)))
+    // A hidden tab gets no animation frames: while hosting, keep the day and the guests' snapshots going.
+    let last = performance.now()
+    setInterval(() => {
+      const now = performance.now()
+      const dt = Math.min(0.25, (now - last) / 1000)
+      last = now
+      if (!document.hidden || !this.host || !this.hostLink?.paired) return
+      tick(this.host, dt)
+      this.sendSnap()
+    }, 100)
     this.toTitle()
     const params = new URLSearchParams(location.search)
     const room = params.get('join') ?? params.get('room')

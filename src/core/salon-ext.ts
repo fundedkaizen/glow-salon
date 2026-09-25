@@ -252,6 +252,12 @@ export function reduceExt(state: SalonState, by: number, action: ExtAction): boo
 /** Staff at work, tea breaks, and cheerful staff keeping the waiting room happy. */
 export function extTick(state: SalonState, dt: number) {
   const e = ext(state)
+  // A treatment everyone walked away from waits, seated, for whoever comes next.
+  for (const st of state.stations) {
+    if (st.lead !== null || st.customer === null) continue
+    const c = state.customers.find(x => x.id === st.customer)
+    if (c && c.state === 'treating') c.state = 'seated'
+  }
   if (!e.staff.length) return
   const active = e.staff.filter(s => s.breakLeft <= 0)
   if (active.some(s => s.traits.includes('cheerful'))) {

@@ -152,6 +152,16 @@ export function run() {
   check('an old save without ext still loads', validate({ ...toSave(state), ext: undefined })!.ext!.staff.length === 0)
   check('a broken ext is cleaned', validateExt({ staff: [{ nope: 1 }], campaigns: [{ id: 'bogus', day: 0 }], salonName: '<b>' }).staff.length === 0)
 
+  // Walking away from a treatment leaves the customer seated for someone else.
+  state = startDay({ ...newSave(7), money: 100 }, [])
+  reduce(state, 0, { a: 'join', name: 'A' })
+  reduce(state, 0, { a: 'open' })
+  runUntil(state, () => state.customers.some(c => c.state === 'seated'))
+  reduce(state, 0, { a: 'work', station: 's0' })
+  reduce(state, 0, { a: 'stopWork', station: 's0' })
+  tick(state, 0.1)
+  check('a left treatment waits, seated', state.customers.find(c => c.station === 's0')?.state === 'seated')
+
   // Co-op: big hires wait for everyone.
   state = startDay({ ...newSave(99), money: 5000, owned: ['facial-chair-2'] }, [])
   reduce(state, 0, { a: 'join', name: 'A' })

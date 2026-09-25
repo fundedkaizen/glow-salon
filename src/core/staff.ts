@@ -64,13 +64,16 @@ export function candidatesFor(seed: number, week: number): Candidate[] {
     if (r.chance(0.45)) { const t = r.pick(STAFF_TRAITS).id; if (!traits.includes(t)) traits.push(t) }
     // One star skill, the other a little lower; later weeks bring slightly stronger people.
     const lift = Math.min(1, week * 0.15)
-    const star = r.chance(0.5) ? 'facial' : 'nails'
+    // Each week: one specialist, one all-rounder and one in between, so the choice is a real one.
+    const star = i === 1 ? (r.chance(0.5) ? 'facial' : 'nails') : r.chance(0.5) ? 'facial' : 'nails'
     const skills: Skills = { facial: 1, nails: 1 }
-    skills[star] = Math.min(5, 2 + (r.chance(0.35 + lift * 0.3) ? 1 : 0))
-    skills[star === 'facial' ? 'nails' : 'facial'] = r.chance(0.5) ? 2 : 1
+    const other = star === 'facial' ? 'nails' : 'facial'
+    if (i === 0) { skills[star] = Math.min(5, 3 + (r.chance(0.2 + lift * 0.4) ? 1 : 0)); skills[other] = 1 }
+    else if (i === 1) { skills[star] = 2 + (r.chance(0.2 + lift * 0.3) ? 1 : 0); skills[other] = 2 }
+    else { skills[star] = 2 + (r.chance(0.35 + lift * 0.3) ? 1 : 0); skills[other] = r.chance(0.5) ? 2 : 1 }
     const total = skills.facial + skills.nails
-    const wage = 14 + total * 5
-    out.push({ name: first, look: randomLook(r), traits, skills, wage, fee: wage * 4, seed: r.seed() })
+    const wage = 10 + total * 5 + (traits.includes('perfectionist') ? 3 : 0) + r.int(0, 3)
+    out.push({ name: first, look: randomLook(r), traits, skills, wage, fee: Math.round((wage * 4) / 5) * 5, seed: r.seed() })
   }
   return out
 }

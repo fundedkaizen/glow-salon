@@ -286,7 +286,7 @@ export class Computer {
     const team = e?.staff ?? []
     this.main.append(h('div', 'gs-section', `Your team <small>${team.length} of ${Math.min(MAX_STAFF, Math.max(0, s.stations.length - 1 + Math.floor(s.stations.length / 3)))} places</small>`))
     if (!team.length) this.main.append(h('div', 'gs-empty', s.stations.length < 2 ? 'Staff work at your extra stations. Buy a second station first, then hire someone lovely.' : 'Nobody yet. Pick someone from this week’s candidates below.'))
-    const grid = h('div', 'gs-grid')
+    const grid = h('div', 'gs-grid gs-grid-wide')
     for (const m of team) grid.append(this.staffCard(m))
     this.main.append(grid)
     const week = weekOf(s.day)

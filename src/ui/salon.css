@@ -133,6 +133,7 @@
 .gs-section small { font: 700 12px var(--gs-font); color: var(--gs-ink-soft); }
 .gs-section .gs-chip-lite { font: 800 11px var(--gs-font); padding: 3px 9px; border-radius: 99px; background: var(--gs-mint-2); color: var(--gs-mint-deep); }
 .gs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 12px; }
+.gs-grid-wide { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
 .gs-card { position: relative; background: var(--gs-card); border-radius: 20px; padding: 12px; box-shadow: 0 4px 14px rgba(140, 70, 110, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.9); display: flex; flex-direction: column; gap: 8px; transition: transform 0.2s var(--gs-ease), box-shadow 0.2s; animation: gs-card-in 0.4s var(--gs-ease) both; }
 .gs-card:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(140, 70, 110, 0.16); }
 @keyframes gs-card-in { from { opacity: 0; transform: translateY(12px) scale(0.96); } }
