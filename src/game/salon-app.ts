@@ -129,7 +129,9 @@ export class SalonGame {
       const now = performance.now()
       const dt = Math.min(0.25, (now - last) / 1000)
       last = now
-      if (!document.hidden || !this.host || !this.hostLink?.paired) return
+      // Hidden, or simply not getting frames (a background tab or window some browsers pause without hiding).
+      const stalled = now - this.lastFrame > 400
+      if ((!document.hidden && !stalled) || !this.host || !this.hostLink?.paired) return
       tick(this.host, dt)
       this.sendSnap()
     }, 100)
@@ -431,7 +433,10 @@ export class SalonGame {
 
   // ------------------------------------------------------------------ the frame
 
+  private lastFrame = performance.now()
+
   private frame(dt: number) {
+    this.lastFrame = performance.now()
     if (this.mode === 'title' && this.demo) {
       const d = this.demo
       tick(d.state, dt)
