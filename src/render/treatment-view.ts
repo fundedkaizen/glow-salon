@@ -375,6 +375,11 @@ export class TreatmentView {
     this.hud.setRole('lead')
     this.hud.setStep(this.session.step, this.session.status)
     if (this.session.ready) this.advanceAt = this.time + 0.4
+    // Already at the reveal: the new lead needs the Done button, or the customer would wait forever.
+    if (this.cardShown) {
+      const stars = this.result ? starsFor(this.result, this.opts.mood, this.opts.ambience) : 5
+      this.hud.showReveal({ name: this.opts.customer.name, stars, lead: true })
+    }
   }
 
   /** For browser checks: art-space centres of grid cells the current step still needs worked. */
