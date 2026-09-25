@@ -32,6 +32,8 @@ export type SalonExt = {
   decorOrder: string[]
   /** Review lines used lately, so reviews do not repeat. */
   recent: string[]
+  /** How many reviews gave 1, 2, 3, 4 and 5 stars (index 0 is 1 star), for the rating histogram. */
+  stars: number[]
   /** The last day the day-start rules ran (so reloading a day does not run them twice). */
   lastDay: number
   today: { wages: number; pets: number; levelUps: string[]; bias: string[]; seatedAt: Record<string, number>; friendUps: { name: string; level: number; gift: string | null }[] }
@@ -55,7 +57,7 @@ export const DEFAULT_CAT_NAME = 'Mochi'
 const emptyToday = (): SalonExt['today'] => ({ wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [] })
 
 export function newExt(): SalonExt {
-  return { salonName: DEFAULT_SALON_NAME, catName: DEFAULT_CAT_NAME, staff: [], hired: [], week: -1, campaigns: [], loyalty: false, friends: {}, decorOrder: [], recent: [], lastDay: 0, today: emptyToday(), vote: null }
+  return { salonName: DEFAULT_SALON_NAME, catName: DEFAULT_CAT_NAME, staff: [], hired: [], week: -1, campaigns: [], loyalty: false, friends: {}, decorOrder: [], recent: [], stars: [0, 0, 0, 0, 0], lastDay: 0, today: emptyToday(), vote: null }
 }
 
 /** The ext of a state, created on first use (older saves have none). */
@@ -79,6 +81,7 @@ export function validateExt(raw: unknown): SalonExt {
   e.friends = d.friends && typeof d.friends === 'object' ? Object.fromEntries(Object.entries(d.friends).filter(([, v]) => typeof v === 'number').map(([k, v]) => [k, Math.max(0, Math.min(5, v))])) : {}
   e.decorOrder = Array.isArray(d.decorOrder) ? d.decorOrder.filter(id => typeof id === 'string' && DECOR_ITEM_BY_ID[id]).slice(-60) : []
   e.recent = Array.isArray(d.recent) ? d.recent.filter(l => typeof l === 'string').slice(-40) : []
+  e.stars = Array.isArray(d.stars) && d.stars.length === 5 && d.stars.every(n => Number.isInteger(n) && n >= 0) ? [...d.stars] : [0, 0, 0, 0, 0]
   e.lastDay = Number.isInteger(d.lastDay) ? d.lastDay! : 0
   return e
 }
@@ -315,6 +318,7 @@ export function extReview(state: SalonState, c: Customer, by: number, stars: num
     seed: c.plan.seed, voice: persona.voice, archetype: persona.archetype, budget: persona.budget, price, look: c.plan.look,
     salon: e.salonName, staff: who, cat: e.today.pets > 0, recent: e.recent,
   })
+  e.stars[Math.max(1, Math.min(5, review.stars)) - 1]++
   if (c.plan.regular && stars >= 4) {
     const before = e.friends[c.plan.regular] ?? 0
     const level = Math.min(5, before + 1)

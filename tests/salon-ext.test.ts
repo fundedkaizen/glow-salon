@@ -132,6 +132,7 @@ export function run() {
   }
   check('the day ends', state.phase === 'receipt')
   const rec = receipt(state)
+  check('the star histogram counts every review', ext(state).stars.reduce((a, b) => a + b, 0) === state.stats.served)
   check('wages are on the receipt', rec.wages === staff.wage && rec.net === rec.revenue + rec.tips - rec.costs - rec.wages)
   const persona = personaOf(state, state.schedule[0])
   check('persona readable from state', typeof persona.voice === 'string')

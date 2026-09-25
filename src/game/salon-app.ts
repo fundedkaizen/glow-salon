@@ -267,7 +267,16 @@ export class SalonGame {
 
   private sendSnap() { if (this.host && this.link?.open) this.link.toGuest({ t: 'snap', s: publicState(this.host) }) }
 
-  private save() { if (this.host) writeSave(store, toSave(this.host)) }
+  /**
+   * Saves happen at day boundaries only: before opening (as is) and at closing time (as the next morning).
+   * A day left half-way is replayed from its start, so its earnings are never counted twice.
+   */
+  private save() {
+    const s = this.host
+    if (!s) return
+    if (s.phase === 'prep') writeSave(store, toSave(s))
+    else if (s.phase === 'receipt') writeSave(store, { ...toSave(s), day: s.day + 1 })
+  }
 
   // ------------------------------------------------------------------ the computer
 
