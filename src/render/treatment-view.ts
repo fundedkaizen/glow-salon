@@ -11,6 +11,7 @@ import { bits } from '../art/bits.ts'
 import { toolArt } from '../art/tools.ts'
 import { PLAYER_COLORS } from '../art/palette.ts'
 import { sfx, type LoopName, type LoopVoice } from '../audio/sfx.ts'
+import { music } from '../audio/music.ts'
 import { TreatmentHud } from '../ui/treatment-hud.ts'
 import { FoamField } from './foam.ts'
 import { Particles, easeInOut, easeOutBack } from './particles.ts'
@@ -168,6 +169,8 @@ export class TreatmentView {
     window.addEventListener('keydown', this.onKey)
     sfx.preload(['pop', 'bell', 'sparkle', 'drip', 'suction', 'cloth', 'horsehair', 'hands', 'tapeShort', 'peelSnap', 'paperRip', 'bubbleTiny', 'foamHiss', 'snip', 'glass', 'reveal', 'gel', 'spray'], ['foam', 'water', 'steam', 'fan', 'soak'])
     this.resize(app.screen.width, app.screen.height)
+    // No music during a treatment: only the close, dry tool sounds.
+    music.quiet(true)
     const c = this.cam
     Object.assign(c, this.camGoal)
     // Debug handle for browser checks.
@@ -1062,7 +1065,7 @@ export class TreatmentView {
     bloom.blendMode = 'add'
     bloom.alpha = 0
     this.overFx.addChild(bloom)
-    this.animate(1.4, t => { bloom.alpha = 0.2 * t })
+    this.animate(1.4, t => { bloom.alpha = 0.11 * t })
   }
 
   private updateReveal(dt: number) {
@@ -1151,6 +1154,7 @@ export class TreatmentView {
   destroy() {
     this.destroyed = true
     this.loop?.stop()
+    music.quiet(false)
     const canvas = this.opts.app.canvas
     canvas.removeEventListener('pointerdown', this.onPointer)
     canvas.removeEventListener('pointermove', this.onPointer)
