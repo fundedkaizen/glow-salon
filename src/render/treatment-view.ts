@@ -159,6 +159,8 @@ export class TreatmentView {
         done: () => { sfx.click(); if (this.result) this.opts.onFinish(this.result, this.foam.made) },
       },
     })
+    // Colours already chosen (a resumed treatment) tint their layer.
+    this.session.def.steps.forEach((st, i) => { if (st.choice && this.session.choices[i] !== undefined && st.layer) this.surface.setLayerTint(st.layer, POLISH_COLORS[this.session.choices[i]].hex) })
     // Resumed after the mask dried: it is dry clay now.
     const dryIndex = this.session.def.steps.findIndex(st => st.id === 'dry')
     if (dryIndex >= 0 && this.session.status[dryIndex] === 'done') { this.surface.setLayerMix('mask', 1); this.surface.setLayerGloss('mask', 0.05) }
@@ -325,8 +327,8 @@ export class TreatmentView {
       this.overFx.addChild(this.towel)
     }
     if (step.id === 'cure' && !this.uvLamp) {
-      this.uvGlow = new Sprite(bits.glow()); this.uvGlow.anchor.set(0.5); this.uvGlow.position.set(500, 420); this.uvGlow.scale.set(11, 8); this.uvGlow.tint = 0xa27cff; this.uvGlow.blendMode = 'add'; this.uvGlow.alpha = 0
-      this.uvLamp = new Sprite(toolArt('uvLamp').texture); this.uvLamp.anchor.set(0.5, 0.78); this.uvLamp.position.set(500, 170); this.uvLamp.scale.set(3.4, 2.4); this.uvLamp.alpha = 0
+      this.uvGlow = new Sprite(bits.glow()); this.uvGlow.anchor.set(0.5); this.uvGlow.position.set(500, 400); this.uvGlow.scale.set(9, 6); this.uvGlow.tint = 0x8a6cff; this.uvGlow.blendMode = 'add'; this.uvGlow.alpha = 0
+      this.uvLamp = new Sprite(toolArt('uvLamp').texture); this.uvLamp.anchor.set(0.5, 0.78); this.uvLamp.position.set(490, 250); this.uvLamp.scale.set(2.7, 1.9); this.uvLamp.alpha = 0
       this.overFx.addChild(this.uvGlow, this.uvLamp)
     }
     if (step.id === 'color' && this.session.choices[this.session.step] !== undefined) this.surface.setLayerTint('color', POLISH_COLORS[this.session.choices[this.session.step]].hex)
@@ -988,8 +990,8 @@ export class TreatmentView {
     }
     if (step.id === 'moisturize') skinU[3] = Math.min(0.9, this.session.progress())
     if (step.id === 'cure' && this.uvLamp && this.uvGlow) {
-      this.uvLamp.alpha += (1 - this.uvLamp.alpha) * Math.min(1, dt * 6)
-      this.uvGlow.alpha += ((holding ? 0.8 + Math.sin(this.time * 20) * 0.05 : 0.15) - this.uvGlow.alpha) * Math.min(1, dt * 10)
+      this.uvLamp.alpha += (0.92 - this.uvLamp.alpha) * Math.min(1, dt * 6)
+      this.uvGlow.alpha += ((holding ? 0.42 + Math.sin(this.time * 20) * 0.03 : 0.08) - this.uvGlow.alpha) * Math.min(1, dt * 10)
       if (holding && Math.random() < dt * 10) this.twinkle(300 + Math.random() * 450, 250 + Math.random() * 300, 0.25, 0xd8c8ff)
     }
     // A hint after a few idle seconds at the start of a step.

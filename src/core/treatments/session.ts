@@ -560,6 +560,8 @@ export class TreatmentSession {
   private advance(skip: boolean) {
     const step = this.current
     if (!step) return
+    // A choice nobody made (a skip, or a resumed treatment) falls back to what the customer wanted.
+    if (step.choice && this.choices[this.step] === undefined) this.choices[this.step] = this.wish ?? 0
     if (step.optional) this.status[this.step] = !skip && this.stepTargets().some(t => t.done) ? 'done' : 'todo'
     else this.status[this.step] = skip ? 'skipped' : 'done'
     // The last few percent settle by themselves, so nobody hunts for pixels.
