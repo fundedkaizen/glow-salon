@@ -1083,7 +1083,8 @@ function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil
       const r = makeRng(seed + 31)
       const k = p.dirt
       const kf = clamp01((fairOf(skin) - 0.45) / 0.4)
-      const mud = mixRGB([88, 58, 38], [122, 86, 60], kf)
+      // On deeper skin, dust reads as an ashy, grey-brown film (a darker brown would vanish into the skin).
+      const mud = mixRGB(mixRGB([88, 58, 38], [122, 86, 60], kf), [150, 136, 122], 0.55 * (1 - kf))
       // A light dusting (more on the toes).
       l.drawImage(tintedByNoise(S, mud, fbm(S, 44, 3, seed + 31), 0, 0.08 + 0.2 * k), 0, 0)
       // Patches: soft brown clouds with darker cores, more and bigger as it gets worse.
@@ -1325,7 +1326,7 @@ function soleLayers(sole: SkinTone, seed: number, a: FootAnatomy, sil: HTMLCanva
     // Dirt: grey-brown grime on everything that touches the floor; the arch stays clean.
     dirt: () => sheet(sil, l => {
       const kf = clamp01((fairOf(sole) - 0.45) / 0.4)
-      const mud = mixRGB([84, 60, 46], [124, 96, 78], kf)
+      const mud = mixRGB(mixRGB([84, 60, 46], [124, 96, 78], kf), [156, 142, 128], 0.5 * (1 - kf))
       softBatch(l, 22, c => { c.fillStyle = rgba(mud, 0.3 + 0.45 * p.dirt); weight(c, 1) })
       l.globalCompositeOperation = 'destination-in'
       l.drawImage(tintedByNoise(S, [255, 255, 255], fbm(S, 34, 4, seed + 33), 0.35, 1), 0, 0)
