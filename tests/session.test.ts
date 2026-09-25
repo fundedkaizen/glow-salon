@@ -97,6 +97,13 @@ export function run() {
   check('some bare nails, some broken', hands.some(h => !h.polish) && hands.some(h => h.broken.length > 0))
   check('nail lengths vary', new Set(hands.map(h => h.grown.filter(x => x > 0).length)).size >= 3)
   check('same seed, same customer', JSON.stringify(faceProfile(42, false)) === JSON.stringify(faceProfile(42, false)))
+  // Nothing is ever placed on the headband, the hair, the eyes or the lips.
+  let offSkin = 0
+  for (let seed = 1; seed <= 60; seed++) for (const t of new TreatmentSession({ treatment: 'facial', seed, disaster: seed % 5 === 0 }).targets) {
+    if ((t.kind === 'whitehead' || t.kind === 'drop') && !inRegion(REGIONS.skin, t.x, t.y)) offSkin++
+    if (t.kind === 'blackhead' && !inRegion(REGIONS.nose, t.x, t.y)) offSkin++
+  }
+  check('targets always on skin, never under the headband', offSkin === 0, offSkin)
   const a = new TreatmentSession({ treatment: 'facial', seed: 101 }), b = new TreatmentSession({ treatment: 'facial', seed: 102 })
   check('two customers differ', JSON.stringify(a.targets.map(t => [t.kind, Math.round(t.x)])) !== JSON.stringify(b.targets.map(t => [t.kind, Math.round(t.x)])))
 
