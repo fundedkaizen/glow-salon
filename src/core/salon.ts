@@ -3,6 +3,7 @@ import { regularChance, setPayMult, setStarBonus, setTipMult, vipBoost } from '.
 import { ambienceStars, canBuy, customersPerDay, ITEM_BY_ID, needsConfirm, payFor, START_MONEY, STATION_NAME, tipFor, treatmentsUnlocked, type StationKind } from './economy.ts'
 import { blockedGrid, DOOR, DOOR_INSIDE, findPath, SLOTS, SOFA_SEATS, spawnPoint, STANDING, stationSeat, walk, type Pt } from './floor.ts'
 import { campaignBias } from './marketing.ts'
+import { goalFor } from './goals.ts'
 import { addReview, average, starsFor, type Rating, type Review } from './reviews.ts'
 import { ext, extOnClose, extOnStartDay, extraCustomers, extReview, extTick, reduceExt, saveExt, staffAvailableAt, staffShare, type ExtAction, type SalonExt } from './salon-ext.ts'
 import { STAFF_ID_BASE } from './staff.ts'
@@ -171,16 +172,22 @@ export function startDay(save: SaveData, players: Player[] = []): SalonState {
     stats: emptyStats(save, players), pending: null, nextId: 1, events: [], seq: 0,
   }
   state.slots = state.stations.map(s => s.slot)
+  planSchedule(state)
+  extOnStartDay(state)
+  players.forEach(p => { p.station = null; const at = spawnPoint(p.id); p.x = at.x; p.y = at.y })
+  return state
+}
+
+/** Who comes today, for what and when (at dawn, or again when a new treatment is bought before opening). */
+function planSchedule(state: SalonState) {
   const e = ext(state)
   const count = customersPerDay(state.owned, state.day, state.stations.length) + extraCustomers(state)
+  e.names = (e.names ?? []).filter(n => n.d !== state.day)
   state.schedule = planDay({
     day: state.day, seed: state.seed, count, treatments: bookable(state), met: state.met, rating: average(state.rating), bias: campaignBias(e.campaigns),
     avoidNames: namesThisWeek(e, state.day), regularChance: regularChance(state.owned, e.loyalty), vip: vipBoost(state.owned),
   })
   for (const p of state.schedule) if (!p.regular) e.names.push({ n: firstNameOf(p.name), d: state.day })
-  extOnStartDay(state)
-  players.forEach(p => { p.station = null; const at = spawnPoint(p.id); p.x = at.x; p.y = at.y })
-  return state
 }
 
 export function toSave(state: SalonState): SaveData {
@@ -375,6 +382,12 @@ function complete(state: SalonState, id: string, by: number) {
     const slot = state.phase === 'prep' || state.phase === 'receipt' ? -1 : freeSlot(state.stations.map(s => s.slot))
     state.stations.push({ id: `s${state.stations.length}`, kind, slot, customer: null, lead: null, helpers: [], step: 0, steps: TREATMENTS[kind].steps.length, progress: 0 })
     state.slots = state.stations.map(s => s.slot)
+  }
+  // A new treatment bought before opening: today's customers (nobody has arrived yet) can already ask for it.
+  if (state.phase === 'prep' && item.effect.kind === 'treatment') {
+    planSchedule(state)
+    const e = ext(state)
+    if (e.today.goal && !e.today.goal.done) e.today.goal = goalFor(state.seed, state.day, state.schedule.length, state.owned.includes('treat-nails'), state.owned.includes('treat-feet'))
   }
   event(state, { kind: 'bought', text: `Bought ${item.name}`, amount: item.price, player: by, item: id })
 }

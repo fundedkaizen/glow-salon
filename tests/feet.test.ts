@@ -160,6 +160,7 @@ export function run() {
   const state = startDay({ ...newSave(9), day: 6, money: 1000 })
   reduce(state, 0, { a: 'join', name: 'Kai' })
   check('salon: buying the foot spa adds a pedicure chair', reduce(state, 0, { a: 'buy', item: 'treat-feet' }) && state.stations.some(s => s.kind === 'feet'))
+  check('salon: bought before opening, customers can book a pedicure that same day',state.schedule.some(p => p.treatment === 'feet'), state.schedule.map(p => p.treatment))
   const chair = state.stations.find(s => s.kind === 'feet')!
   reduce(state, 0, { a: 'place', station: chair.id, slot: 3 })
   const next = startDay({ ...state, day: 7, ext: state.ext }, state.players)
