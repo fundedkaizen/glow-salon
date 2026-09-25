@@ -41,8 +41,8 @@ def load(path):
 
 def tint(o, colors):
     """Per-object material copies, tinted (as the floor engine does)."""
-    for slot in o.material_slots:
-        m = slot.material
+    for i, slot in enumerate(o.material_slots):
+        m = o.data.materials[i] if i < len(o.data.materials) else slot.material
         if m is None:
             continue
         base = m.name.split('.')[0]
@@ -137,9 +137,9 @@ def main():
     if mode == 'lineup':
         cast = [
             (fem, 'dress', 'long', 'bow', 'idle', 1), (masc, 'suit', 'crop', 'glasses', 'idle', 1), (fem, 'player', 'ponytail', None, 'idle', 1),
-            (fem, 'cardigan', 'bun', 'glasses', 'idle', 1), (masc, 'hoodie', 'curly', None, 'walk', 8), (fem, 'scrubs', 'braids', None, 'idle', 1),
-            (fem, 'dungarees', 'bob', 'flower', 'idle', 1), (masc, 'jacket', 'bun', None, 'idle', 1), (fem, 'sporty', 'curly', None, 'wave', 10),
-            (masc, 'chef', 'crop', None, 'work', 12), (fem, 'jumper', 'long', None, 'idle', 1),
+            (fem, 'cardigan', 'bun', 'glasses', 'idle', 1), (masc, 'hoodie', 'curly', None, 'idle', 1), (fem, 'scrubs', 'braids', None, 'idle', 1),
+            (fem, 'dungarees', 'bob', 'flower', 'idle', 1), (masc, 'jacket', 'bun', None, 'idle', 1), (fem, 'sporty', 'curly', None, 'idle', 1),
+            (masc, 'chef', 'crop', None, 'idle', 1), (fem, 'jumper', 'long', None, 'idle', 1),
         ]
         n = len(cast)
         for i, (kit, o, s, acc, clip, f) in enumerate(cast):

@@ -79,7 +79,7 @@ def people():
         'accessories': {'1': 'bow_<hair>', '2': 'glasses', '3': 'flower_<hair>'},
         'tints': {'Skin': 'SKIN[look.skin].base (multiplies the face and body texture)', 'Hair': 'HAIR[look.hair].base (multiplies the strand texture)',
                   'Brows': 'HAIR[look.hair].dark', 'Eyes': 'the iris colour (people.ts irisForSeed or IRIS); EyeWhite stays',
-                  'Accessory': 'OUTFIT[(look.outfit + 5) % 8]', 'fixed': ['EyeWhite', 'Glasses', 'Lens', 'FlowerCentre']},
+                  'Accessory': 'OUTFIT[(look.outfit + 5) % 8]', 'fixed': ['EyeWhite', 'EyeShine', 'Lashes', 'Sole', 'Glasses', 'Lens', 'FlowerCentre']},
         'animations': sorted((fem or masc)['clips']),
         'clipSeconds': (fem or masc)['clips'],
         'seatedClips': ['sit_chair', 'sit_sofa', 'sit_stool', 'sit_pedicure', 'sleepy'],

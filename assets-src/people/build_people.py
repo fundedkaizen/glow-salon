@@ -48,6 +48,7 @@ def materials(kind):
     for n, (c, r) in PREVIEW.items():
         gs.mat(n, c, rough=r, sheen=SHEEN.get(n, 0.0))
     gs.mat('Lens', 0xffffff, rough=0.05, alpha=0.18)
+    gs.mat('Sole', 0xf4efe9, rough=0.6)
 
 
 def transfer_weights(src, dst):
@@ -131,7 +132,8 @@ def build(kind):
     ubc.smooth_muscles(body, ubc.PROFILE[kind]['smooth'])
     for o in (body, eyes, brows):
         unskin(o)
-    ubc.enlarge_eyes(body, eyes, brows, 1.4, open_lids=1.32)
+    ubc.enlarge_eyes(body, eyes, brows, 1.5, open_lids=1.5)
+    ubc.soften_brows(brows)
     rig.load_mocap(arm)
     J = rig.joints(arm)
     for o in (body, eyes, brows, *pieces.values()):
@@ -148,6 +150,11 @@ def build(kind):
         gs.decimate(pieces[p], 2000)
     head, cut_z = ubc.split_head(body, J)
     head.name = head.data.name = f'head_{kind}'
+    ubc.lighten_sockets(head, eyes, kind)
+    shine, lash = ubc.eye_extras(eyes, lashes=kind == 'fem')
+    eyes = gs.join([eyes, *shine], 'eyes')
+    if lash:
+        brows = gs.join([brows, *lash], 'brows')
     eyes.name = eyes.data.name = 'eyes'
     brows.name = brows.data.name = 'brows'
     M = outfits.marks(J)

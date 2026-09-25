@@ -11,7 +11,10 @@ Writes assets-src/out/ubc_tex/.
 """
 import os
 
-from PIL import Image, ImageOps, ImageStat
+import json
+import sys
+
+from PIL import Image, ImageDraw, ImageOps, ImageStat
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.dirname(HERE)
@@ -56,24 +59,56 @@ def hair(src, dst, size=512):
     Image.merge('RGB', (g, g, g)).save(dst, quality=88, optimize=True)
 
 
-def eye(src, dst):
-    im = Image.open(src).convert('RGBA')
+def eye(src, dst, size=256, iris=0.21):
+    """A cartoon eye for the eyeball's front (its UV centre): a white sclera and a big iris, dark at the top and light
+    at the bottom, a dark ring at its rim and a pupil. Grey, so the Eyes material's colour tints it; the catchlight is
+    a separate white card in front of the eye (the tint would colour a painted one)."""
+    ss = 4
+    W = size * ss
+    im = Image.new('RGB', (W, W), (248, 246, 244))
+    d = ImageDraw.Draw(im)
+    cx = cy = W / 2
+    R = iris * W
+    for k in range(int(R), 0, -1):
+        t = k / R
+        # radial: rim dark, middle light; vertical: top darker
+        v = 0.72 + 0.28 * (1 - t) ** 0.6
+        d.ellipse([cx - k, cy - k, cx + k, cy + k], fill=(int(255 * v),) * 3)
+    grad = Image.new('L', (W, W), 0)
+    gd = ImageDraw.Draw(grad)
+    for y in range(W):
+        gd.line([0, y, W, y], fill=int(max(0, min(255, 150 - (y - (cy - R)) / (2 * R) * 150))))
+    shade = Image.new('RGB', (W, W), (40, 40, 40))
+    mask = Image.new('L', (W, W), 0)
+    ImageDraw.Draw(mask).ellipse([cx - R, cy - R, cx + R, cy + R], fill=255)
+    im.paste(shade, (0, 0), Image.composite(grad, Image.new('L', (W, W), 0), mask))
+    d = ImageDraw.Draw(im)
+    d.ellipse([cx - R, cy - R, cx + R, cy + R], outline=(60, 60, 60), width=int(R * 0.09))
+    pr = R * 0.36
+    d.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=(28, 28, 30))
+    im.resize((size, size), Image.LANCZOS).save(dst, quality=94, optimize=True)
+
+
+def lighten_sockets(path, spots, radius=0.045, amount=0.55):
+    """Lift the dark shading round the eyes in the face texture (spots are UV centres, v up)."""
+    im = Image.open(path).convert('RGB')
+    W, H = im.size
     px = im.load()
-    w, h = im.size
-    cx, cy = w / 2, h / 2
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = px[x, y]
-            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
-            if d < w * 0.12:
-                v = int(0.3 * r + 0.59 * g + 0.11 * b)
-                v = min(255, int(v * 2.3 + 20))
-                px[x, y] = (v, v, v, a)
-            else:
-                # the pink surround reads as a blush on the lids; make it a neutral soft white
-                if r > g + 20:
-                    px[x, y] = (238, 232, 230, a)
-    im.convert('RGB').save(dst, quality=92, optimize=True)
+    for (u, v) in spots:
+        cx, cy = u * W, (1 - v) * H
+        r = radius * W
+        for y in range(int(cy - r), int(cy + r)):
+            for x in range(int(cx - r), int(cx + r)):
+                if not (0 <= x < W and 0 <= y < H):
+                    continue
+                d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 / r
+                if d >= 1:
+                    continue
+                k = amount * (1 - d * d) ** 2
+                c = px[x, y]
+                target = 0.9 * 255
+                px[x, y] = tuple(int(ch + (target - ch) * k) if ch < target else ch for ch in c)
+    im.save(path, quality=88, optimize=True)
 
 
 if __name__ == '__main__':
@@ -85,4 +120,9 @@ if __name__ == '__main__':
     Image.open(os.path.join(V, 'hair', 'T_Hair_2_Normal.png')).convert('RGB').resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, 'hair_n.jpg'), quality=90)
     Image.open(os.path.join(V, 'hair', 'T_Hair_1_Normal.png')).convert('RGB').resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, 'hair1_n.jpg'), quality=90)
     eye(os.path.join(V, 'body', 'T_Eye_Brown.png'), os.path.join(OUT, 'eye.jpg'))
+    # the eye sockets' UV spots, measured by the Blender build (assets-src/out/eye_uv.json), when known
+    spots = os.path.join(os.path.dirname(OUT), 'eye_uv.json')
+    if os.path.exists(spots):
+        for kind, uv in json.load(open(spots)).items():
+            lighten_sockets(os.path.join(OUT, f'skin_{kind}.jpg'), uv)
     print('wrote', sorted(os.listdir(OUT)))
