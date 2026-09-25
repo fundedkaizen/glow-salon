@@ -22,6 +22,7 @@ pack() { # pack <src.glb> <dst under public/models> [extra gltfpack flags]
 if [ "$WHAT" = all ] || [ "$WHAT" = people ]; then
   python assets-src/people/prep_ubc_textures.py
   python assets-src/people/face_paint.py preview
+  python assets-src/furniture/floor_texture.py
   "$BLENDER" -b --python assets-src/people/build_people.py -- fem blend > assets-src/out/build_fem.log 2>&1 &
   P=$!
   "$BLENDER" -b --python assets-src/people/build_people.py -- masc > assets-src/out/build_masc.log 2>&1
