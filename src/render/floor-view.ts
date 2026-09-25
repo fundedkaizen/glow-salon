@@ -65,7 +65,7 @@ type PlayerView = { person: Person; tag: Container; x: number; y: number }
 type StaffView = { person: Person; tag: Container; x: number; y: number; path: Pt[]; goal: Pt; tea: Sprite; tool: Container; puff: number }
 
 const TAG_FONT = 'Nunito, system-ui, sans-serif'
-const HEAD_TOP = 132
+const HEAD_TOP = 131
 
 /** Players have no customisation yet: a look from their name, so each keeps theirs. */
 export function playerLook(id: number, name: string): Look {
@@ -491,7 +491,7 @@ export class FloorView {
       let v = this.customers.get(c.id)
       if (!v) {
         const persona = personaFor(c.plan, { rating: state.stats.ratingBefore, bias: state.ext?.today.bias })
-        const person = new Person(withFigure(c.plan.look, c.plan.name, persona.archetype, c.plan.seed), 'customer')
+        const person = new Person(withFigure(c.plan.look, c.plan.name, persona.archetype, c.plan.seed), 'customer', undefined, persona.archetype, c.plan.seed)
         const bubble = new Container()
         const bg = new Graphics()
         bg.roundRect(-19, -19, 38, 34, 15).fill({ color: 0xffffff }).stroke({ width: 1.4, color: 0xe9c2d0 })
