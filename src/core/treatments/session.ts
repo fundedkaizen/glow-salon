@@ -123,11 +123,11 @@ export function hitRadius(target: Target) {
 
 /** Where whiteheads gather, by cluster: boxes in art space [x0, x1, y0, y1]. */
 const ZONES: Record<string, [number, number, number, number][]> = {
-  forehead: [[380, 644, 330, 410]],
-  tzone: [[420, 604, 340, 400], [470, 554, 540, 600], [440, 584, 820, 880]],
+  forehead: [[380, 644, 388, 432]],
+  tzone: [[420, 604, 390, 430], [470, 554, 540, 600], [440, 584, 820, 880]],
   chin: [[420, 604, 810, 890]],
   cheeks: [[300, 420, 600, 760], [604, 724, 600, 760]],
-  scattered: [[300, 420, 600, 760], [604, 724, 600, 760], [430, 594, 820, 890], [400, 624, 330, 410], [470, 554, 560, 600]],
+  scattered: [[300, 420, 600, 760], [604, 724, 600, 760], [430, 594, 820, 880], [400, 624, 390, 432], [470, 554, 560, 600]],
 }
 
 export class TreatmentSession {
@@ -282,12 +282,16 @@ export class TreatmentSession {
       place(f.deep, ZONES.scattered, 70, (x, y) => add('whitehead', x, y, r.range(1.15, 1.5), undefined, { stage: 2 }))
       const blackheads: { x: number; y: number }[] = []
       for (let tries = 0; blackheads.length < f.blackheads && tries < 800; tries++) {
-        const x = FACE.nose.x + r.range(-66, 66), y = FACE.nose.y + r.range(-40, 48)
-        if (!inRegion(REGIONS.nose, x, y) || !spaced(blackheads, x, y, 16)) continue
+        const side = r.chance(0.5) ? -1 : 1
+        const zone = r()
+        // Mostly the sides of the nose and the creases by the wings; a few on the bridge and tip.
+        const x = zone < 0.45 ? FACE.nose.x + side * r.range(22, 56) : zone < 0.8 ? FACE.nose.x + side * r.range(44, 70) : FACE.nose.x + r.range(-20, 20)
+        const y = zone < 0.45 ? FACE.nose.y + r.range(-44, 10) : zone < 0.8 ? FACE.nose.y + r.range(8, 40) : FACE.nose.y + r.range(-30, 0)
+        if (!inRegion(REGIONS.nose, x, y) || !spaced(blackheads, x, y, 14)) continue
         blackheads.push({ x, y })
-        add('blackhead', x, y, r.range(0.5, 1.1))
+        add('blackhead', x, y, r.range(0.4, 1.25))
       }
-      for (const [x, y] of [[512, 368], [372, 650], [652, 650], [512, 862], [512, 582]]) add('drop', x, y, 1)
+      for (const [x, y] of [[512, 410], [372, 650], [652, 650], [512, 850], [512, 582]]) add('drop', x, y, 1)
     } else if (h) {
       HAND.fingers.forEach((finger, i) => {
         if (h.grown[i] <= 0) return

@@ -237,7 +237,7 @@ export class TreatmentView {
       const head = sprite(p?.head ?? bits.whiteheadHead(), 0.3 * t.size)
       head.visible = !deep
     }
-    else if (t.kind === 'blackhead') { sprite(bits.blackhead(), 0.32 * t.size); const plug = sprite(bits.plug(), 0.4 * t.size, 0.1); plug.visible = false }
+    else if (t.kind === 'blackhead') { sprite(bits.blackhead(), 0.44 * t.size); const plug = sprite(bits.plug(), 0.4 * t.size, 0.1); plug.visible = false }
     else if (t.kind === 'drop' || t.kind === 'patch') { const r = sprite(bits.ring(), t.kind === 'drop' ? 0.9 : 0.7); if (t.kind === 'patch') r.tint = 0xf49ac0; r.visible = false }
     else if (t.kind === 'tip') {
       const f = HAND.fingers[t.n ?? 0]

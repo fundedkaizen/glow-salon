@@ -148,13 +148,17 @@ export const bits = {
     ctx.beginPath(); ctx.ellipse(38, 38, 9, 6, -0.6, 0, Math.PI * 2); ctx.fill()
     blob(ctx, 58, 60, 6, 4, [255, 255, 255], 0.5)
   }),
-  blackhead: () => make('blackhead', 48, 48, ctx => {
-    blob(ctx, 24, 25, 20, 20, [120, 80, 60], 0.35)
-    const g = ctx.createRadialGradient(22, 22, 1, 24, 24, 9)
-    g.addColorStop(0, '#5d4535'); g.addColorStop(0.7, '#3e2b20'); g.addColorStop(1, 'rgba(62,43,32,0)')
+  blackhead: () => make('blackhead', 64, 64, ctx => {
+    // A slightly raised pore: light on its top-left rim, shaded below, with a dark plug in the opening.
+    blob(ctx, 34, 36, 22, 20, [90, 50, 40], 0.22)
+    ctx.lineWidth = 3
+    ctx.strokeStyle = 'rgba(255,245,235,0.45)'; ctx.beginPath(); ctx.arc(32, 32, 11, Math.PI * 0.9, Math.PI * 1.9); ctx.stroke()
+    ctx.strokeStyle = 'rgba(90,50,40,0.35)'; ctx.beginPath(); ctx.arc(32, 32, 11, Math.PI * -0.1, Math.PI * 0.9); ctx.stroke()
+    const g = ctx.createRadialGradient(30, 30, 1, 32, 32, 8)
+    g.addColorStop(0, '#6a4e3a'); g.addColorStop(0.6, '#3b2a20'); g.addColorStop(1, 'rgba(59,42,32,0)')
     ctx.fillStyle = g
-    ctx.beginPath(); ctx.arc(24, 24, 9, 0, Math.PI * 2); ctx.fill()
-    blob(ctx, 21, 21, 2.5, 2, [255, 240, 220], 0.6)
+    ctx.beginPath(); ctx.arc(32, 32, 8, 0, Math.PI * 2); ctx.fill()
+    blob(ctx, 29, 29, 2.4, 1.8, [255, 240, 220], 0.7)
   }),
   ring: () => make('ring', 128, 128, ctx => {
     blurred(ctx, 4, () => { ctx.strokeStyle = 'rgba(255,215,140,0.95)'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(64, 64, 46, 0, Math.PI * 2); ctx.stroke() })
