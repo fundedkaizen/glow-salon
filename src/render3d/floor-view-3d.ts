@@ -32,6 +32,8 @@ import { disposeGroup, G, Kit, tf } from './kit.ts'
 import { lenX, lenZ, ROOM3, toSim, toWorld, turnTo, yawFor } from './mapping.ts'
 import { moodBubble, nameTag, speech, toolBubble, waitDots } from './overlay.ts'
 import { Person3D, type Tool3 } from './person3d.ts'
+import { ModelPerson, modelPerson } from './model-person.ts'
+import { loadPeople } from './people-models.ts'
 import { buildRoom, type RoomParts } from './room.ts'
 import { stageFor, type Stage } from './stage.ts'
 import { blobTexture, fromCanvas, glowTexture, padTexture, plaqueTexture, ringTexture, rugTexture, slotTexture, tex } from './textures.ts'
@@ -45,9 +47,9 @@ import { blobTexture, fromCanvas, glowTexture, padTexture, plaqueTexture, ringTe
  */
 type Target = { kind: 'station'; id: string; x: number; y: number } | { kind: 'computer'; x: number; y: number } | { kind: 'cat'; x: number; y: number }
 
-type CustomerView = { person: Person3D; x: number; y: number; yaw: number; bubble: Container; ring: Graphics; say: Container | null; sayT: number; said: boolean; lastState: string; alpha: number; dots: Container; waitT: number; seatK: number; head: Vector3 }
-type PlayerView = { person: Person3D; tag: Container; x: number; y: number; yaw: number; name: string; workK: number; head: Vector3 }
-type StaffView = { person: Person3D; tag: Container; x: number; y: number; yaw: number; path: Pt[]; goal: Pt; tea: Container; tool: { root: Container; icon: PixiSprite }; puff: number; name: string; workK: number; head: Vector3 }
+type CustomerView = { person: FloorPerson; look: () => FloorPerson; x: number; y: number; yaw: number; bubble: Container; ring: Graphics; say: Container | null; sayT: number; said: boolean; lastState: string; alpha: number; dots: Container; waitT: number; seatK: number; head: Vector3 }
+type PlayerView = { person: FloorPerson; look: () => FloorPerson; tag: Container; x: number; y: number; yaw: number; name: string; workK: number; head: Vector3 }
+type StaffView = { person: FloorPerson; look: () => FloorPerson; tag: Container; x: number; y: number; yaw: number; path: Pt[]; goal: Pt; tea: Container; tool: { root: Container; icon: PixiSprite }; puff: number; name: string; workK: number; head: Vector3 }
 type StationView = { nodes: StationNodes; box: Box3; center: Vector3; glow: Mesh; ring: Graphics; label: Container; text: Text }
 /** A grey ghost of something to buy next: where it stands, what a tap hits, and its price badge. */
 type BuyGhost = { item: Item; slot: number; box: Box3; anchor: Vector3; badge: Container; ph: number }
@@ -58,6 +60,12 @@ type StylePiece = { key: string; box: Box3; at: Vector3 }
 const GHOST_MAT = new MeshStandardMaterial({ color: 0xe6e2ea, roughness: 0.85, metalness: 0, transparent: true, opacity: 0.55, emissive: 0xffffff, emissiveIntensity: 0.1 })
 
 const { w: RW, d: RD } = ROOM3
+
+/** A person on the floor: the modelled one once the models have loaded, else the stand-in. */
+type FloorPerson = Person3D | ModelPerson
+function makePerson(look: import('../core/customers.ts').Look, role: 'customer' | 'player' | 'staff', tint?: number, archetype?: string, seed?: number): FloorPerson {
+  return modelPerson(look, role, tint, archetype, seed) ?? new Person3D(look, role, tint, archetype)
+}
 const _v = new Vector3()
 const _v2 = new Vector3()
 
@@ -125,7 +133,7 @@ export class FloorView3D {
   private motes: Points
   private blobs: InstancedMesh
   /** Passers-by strolling the pavement outside now and then. */
-  private passers: { person: Person3D; z: number; dir: 1 | -1; wait: number; speed: number }[] = []
+  private passers: { person: FloorPerson; look: () => FloorPerson; z: number; dir: 1 | -1; wait: number; speed: number }[] = []
   private raycaster = new Raycaster()
   private playerId: number
   private hooks: FloorHooks
@@ -202,13 +210,17 @@ export class FloorView3D {
     mg.setAttribute('position', new Float32BufferAttribute(mp, 3))
     this.motes = new Points(mg, new PointsMaterial({ map: glowTexture(), size: 0.07, transparent: true, depthWrite: false, blending: AdditiveBlending, color: 0xffe2b8, opacity: 0.55, toneMapped: false }))
     this.scene.add(this.motes)
+    // ---- the modelled people: once they load, everyone on the floor swaps from the stand-in
+    loadPeople().then(files => { if (files && !this.destroyed) this.swapPeople() })
     // ---- passers-by on the pavement
     const pr = makeRng(this.demo ? 11 : 29)
     for (let i = 0; i < 2; i++) {
-      const person = new Person3D(randomLook(pr), 'customer')
+      const lk = randomLook(pr)
+      const look = () => makePerson(lk, 'customer')
+      const person = look()
       person.root.visible = false
       this.scene.add(person.root)
-      this.passers.push({ person, z: 0, dir: 1, wait: 2 + i * 7, speed: 1.1 + pr() * 0.4 })
+      this.passers.push({ person, look, z: 0, dir: 1, wait: 2 + i * 7, speed: 1.1 + pr() * 0.4 })
     }
     // ---- the cat
     this.cat = new Cat3D(() => this.grid)
@@ -547,12 +559,14 @@ export class FloorView3D {
       seen.add(c.id)
       if (this.customers.has(c.id)) continue
       const persona = personaFor(c.plan, { rating: state.stats.ratingBefore, bias: state.ext?.today.bias })
-      const person = new Person3D(withFigure(c.plan.look, c.plan.name, persona.archetype, c.plan.seed), 'customer', undefined, persona.archetype)
+      const lk = withFigure(c.plan.look, c.plan.name, persona.archetype, c.plan.seed)
+      const look = () => makePerson(lk, 'customer', undefined, persona.archetype ?? undefined, c.plan.seed)
+      const person = look()
       const { bubble, ring } = moodBubble(c.plan.treatment)
       const dots = waitDots()
       this.uiLayer.addChild(bubble, dots)
       this.scene.add(person.root)
-      this.customers.set(c.id, { person, x: c.x, y: c.y, yaw: Math.PI / 2, bubble, ring, say: null, sayT: 0, said: false, lastState: '', alpha: 0, dots, waitT: 0, seatK: 0, head: new Vector3() })
+      this.customers.set(c.id, { person, look, x: c.x, y: c.y, yaw: Math.PI / 2, bubble, ring, say: null, sayT: 0, said: false, lastState: '', alpha: 0, dots, waitT: 0, seatK: 0, head: new Vector3() })
     }
     for (const [id, v] of this.customers) if (!seen.has(id)) { v.person.destroy(); v.bubble.destroy(); v.dots.destroy(); v.say?.destroy(); this.customers.delete(id) }
     const pseen = new Set<number>()
@@ -562,12 +576,14 @@ export class FloorView3D {
       if (!v || v.name !== p.name) {
         if (v) { v.person.destroy(); v.tag.destroy() }
         const col = PLAYER_COLORS[p.id % PLAYER_COLORS.length]
-        const person = new Person3D(playerLook(p.id, p.name), 'player', col)
+        const lk = playerLook(p.id, p.name)
+        const look = () => makePerson(lk, 'player', col)
+        const person = look()
         const tag = nameTag(p.name, col, p.id === this.playerId)
         tag.visible = !this.demo
         this.uiLayer.addChild(tag)
         this.scene.add(person.root)
-        v = { person, tag, x: p.x, y: p.y, yaw: 0, name: p.name, workK: 0, head: new Vector3() }
+        v = { person, look, tag, x: p.x, y: p.y, yaw: 0, name: p.name, workK: 0, head: new Vector3() }
         this.players.set(p.id, v)
       }
     }
@@ -579,7 +595,9 @@ export class FloorView3D {
       if (!v || v.name !== s.name) {
         const pos = v ? { x: v.x, y: v.y } : { x: 360, y: 330 }
         if (v) { v.person.destroy(); v.tag.destroy(); v.tea.destroy(); v.tool.root.destroy() }
-        const person = new Person3D(s.look, 'staff')
+        const lk = s.look
+        const look = () => makePerson(lk, 'staff')
+        const person = look()
         const tag = nameTag(s.name, 0x4fbf98, false, 'staff')
         tag.visible = !this.demo
         const tea = new Container()
@@ -590,7 +608,7 @@ export class FloorView3D {
         const tool = toolBubble()
         this.uiLayer.addChild(tag, tea, tool.root)
         this.scene.add(person.root)
-        v = { person, tag, x: pos.x, y: pos.y, yaw: 0, path: [], goal: pos, tea, tool, puff: 0, name: s.name, workK: 0, head: new Vector3() }
+        v = { person, look, tag, x: pos.x, y: pos.y, yaw: 0, path: [], goal: pos, tea, tool, puff: 0, name: s.name, workK: 0, head: new Vector3() }
         this.staff.set(s.id, v)
       }
     }
@@ -881,6 +899,18 @@ export class FloorView3D {
       const g = this.buyGhosts.find(x => x.item.id === item) ?? this.buyGhosts[this.buyGhosts.length - 1]
       if (g) this.rig.focus(g.anchor.x, g.anchor.z, 2.4)
     }, 700)
+  }
+
+  /** The modelled people have loaded: rebuild every person on the floor from their look. */
+  private swapPeople() {
+    const views: { person: FloorPerson; look: () => FloorPerson }[] = [...this.customers.values(), ...this.players.values(), ...this.staff.values(), ...this.passers]
+    for (const v of views) {
+      const visible = v.person.root.visible
+      v.person.destroy()
+      v.person = v.look()
+      v.person.root.visible = visible
+      this.scene.add(v.person.root)
+    }
   }
 
   // ------------------------------------------------------------------ input
