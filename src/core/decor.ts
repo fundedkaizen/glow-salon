@@ -94,11 +94,11 @@ export function setBonus(owned: readonly string[]) { return completeSets(owned).
 
 /** Where each kind of item can go on the salon floor (world pixels of the 1280 x 800 room). */
 export const DECOR_SLOTS: Record<DecorPlace, { x: number; y: number }[]> = {
-  wall: [{ x: 402, y: 96 }, { x: 612, y: 96 }, { x: 862, y: 100 }, { x: 1058, y: 100 }],
-  floor: [{ x: 700, y: 222 }, { x: 862, y: 222 }, { x: 1060, y: 222 }, { x: 52, y: 262 }, { x: 44, y: 752 }, { x: 1236, y: 764 }],
+  wall: [{ x: 402, y: 66 }, { x: 612, y: 66 }, { x: 862, y: 68 }, { x: 1058, y: 68 }],
+  floor: [{ x: 700, y: 222 }, { x: 862, y: 222 }, { x: 1060, y: 222 }, { x: 600, y: 766 }, { x: 44, y: 752 }, { x: 1236, y: 764 }],
   rug: [{ x: 960, y: 486 }, { x: 212, y: 470 }, { x: 600, y: 700 }],
   ceiling: [{ x: 862, y: 58 }, { x: 330, y: 58 }, { x: 1060, y: 58 }],
-  table: [{ x: 150, y: 206 }, { x: 350, y: 232 }],
+  table: [{ x: 150, y: 206 }, { x: 352, y: 226 }],
   window: [{ x: 0, y: 0 }],
 }
 
