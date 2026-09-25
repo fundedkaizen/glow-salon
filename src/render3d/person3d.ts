@@ -129,7 +129,7 @@ export class Person3D {
     }
     const hr = 0.155 * s
     // Head and face.
-    add(G.sphere(hr, 18), C.skin, B.head, tf(0, 0.13 * s, 0, 0, 0, 0, 1, 1.06, 0.98))
+    add(G.sphere(hr, 14), C.skin, B.head, tf(0, 0.13 * s, 0, 0, 0, 0, 1, 1.06, 0.98))
     add(G.sphere(0.034 * s, 8), C.skin, B.head, tf(-hr * 0.98, 0.12 * s, 0, 0, 0, 0, 0.6, 1, 1))
     add(G.sphere(0.034 * s, 8), C.skin, B.head, tf(hr * 0.98, 0.12 * s, 0, 0, 0, 0, 0.6, 1, 1))
     add(G.sphere(0.022 * s, 8), C.skinShade, B.head, tf(0, 0.105 * s, hr * 0.98, 0, 0, 0, 1, 0.9, 0.9))
@@ -146,7 +146,7 @@ export class Person3D {
     add(G.sphere(0.024 * s, 8), C.lip, B.mouth, tf(0, 0, -0.005 * s, 0, 0, 0, 1.2, 0.45, 0.4))
     // Neck, torso, hips.
     add(G.cyl(0.045 * s, 0.05 * s, 0.1 * s, 10), C.skin, B.neck, tf(0, 0.02 * s, 0))
-    add(G.capsule(0.13 * s, 0.13 * s, 12), C.top, B.chest, tf(0, 0.06 * s, 0, 0, 0, 0, 1.12 * wide, 1, 0.78))
+    add(G.capsule(0.13 * s, 0.13 * s, 10), C.top, B.chest, tf(0, 0.06 * s, 0, 0, 0, 0, 1.12 * wide, 1, 0.78))
     add(G.capsule(0.125 * s, 0.08 * s, 12), outfit.skirt ? C.top : outfit.kind === 'dungarees' ? C.second : C.pants, B.hips, tf(0, 0.02 * s, 0, 0, 0, 0, 1.12 * wide, 1, 0.78))
     add(G.capsule(0.12 * s, 0.1 * s, 12), outfit.kind === 'dungarees' ? C.second : C.top, B.spine, tf(0, 0.04 * s, 0, 0, 0, 0, 1.1 * wide, 1, 0.76))
     // Outfit details on the chest.
@@ -199,11 +199,11 @@ export class Person3D {
     const H = B.head
     const cy = 0.13 * s
     // The shell over the crown and the back (the face stays clear at the front).
-    const shell = (k: number, drop = 0) => add(G.sphere(hr * k, 16), hair, H, tf(0, cy + 0.025 * s - drop, -0.035 * s, 0, 0, 0, 1, 1, 1))
+    const shell = (k: number, drop = 0) => add(G.sphere(hr * k, 12), hair, H, tf(0, cy + 0.025 * s - drop, -0.035 * s, 0, 0, 0, 1, 1, 1))
     const fringe = () => add(G.sphere(hr * 0.78, 12), hair, H, tf(0.02 * s, cy + 0.11 * s, 0.07 * s, -0.5, 0, -0.2, 1.1, 0.42, 0.62))
     if (masc && style !== 3 && style !== 0) {
       // Short hair for the men who wear it short: a close shell and a side part.
-      add(G.sphere(hr * 1.04, 16), hair, H, tf(0, cy + 0.035 * s, -0.03 * s, 0, 0, 0, 1, 0.94, 1))
+      add(G.sphere(hr * 1.04, 12), hair, H, tf(0, cy + 0.035 * s, -0.03 * s, 0, 0, 0, 1, 0.94, 1))
       add(G.sphere(hr * 0.7, 12), hair, H, tf(0.03 * s, cy + 0.12 * s, 0.06 * s, -0.4, 0, -0.25, 1.1, 0.38, 0.6))
       return
     }
@@ -215,7 +215,7 @@ export class Person3D {
         for (const sx of [-1, 1]) add(G.capsule(0.045 * s, 0.2 * s, 8), hair, H, tf(sx * 0.13 * s, cy - 0.1 * s, 0.0, 0.1, 0, sx * 0.08))
         break
       case 1: // bob: a round shell to the jaw
-        add(G.sphere(hr * 1.12, 16), hair, H, tf(0, cy - 0.005 * s, -0.04 * s, 0, 0, 0, 1.02, 1, 1))
+        add(G.sphere(hr * 1.12, 12), hair, H, tf(0, cy - 0.005 * s, -0.04 * s, 0, 0, 0, 1.02, 1, 1))
         fringe()
         break
       case 2: // bun on top
@@ -235,7 +235,7 @@ export class Person3D {
         break
       }
       case 4: // crop: close to the head
-        add(G.sphere(hr * 1.04, 16), hair, H, tf(0, cy + 0.03 * s, -0.03 * s, 0, 0, 0, 1, 0.96, 1))
+        add(G.sphere(hr * 1.04, 12), hair, H, tf(0, cy + 0.03 * s, -0.03 * s, 0, 0, 0, 1, 0.96, 1))
         add(G.sphere(hr * 0.7, 12), hair, H, tf(0.03 * s, cy + 0.12 * s, 0.06 * s, -0.4, 0, -0.25, 1.1, 0.38, 0.6))
         break
       case 5: // ponytail

@@ -39,6 +39,8 @@ export function buildRoom(): RoomParts {
   const group = new Group()
   group.name = 'room'
   const kit = new Kit()
+  /** Outside the walls: the kerb, hedges and flower beds (no shadows: they are never under anything). */
+  const out = new Kit()
 
   // ---- floor
   const wood = woodTexture()
@@ -87,17 +89,17 @@ export function buildRoom(): RoomParts {
   front.receiveShadow = true
   group.add(front)
   // The kerb under the building.
-  kit.add(G.box(W + 2 * T + 0.3, 0.1, D + 2 * T + 0.3, 0.03), 0xe9dcd6, 'matte', tf(0, -0.05, D / 2))
+  out.add(G.box(W + 2 * T + 0.3, 0.1, D + 2 * T + 0.3, 0.03), 0xe9dcd6, 'matte', tf(0, -0.05, D / 2))
   // Hedges: along the front beyond the pavement, and a row of round shrubs by the door path.
   for (let x = -W / 2 - 3; x < W / 2 + 2; x += 1.25) {
-    kit.add(G.box(1.3, 0.75, 0.9, 0.3), x % 2.5 ? COLORS.hedge : COLORS.hedgeDark, 'matte', tf(x + 0.6, 0.35, D + T + 2.8))
+    out.add(G.box(1.3, 0.75, 0.9, 0.3), x % 2.5 ? COLORS.hedge : COLORS.hedgeDark, 'matte', tf(x + 0.6, 0.35, D + T + 2.8))
   }
-  for (let z = -1.5; z < D + 2; z += 1.6) kit.add(G.sphere(0.55, 12), COLORS.hedge, 'matte', tf(-W / 2 - T - 3.1, 0.35, z, 0, 0, 0, 1, 0.8, 1))
+  for (let z = -1.5; z < D + 2; z += 1.6) out.add(G.sphere(0.55, 12), COLORS.hedge, 'matte', tf(-W / 2 - T - 3.1, 0.35, z, 0, 0, 0, 1, 0.8, 1))
   // A lamp post and a planter by the door.
   const doorZ0 = toWorld(0, DOOR_Y0).z, doorZ1 = toWorld(0, DOOR_Y1).z
-  kit.add(G.cyl(0.36, 0.3, 0.5, 16), 0xf3e6df, 'satin', tf(-W / 2 - T - 0.5, 0.25, doorZ1 + 0.6))
-  kit.add(G.sphere(0.34, 12), 0x9bd08c, 'matte', tf(-W / 2 - T - 0.5, 0.62, doorZ1 + 0.6))
-  for (const [x, y, z, c] of [[0.1, 0.72, 0.1, 0xf6a9c2], [-0.15, 0.7, -0.05, 0xfbd3e0], [0.05, 0.78, -0.18, 0xf6a9c2]] as const) kit.add(G.sphere(0.07, 8), c, 'matte', tf(-W / 2 - T - 0.5 + x, y, doorZ1 + 0.6 + z))
+  out.add(G.cyl(0.36, 0.3, 0.5, 16), 0xf3e6df, 'satin', tf(-W / 2 - T - 0.5, 0.25, doorZ1 + 0.6))
+  out.add(G.sphere(0.34, 12), 0x9bd08c, 'matte', tf(-W / 2 - T - 0.5, 0.62, doorZ1 + 0.6))
+  for (const [x, y, z, c] of [[0.1, 0.72, 0.1, 0xf6a9c2], [-0.15, 0.7, -0.05, 0xfbd3e0], [0.05, 0.78, -0.18, 0xf6a9c2]] as const) out.add(G.sphere(0.07, 8), c, 'matte', tf(-W / 2 - T - 0.5 + x, y, doorZ1 + 0.6 + z))
 
   // ---- the tall walls
   // Back wall: its inner face is Z = 0, from the left wall's outer face to the right wall's outer face.
@@ -221,22 +223,22 @@ export function buildRoom(): RoomParts {
 
   // ---- flower beds outside the cut walls, as in Serenity's gardens
   const bed = (x: number, z: number, w: number, d: number, seed: number) => {
-    kit.add(G.box(w, 0.22, d, 0.06), 0xfff4ee, 'satin', tf(x, 0.11, z))
-    kit.add(G.box(w - 0.12, 0.08, d - 0.12, 0.03), 0x6a4a3e, 'matte', tf(x, 0.2, z))
+    out.add(G.box(w, 0.22, d, 0.06), 0xfff4ee, 'satin', tf(x, 0.11, z))
+    out.add(G.box(w - 0.12, 0.08, d - 0.12, 0.03), 0x6a4a3e, 'matte', tf(x, 0.2, z))
     let k = seed
     const rnd = () => { k = (k * 16807) % 2147483647; return k / 2147483647 }
     const n = Math.floor(w * d * 7)
     for (let i = 0; i < n; i++) {
       const fx = x + (rnd() - 0.5) * (w - 0.25), fz = z + (rnd() - 0.5) * (d - 0.25)
-      kit.add(G.sphere(0.13 + rnd() * 0.06, 7), rnd() < 0.5 ? COLORS.hedge : COLORS.hedgeDark, 'matte', tf(fx, 0.3, fz, 0, 0, 0, 1, 0.8, 1))
-      if (rnd() < 0.75) kit.add(G.sphere(0.045, 6), [0xf48fb1, 0xffffff, 0xf7b7cc, 0xffd35a][Math.floor(rnd() * 4)], 'matte', tf(fx + 0.05, 0.43, fz + 0.03))
+      out.add(G.sphere(0.13 + rnd() * 0.06, 7), rnd() < 0.5 ? COLORS.hedge : COLORS.hedgeDark, 'matte', tf(fx, 0.3, fz, 0, 0, 0, 1, 0.8, 1))
+      if (rnd() < 0.75) out.add(G.sphere(0.045, 6), [0xf48fb1, 0xffffff, 0xf7b7cc, 0xffd35a][Math.floor(rnd() * 4)], 'matte', tf(fx + 0.05, 0.43, fz + 0.03))
     }
   }
   bed(0.8, D + T + 0.62, W - 1.2, 0.9, 7)
   bed(-W / 2 - T - 0.62, doorZ0 / 2 + 0.1, 0.9, doorZ0 - 0.4, 11)
   bed(-W / 2 - T - 0.62, (doorZ1 + D) / 2 + 0.3, 0.9, Math.max(0.6, D - doorZ1 - 0.2), 13)
 
-  group.add(kit.build())
+  group.add(kit.build(), out.build(false))
   let tiers = '1,1'
   const setTiers = (floorTier: number, wallTier: number) => {
     const key = `${floorTier},${wallTier}`

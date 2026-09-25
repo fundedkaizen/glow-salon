@@ -35,7 +35,9 @@ function shape(key: string, make: () => BufferGeometry): BufferGeometry {
 export const G = {
   box: (w: number, h: number, d: number, r = 0.02) => {
     const rr = Math.min(r, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001)
-    return shape(`b${w},${h},${d},${rr}`, () => (rr > 0.004 ? new RoundedBoxGeometry(w, h, d, 2, rr) : new RoundedBoxGeometry(w, h, d, 1, 0.001)))
+    // Small pieces get one bevel step: at the salon's size the second never shows.
+    const seg = rr > 0.03 && Math.min(w, h, d) > 0.15 ? 2 : 1
+    return shape(`b${w},${h},${d},${rr}`, () => (rr > 0.004 ? new RoundedBoxGeometry(w, h, d, seg, rr) : new RoundedBoxGeometry(w, h, d, 1, 0.001)))
   },
   cyl: (rt: number, rb: number, h: number, seg = 16) => shape(`c${rt},${rb},${h},${seg}`, () => new CylinderGeometry(rt, rb, h, seg)),
   sphere: (r: number, seg = 14) => shape(`s${r},${seg}`, () => new SphereGeometry(r, seg, Math.max(6, Math.round(seg * 0.7)))),
