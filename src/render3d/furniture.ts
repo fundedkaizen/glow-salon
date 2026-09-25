@@ -412,11 +412,11 @@ export function glowSign(b: Build, texture: Texture, x: number, y: number, z: nu
  * stand at (x, z); wall pieces hang on the back wall at height y; ceiling pieces hang at y; table pieces sit on
  * a surface at y.
  */
-export function decorItem(b: Build, kind: DecorKind, pal: number[], x: number, y: number, z: number, ry = 0) {
+export function decorItem(b: Build, kind: DecorKind, pal: number[], x: number, y: number, z: number, ry = 0, k = 1) {
   const { kit } = b
   const [main, second, accent, trim] = pal
   const metalTrim = trim === 0xfbe0a0 || trim === 0xf1dcae ? C.gold : trim
-  kit.at(tf(x, y, z, 0, ry, 0), () => {
+  kit.at(tf(x, y, z, 0, ry, 0, k), () => {
     switch (kind) {
       case 'armchair':
         kit.add(G.box(0.8, 0.22, 0.75, 0.08), main, 'satin', tf(0, 0.3, 0))
@@ -585,11 +585,12 @@ export function decorItem(b: Build, kind: DecorKind, pal: number[], x: number, y
         b.blobs.push({ x, z, rx: 0.5, rz: 0.36, a: 0.3 })
         break
       case 'curtains':
+        // Narrow drapes either side of the glass, never over the next piece on the wall.
         for (const s of [-1, 1]) {
-          for (let i = 0; i < 3; i++) kit.add(G.cyl(0.07, 0.1, 1.9, 8), i % 2 ? main : shade(main, -0.06), 'matte', tf(s * (0.72 + i * 0.1), -0.95, 0.08))
-          kit.add(G.torus(0.1, 0.02, Math.PI * 2, 12), second, 'satin', tf(s * 0.8, -1.2, 0.18))
+          for (let i = 0; i < 2; i++) kit.add(G.cyl(0.05, 0.075, 1.55, 8), i % 2 ? main : shade(main, -0.06), 'matte', tf(s * (0.64 + i * 0.07), -0.8, 0.08))
+          kit.add(G.torus(0.08, 0.018, Math.PI * 2, 12), second, 'satin', tf(s * 0.67, -1.05, 0.16))
         }
-        kit.add(G.cyl(0.02, 0.02, 2.0, 8), metalTrim, 'metal', tf(0, 0.02, 0.1, 0, 0, Math.PI / 2))
+        kit.add(G.cyl(0.018, 0.018, 1.5, 8), metalTrim, 'metal', tf(0, 0.02, 0.1, 0, 0, Math.PI / 2))
         break
       case 'vinyl':
         for (let i = 0; i < 4; i++) {

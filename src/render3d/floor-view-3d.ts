@@ -22,11 +22,14 @@ import { Particles, easeOutBack } from '../render/particles.ts'
 import { CameraRig } from './camera.ts'
 import { Cat3D } from './cat3d.ts'
 import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, floorLamp, fountainGarden, giftStand, glowSign, lounge, nailDesk, pedicureChair, pendantLight, soonScreen, succulent, teaCart, topiary, trophyShelf, waitingCorner, welcomeSign, type Build, type Node3, type StationNodes } from './furniture.ts'
-import { AQUARIUM_X, buildAt, buildThumb, ghostable, SHELF, spotFor, stationKeys, stationOf, stylable, type SpotCtx } from './pieces.ts'
+import { buildAt, buildThumb, ghostable, spotFor, stationKeys, stationOf, stylable, type SpotCtx } from './pieces.ts'
+import { randomLook } from '../core/customers.ts'
+import { makeRng } from '../core/rng.ts'
+import { AQUARIUM_SPOT, ART, BOTTLES, decorSpot, STREET, FLOOR_SLOTS, FRONT_LAMP, GIFT_SPOTS, LIGHTS, NEON, onWall, PLANT_SPOT, TEA_CART, TOPIARIES, TROPHY, WALL_SLOTS, WELCOME, WIN, WINDOW_SPOTS } from './layout.ts'
 import { ProgressUi } from './progress-ui.ts'
 import { setPalette, styleColor, styleName } from './styles.ts'
 import { disposeGroup, G, Kit, tf } from './kit.ts'
-import { lenX, lenZ, ROOM3, toSim, toWorld, turnTo, wallHeight, yawFor } from './mapping.ts'
+import { lenX, lenZ, ROOM3, toSim, toWorld, turnTo, yawFor } from './mapping.ts'
 import { moodBubble, nameTag, speech, toolBubble, waitDots } from './overlay.ts'
 import { Person3D, type Tool3 } from './person3d.ts'
 import { buildRoom, type RoomParts } from './room.ts'
@@ -121,9 +124,12 @@ export class FloorView3D {
   private fishAt = new Vector3()
   private motes: Points
   private blobs: InstancedMesh
+  /** Passers-by strolling the pavement outside now and then. */
+  private passers: { person: Person3D; z: number; dir: 1 | -1; wait: number; speed: number }[] = []
   private raycaster = new Raycaster()
   private playerId: number
   private hooks: FloorHooks
+  private app: Application
   // Progression (core/unlocks.ts): the ghosts, the level bar, the buy card and the style strip.
   private progress: ProgressUi | null = null
   private buyGhosts: BuyGhost[] = []
@@ -142,6 +148,7 @@ export class FloorView3D {
   private isoStyle: number | null = null
 
   constructor(app: Application, playerId: number, hooks: FloorHooks, opts: { demo?: boolean } = {}) {
+    this.app = app
     this.playerId = playerId
     this.hooks = hooks
     this.demo = !!opts.demo
@@ -195,6 +202,14 @@ export class FloorView3D {
     mg.setAttribute('position', new Float32BufferAttribute(mp, 3))
     this.motes = new Points(mg, new PointsMaterial({ map: glowTexture(), size: 0.07, transparent: true, depthWrite: false, blending: AdditiveBlending, color: 0xffe2b8, opacity: 0.55, toneMapped: false }))
     this.scene.add(this.motes)
+    // ---- passers-by on the pavement
+    const pr = makeRng(this.demo ? 11 : 29)
+    for (let i = 0; i < 2; i++) {
+      const person = new Person3D(randomLook(pr), 'customer')
+      person.root.visible = false
+      this.scene.add(person.root)
+      this.passers.push({ person, z: 0, dir: 1, wait: 2 + i * 7, speed: 1.1 + pr() * 0.4 })
+    }
     // ---- the cat
     this.cat = new Cat3D(() => this.grid)
     this.cat.onZ = text => { const p = this.catWorld(); this.float(text, _v.set(p.x - 0.1, p.y + 0.45, p.z), 0x9c86d9, 16) }
@@ -317,23 +332,19 @@ export class FloorView3D {
     const lc = w(SOFA.x + SOFA.w / 2, 0)
     this.sofaSeats = into('lounge', lc.x, sofaZ, boxAt(lc.x, sofaZ + 0.3, lenX(SOFA.w) / 2, 0.6, 1.1), bb => lounge(bb, sofaZ, SOFA_SEATS.map(s => w(s.x, s.y).x), styleColor(styles, 'lounge'), tierOf(state.owned, 'lounge')))
     floorDecal(b, rugTexture('round', '#bfeee4', '#7fd4c2', '#ffffff'), lc.x, sofaZ + 0.55, lenX(SOFA.w) + 0.4, 1.9, 0.004)
-    teaCart(b, w(352, 0).x, 0.42, 0)
-    floorLamp(b, w(646, 0).x, 0.42, 0xfff0e6)
-    this.lampGlow(b, w(646, 0).x, 1.5, 0.42, 0.7)
-    welcomeSign(b, w(118, 704).x + 0.3, w(118, 704).z + 0.2, 1.1)
-    floorLamp(b, w(652, 792).x, RD - 0.45, 0xfbe0e8)
-    this.lampGlow(b, w(652, 792).x, 1.5, RD - 0.45, 0.6)
+    teaCart(b, TEA_CART.x, TEA_CART.z, TEA_CART.ry)
+    welcomeSign(b, WELCOME.x, WELCOME.z, 1.1)
+    floorLamp(b, FRONT_LAMP.x, FRONT_LAMP.z, 0xfbe0e8)
+    this.lampGlow(b, FRONT_LAMP.x, 1.5, FRONT_LAMP.z, 0.6)
     // The waiting corner: armchairs round a coffee table on a rug, and the little fountain planter.
     const wc = FIXTURES.waiting, wa = w(wc.x + wc.w / 2, wc.y + wc.h / 2)
     waitingCorner(b, wa.x, wa.z, lenX(wc.w), lenZ(wc.h))
     floorDecal(b, rugTexture('round', '#fbe3ea', '#f5b3c6', '#ffffff'), wa.x, wa.z, lenX(wc.w) + 0.7, lenZ(wc.h) + 0.6, 0.004)
     const pc = FIXTURES.planter, pa = w(pc.x + pc.w / 2, pc.y + pc.h / 2)
     fountainGarden(b, pa.x, pa.z, lenX(pc.w), lenZ(pc.h))
-    // Wall shelves with bottles, behind the reception and on the right wall.
-    decorItem(b, 'shelf', [0xffffff, 0xf6a9c2, 0xa9e3cf, 0xfbe0a0], w(DESK.x + 60, 0).x, 1.7, 0.02)
-    decorItem(b, 'shelf', [0xffffff, 0xcdbdf2, 0xf6a9c2, 0xfbe0a0], RW / 2 - 0.02, 1.7, w(0, 620).z, -Math.PI / 2)
-    // Topiaries along the walls and at the partitions' ends.
-    for (const [px, py] of [[660, 196], [1250, 690], [1250, 250], [44, 214], [980, 196], [316, 322], [690, 316], [1072, 316], [1100, 512]] as const) { const a = w(px, py); topiary(b, a.x, Math.max(0.32, a.z), px === 316 || px === 690 || px === 1072 || px === 1100 ? 0.8 : 1) }
+    // A wall shelf of bottles on the right wall, and topiaries along the walls and at the partitions' ends.
+    { const p = onWall(BOTTLES.wall, BOTTLES.u); decorItem(b, 'shelf', [0xffffff, 0xcdbdf2, 0xf6a9c2, 0xfbe0a0], p.x, BOTTLES.y, p.z, p.ry) }
+    for (const t of TOPIARIES) topiary(b, t.x, t.z, t.k)
     // A runner by the front.
     const runner = w(440, 700)
     floorDecal(b, rugTexture('runner', '#fff3e6', '#ffc94d', '#f7a9bd'), runner.x, runner.z, 3.4, 1.1, 0.005)
@@ -384,25 +395,26 @@ export class FloorView3D {
     }
     // ---- empty decor slots get a little filler until something is bought for them
     const taken = new Set(decor.map(d => `${d.place}:${d.slot}`))
-    const wallPic = (piece: Piece, x: number, y: number, scale = 1) => {
-      const m = new Mesh(new PlaneGeometry(lenX(piece.w) * 1.1 * scale, lenX(piece.h) * 1.1 * scale), new MeshBasicMaterial({ map: fromCanvas(piece.canvas), transparent: true, toneMapped: false }))
+    /** A painted picture flat on the back wall at `u`, no wider than `maxW`. */
+    const wallPic = (piece: Piece, u: number, y: number, maxW: number) => {
+      const k = Math.min(maxW / (lenX(piece.w) * 1.1), 1.6)
+      const m = new Mesh(new PlaneGeometry(lenX(piece.w) * 1.1 * k, lenX(piece.h) * 1.1 * k), new MeshBasicMaterial({ map: fromCanvas(piece.canvas), transparent: true, toneMapped: false }))
       ;(m.material as MeshBasicMaterial).color.setScalar(0.94)
-      m.position.set(toWorld(x, 0).x, wallHeight(y), 0.012)
+      m.position.set(onWall('back', u).x, y, 0.012)
       b.extra.add(m)
     }
-    const decorSlots = { wall: [{ x: 402, y: 66 }, { x: 612, y: 66 }, { x: 862, y: 68 }, { x: 1058, y: 68 }], floor: [{ x: 772, y: 222 }, { x: 862, y: 222 }, { x: 1060, y: 222 }, { x: 600, y: 766 }, { x: 44, y: 752 }, { x: 1236, y: 764 }] }
-    decorSlots.wall.forEach((p, i) => { if (!taken.has(`wall:${i}`)) wallPic(cachedPiece(`filler${i}`, () => paintFillerFrame(i)), p.x, p.y, 1.5) })
-    decorSlots.floor.forEach((p, i) => { if (!taken.has(`floor:${i}`) && i !== 3) { const a = w(p.x, p.y); succulent(b, a.x, i >= 3 ? Math.min(a.z, RD - 0.35) : 0.35) } })
+    WALL_SLOTS.forEach((u, i) => { if (!taken.has(`wall:${i}`)) wallPic(cachedPiece(`filler${i}`, () => paintFillerFrame(i)), u, 1.7, 0.7) })
+    FLOOR_SLOTS.forEach((s, i) => { if (!taken.has(`floor:${i}`) && i !== 3) succulent(b, s.x, s.z) })
     // ---- starter decor
     if (owned.has('rug')) { const a = w(420, 560); const c = css(styleColor(styles, 'rug')); into('rug', a.x, a.z, boxAt(a.x, a.z, 1.2, 0.85, 0.2), bb => floorDecal(bb, rugTexture('cloud', '#fdf6fb', c, c), a.x, a.z, 2.6, 1.9, 0.006)) }
-    if (owned.has('plant')) into('plant', RW / 2 - 0.45, 0.45, boxAt(RW / 2 - 0.45, 0.45, 0.45, 0.45, 1.9), bb => bigPlant(bb, RW / 2 - 0.45, 0.45, styleColor(styles, 'plant'), 1.1))
+    if (owned.has('plant')) into('plant', PLANT_SPOT.x, PLANT_SPOT.z, boxAt(PLANT_SPOT.x, PLANT_SPOT.z, 0.45, 0.45, 1.9), bb => bigPlant(bb, PLANT_SPOT.x, PLANT_SPOT.z, styleColor(styles, 'plant'), 1.1))
     // ---- the salon's upgrades (core/unlocks.ts): the fountain garden and the trophy shelf of stars
     if (owned.has('up-fountain')) {
       const r = PROP_BLOCK['up-fountain'], a = w(r.x + r.w / 2, r.y + r.h / 2)
       fountainGarden(b, a.x, a.z, lenX(r.w), lenZ(r.h))
     }
     const stars = starsOwned(state.owned)
-    if (stars) trophyShelf(b, SHELF.x, SHELF.y, SHELF.z, SHELF.ry, stars)
+    if (stars) { const p = onWall(TROPHY.wall, TROPHY.u); trophyShelf(b, p.x, TROPHY.y, p.z, p.ry, stars) }
     this.room.setTiers(tierOf(state.owned, 'floor'), tierOf(state.owned, 'walls'))
     if (owned.has('candles')) {
       const a = { x: this.deskTop.x + 0.75, z: this.deskTop.z + 0.12 }
@@ -412,15 +424,15 @@ export class FloorView3D {
       }
       this.lampGlow(b, a.x, 1.25, a.z, 0.25)
     }
-    if (owned.has('art')) wallPic(cachedPiece('art', paintWallArt), 960, 66, 1.3)
+    if (owned.has('art')) wallPic(cachedPiece('art', paintWallArt), ART.u, (ART.y0 + ART.y1) / 2, ART.w)
     if (owned.has('lights')) {
       // Fairy lights swag along the top of the back wall; each bulb's halo twinkles on its own.
       const halo: number[] = [], tw: number[] = []
       for (let i = 0; i <= 40; i++) {
         const x = -RW / 2 + 0.3 + (i / 40) * (RW - 0.6)
         const sag = 0.18 * Math.sin(((i % 8) / 8) * Math.PI)
-        b.kit.add(G.sphere(0.028, 6), i % 3 ? 0xffd9a0 : 0xffc0d0, 'glow', tf(x, 2.55 - sag, 0.05))
-        halo.push(x, 2.55 - sag, 0.07)
+        b.kit.add(G.sphere(0.028, 6), i % 3 ? 0xffd9a0 : 0xffc0d0, 'glow', tf(x, LIGHTS.y1 - 0.02 - sag * 0.25, 0.05))
+        halo.push(x, LIGHTS.y1 - 0.02 - sag * 0.25, 0.07)
         tw.push(Math.random() * 10)
       }
       const hg = new BufferGeometry()
@@ -430,10 +442,11 @@ export class FloorView3D {
     }
     if (owned.has('neon')) {
       const a = w(505, 0)
-      this.neon = glowSign(b, neonTexture(), a.x, wallHeight(74), 0.01, 1.4, 0.7)
+      void a
+      this.neon = glowSign(b, neonTexture(), onWall('back', NEON.u).x, (NEON.y0 + NEON.y1) / 2, 0.01, NEON.w, NEON.y1 - NEON.y0)
     }
     if (owned.has('aquarium')) {
-      const a = { x: AQUARIUM_X - 0.1, z: w(72, 460).z }
+      const a = { x: AQUARIUM_SPOT.x - 0.1, z: AQUARIUM_SPOT.z }
       aquarium(b, a.x + 0.1, a.z, Math.PI / 2)
       const fish = new InstancedMesh(G.sphere(0.03, 8), new MeshBasicMaterial({ toneMapped: false }), 3)
       ;[0xffa46b, 0xffd35a, 0xf48fb1].forEach((c, i) => fish.setColorAt(i, new Color(c)))
@@ -454,31 +467,22 @@ export class FloorView3D {
     for (const d of decor) {
       const item = DECOR_ITEM_BY_ID[d.id]
       const pal = setPalette(styles, d.id)
-      const a = w(d.x, d.y)
-      const bx = item.place === 'wall' || item.place === 'window' ? boxAt(a.x, 0.15, 0.6, 0.3, 2.6) : item.place === 'ceiling' ? boxAt(a.x, 1.2, 0.5, 0.5, 2.8) : boxAt(a.x, Math.max(0.55, Math.min(a.z, RD - 0.55)), 0.6, 0.5, 1.6)
-      this.stylePieces.push({ key: d.id, box: bx, at: new Vector3(a.x, 0, item.place === 'wall' || item.place === 'window' ? 0.2 : a.z) })
-      if (item.place === 'window') {
-        for (const wx of [760, 1160]) decorItem(b, 'curtains', pal, w(wx, 0).x, 2.72, 0.02)
-        for (const wz of [330, 700]) decorItem(b, 'curtains', pal, RW / 2 - 0.02, 2.72, w(0, wz).z, -Math.PI / 2)
-      } else if (item.place === 'wall') decorItem(b, item.kind, pal, a.x, wallHeight(d.y), 0.0)
-      else if (item.place === 'ceiling') decorItem(b, item.kind, pal, a.x, 2.3, 1.2)
-      else if (item.place === 'table') decorItem(b, item.kind, pal, d.slot === 0 ? this.deskTop.x - 0.55 : w(352, 0).x, d.slot === 0 ? 1.055 : 0.76, d.slot === 0 ? this.deskTop.z : 0.42)
-      else if (item.place === 'rug') floorDecal(b, rugTexture(item.kind === 'sand' ? 'plain' : 'round', css(pal[0]), css(pal[1]), css(pal[2])), a.x, a.z, item.size === 2 ? 3.2 : 2.4, item.size === 2 ? 2.2 : 1.6, 0.007)
-      else {
-        const front = a.z > RD / 2
-        const z = front ? Math.min(a.z, RD - 0.55) : Math.max(a.z, 0.55)
-        decorItem(b, item.kind, pal, a.x, 0, z, front ? Math.PI - Math.sign(a.x || 1) * 0.5 : 0)
-      }
+      const sp = decorSpot(item.place, d.slot, item.kind)
+      const hung = item.place === 'wall' || item.place === 'window'
+      const bx = hung ? boxAt(sp.x, 0.15, 0.6, 0.3, 2.6) : item.place === 'ceiling' ? boxAt(sp.x, sp.z, 0.5, 0.5, 2.8) : boxAt(sp.x, sp.z, 0.6, 0.5, 1.6)
+      this.stylePieces.push({ key: d.id, box: bx, at: new Vector3(sp.x, 0, hung ? 0.2 : sp.z) })
+      if (item.place === 'window') for (const wsp of WINDOW_SPOTS) { const p = onWall(wsp.wall, wsp.u); decorItem(b, 'curtains', pal, p.x, WIN.bottom + WIN.h + WIN.w / 2 + 0.08, p.z, p.ry) }
+      else if (item.place === 'rug') floorDecal(b, rugTexture(item.kind === 'sand' ? 'plain' : 'round', css(pal[0]), css(pal[1]), css(pal[2])), sp.x, sp.z, item.size === 2 ? 3.0 : 2.3, item.size === 2 ? 2.0 : 1.5, 0.007)
+      else decorItem(b, item.kind, pal, sp.x, sp.y, sp.z, sp.ry, sp.k)
     }
     // ---- gifts from friends, on little stands in the gift spots
-    state.owned.filter(id => GIFT_BY_ID[id]).slice(0, GIFT_SLOTS.length).forEach((id, i) => {
-      const spot = GIFT_SLOTS[i]
-      const a = w(spot.x, spot.y)
-      const x = Math.max(-RW / 2 + 0.35, Math.min(RW / 2 - 0.35, a.x)), z = Math.max(0.35, Math.min(RD - 0.35, a.z))
+    state.owned.filter(id => GIFT_BY_ID[id]).slice(0, GIFT_SPOTS.length).forEach((id, i) => {
+      const spot = GIFT_SPOTS[i]
       const regular = GIFT_BY_ID[id]?.regular ?? ''
       const piece = cachedPiece(`gift:${regular}`, () => paintGift(regular) ?? paintFillerFrame(i))
-      giftStand(b, fromCanvas(piece.canvas), x, z, x > RW / 2 - 1 ? -Math.PI / 2 : z > RD - 1 ? Math.PI : x < -RW / 2 + 1 ? Math.PI / 2 : 0)
+      giftStand(b, fromCanvas(piece.canvas), spot.x, spot.z, spot.ry)
     })
+    this.room.garden.setName(state.ext?.salonName ?? 'Glow Salon')
     const group = new Group()
     group.add(b.kit.build(), b.extra)
     this.isoPivot = null
@@ -996,6 +1000,9 @@ export class FloorView3D {
   update(dt: number) {
     if (this.destroyed) return
     this.t += dt
+    // Pixi applies a window resize on its next frame, after the game's resize call: follow the real size.
+    const sw = this.app.screen.width, sh = this.app.screen.height
+    if (sw !== this.view.w || sh !== this.view.h) this.resize(sw, sh)
     const state = this.state
     this.moveLocal(dt)
     this.cat.update(dt)
@@ -1005,6 +1012,21 @@ export class FloorView3D {
     let blobs = 0
     const blob = (x: number, z: number, r: number, y = 0.012) => { if (blobs < 40) { this.blobs.setMatrixAt(blobs++, new Matrix4().compose(_v.set(x, y, z), QI, _v2.set(r, 1, r))) } }
     if (this.cat.up < 0.05) blob(cw.x, cw.z, 0.5)
+    // Passers-by walk the pavement end to end, then rest a while out of sight.
+    const px = (STREET.paveIn + STREET.paveOut) / 2
+    for (const p of this.passers) {
+      if (p.wait > 0) { p.wait -= dt; if (p.wait <= 0) { p.dir = Math.random() < 0.5 ? 1 : -1; p.z = p.dir > 0 ? -9 : RD + 9 } else { p.person.root.visible = false; continue } }
+      p.z += p.dir * p.speed * dt
+      if (p.z < -9.5 || p.z > RD + 9.5) { p.wait = 8 + Math.random() * 16; continue }
+      const person = p.person
+      person.root.visible = true
+      person.pose = 'walk'
+      person.speed = p.speed
+      person.root.position.set(px + (p.dir > 0 ? 0.35 : -0.35), 0, p.z)
+      person.root.rotation.y = p.dir > 0 ? 0 : Math.PI
+      person.update(dt)
+      blob(person.root.position.x, p.z, 0.7)
+    }
     if (state) {
       this.updateCustomers(state, dt, blob)
       this.updatePlayers(state, dt, blob)
@@ -1454,6 +1476,7 @@ export class FloorView3D {
       }
       this.fish.instanceMatrix.needsUpdate = true
     }
+    this.room.garden.update(this.t)
     // The key light breathes a touch, like sun through leaves.
     this.key.intensity = 1.9 + Math.sin(this.t * 0.35) * 0.04
   }
@@ -1541,6 +1564,7 @@ export class FloorView3D {
     for (const v of this.players.values()) v.person.destroy()
     for (const v of this.staff.values()) v.person.destroy()
     this.cat.destroy()
+    for (const p of this.passers) p.person.destroy()
     this.clearGhosts()
     this.progress?.destroy()
     if (this.furniture) disposeGroup(this.furniture)

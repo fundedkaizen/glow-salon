@@ -5,7 +5,8 @@ import { DESK, PROP_BLOCK, PROP_SPOTS, SLOTS, SOFA_SEATS } from '../core/floor.t
 import { tierOf } from '../core/unlocks.ts'
 import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, fountainGarden, lounge, nailDesk, pedicureChair, pendantLight, starShape, type Build } from './furniture.ts'
 import { G, tf } from './kit.ts'
-import { lenX, lenZ, ROOM3, toWorld, wallHeight } from './mapping.ts'
+import { lenX, lenZ, ROOM3, toWorld } from './mapping.ts'
+import { AQUARIUM_SPOT, ART, decorSpot, LIGHTS, NEON, onWall, PLANT_SPOT, TROPHY, WIN, WINDOW_SPOTS } from './layout.ts'
 import { setPalette, styleColor, STYLE_COLORS } from './styles.ts'
 import { rugTexture } from './textures.ts'
 
@@ -16,7 +17,7 @@ import { rugTexture } from './textures.ts'
  */
 export type Spot =
   | { kind: 'station'; station: StationKind; slot: number }
-  | { kind: 'decor'; id: string; place: DecorPlace; x: number; y: number }
+  | { kind: 'decor'; id: string; place: DecorPlace; slot: number }
   | { kind: 'prop'; id: string }
   | { kind: 'upgrade'; id: string; family: string }
 
@@ -66,7 +67,7 @@ export function spotFor(item: Item, ctx: SpotCtx, nth: number): Spot | null {
     const slots = DECOR_SLOTS[d.place]
     const free = slots.findIndex((_, i) => !ctx.takenDecor.has(`${d.place}:${i}`))
     if (free < 0) return null
-    return { kind: 'decor', id: item.id, place: d.place, ...slots[free] }
+    return { kind: 'decor', id: item.id, place: d.place, slot: free }
   }
   if (item.id.startsWith('up-')) {
     const family = item.id.startsWith('up-star-') ? 'star' : item.id.replace(/^up-/, '').replace(/-\d$/, '')
@@ -76,12 +77,6 @@ export function spotFor(item: Item, ctx: SpotCtx, nth: number): Spot | null {
   }
   return null
 }
-
-/** The aquarium stands against the door wall, clear of the waiting corner. */
-export const AQUARIUM_X = -ROOM3.w / 2 + 0.3
-
-/** The trophy shelf's place on the right wall. */
-export const SHELF = { x: ROOM3.w / 2 - 0.02, y: 1.45, z: toWorld(0, 400).z, ry: -Math.PI / 2 }
 
 /**
  * Build what an item looks like at its spot (for the grey ghost) and say where its price badge floats and what a
@@ -105,32 +100,30 @@ export function buildAt(b: Build, spot: Spot, ctx: SpotCtx): { anchor: Vector3; 
   if (spot.kind === 'decor') {
     const d = DECOR_ITEM_BY_ID[spot.id]
     const pal = setPalette(undefined, spot.id)
-    const a = toWorld(spot.x, spot.y)
-    if (spot.place === 'wall') { decorItem(b, d.kind, pal, a.x, wallHeight(spot.y), 0); around(a.x, 0.1, 0.6, 0.3, 2.4); return { anchor: new Vector3(a.x, wallHeight(spot.y) + 0.6, 0.2), box } }
-    if (spot.place === 'ceiling') { decorItem(b, d.kind, pal, a.x, 2.3, 1.2); around(a.x, 1.2, 0.5, 0.5, 2.8); return { anchor: new Vector3(a.x, 2.7, 1.2), box } }
-    if (spot.place === 'rug') { floorDecal(b, rugTexture('round', '#e6e1ea', '#cfc8d6', '#ffffff'), a.x, a.z, 2.4, 1.6, 0.008); around(a.x, a.z, 1.2, 0.8, 0.3); return { anchor: new Vector3(a.x, 0.5, a.z), box } }
-    if (spot.place === 'window') { decorItem(b, 'curtains', pal, toWorld(760, 0).x, 2.72, 0.02); around(toWorld(760, 0).x, 0.2, 1, 0.3, 2.8); return { anchor: new Vector3(toWorld(760, 0).x, 2.9, 0.3), box } }
-    if (spot.place === 'table') { const tx = spot.x < 250 ? toWorld(DESK.x + DESK.w / 2, 0).x - 0.55 : toWorld(352, 0).x; const tz = spot.x < 250 ? toWorld(0, DESK.y + DESK.h / 2).z : 0.42; decorItem(b, d.kind, pal, tx, spot.x < 250 ? 1.055 : 0.76, tz); around(tx, tz, 0.3, 0.3, 1.5); return { anchor: new Vector3(tx, 1.7, tz), box } }
-    const front = a.z > ROOM3.d / 2
-    const z = front ? Math.min(a.z, ROOM3.d - 0.55) : Math.max(a.z, 0.55)
-    decorItem(b, d.kind, pal, a.x, 0, z, front ? Math.PI - Math.sign(a.x || 1) * 0.5 : 0)
-    around(a.x, z, 0.6, 0.5, 1.6)
-    return { anchor: new Vector3(a.x, 1.9, z), box }
+    const sp = decorSpot(d.place, spot.slot, d.kind)
+    if (d.place === 'wall') { decorItem(b, d.kind, pal, sp.x, sp.y, 0); around(sp.x, 0.1, 0.6, 0.3, 2.4); return { anchor: new Vector3(sp.x, sp.y + 0.6, 0.2), box } }
+    if (d.place === 'ceiling') { decorItem(b, d.kind, pal, sp.x, sp.y, sp.z); around(sp.x, sp.z, 0.5, 0.5, 2.8); return { anchor: new Vector3(sp.x, 2.7, sp.z), box } }
+    if (d.place === 'rug') { floorDecal(b, rugTexture('round', '#e6e1ea', '#cfc8d6', '#ffffff'), sp.x, sp.z, 2.3, 1.5, 0.008); around(sp.x, sp.z, 1.15, 0.75, 0.3); return { anchor: new Vector3(sp.x, 0.5, sp.z), box } }
+    if (d.place === 'window') { const w = WINDOW_SPOTS[0], p = onWall(w.wall, w.u); decorItem(b, 'curtains', pal, p.x, WIN.bottom + WIN.h + WIN.w / 2 + 0.08, p.z, p.ry); around(p.x, 0.2, 0.8, 0.3, 2.8); return { anchor: new Vector3(p.x, 2.7, 0.3), box } }
+    decorItem(b, d.kind, pal, sp.x, sp.y, sp.z, sp.ry, sp.k)
+    around(sp.x, sp.z, 0.6, 0.5, sp.y + 1.5)
+    return { anchor: new Vector3(sp.x, sp.y + 1.8, sp.z), box }
   }
   if (spot.kind === 'prop') {
     const id = spot.id
     const at = (x: number, y: number) => toWorld(x, y)
-    if (id === 'plant') { bigPlant(b, ROOM3.w / 2 - 0.45, 0.45, 0xf2e6df, 1.1); around(ROOM3.w / 2 - 0.45, 0.45, 0.5, 0.5, 1.8); return { anchor: new Vector3(ROOM3.w / 2 - 0.45, 2.1, 0.45), box } }
-    if (id === 'aquarium') { const x = AQUARIUM_X, z = at(72, 460).z; aquarium(b, x, z, Math.PI / 2); around(x, z, 0.35, 0.6, 1.4); return { anchor: new Vector3(x, 1.8, z), box } }
+    if (id === 'plant') { bigPlant(b, PLANT_SPOT.x, PLANT_SPOT.z, 0xf2e6df, 1.1); around(PLANT_SPOT.x, PLANT_SPOT.z, 0.5, 0.5, 1.8); return { anchor: new Vector3(PLANT_SPOT.x, 2.1, PLANT_SPOT.z), box } }
+    if (id === 'aquarium') { const { x, z } = AQUARIUM_SPOT; aquarium(b, x, z, Math.PI / 2); around(x, z, 0.35, 0.6, 1.4); return { anchor: new Vector3(x, 1.8, z), box } }
     if (id === 'rug') { const a = at(420, 560); floorDecal(b, rugTexture('cloud', '#e6e1ea', '#cfc8d6', '#ffffff'), a.x, a.z, 2.6, 1.9, 0.008); around(a.x, a.z, 1.3, 0.9, 0.3); return { anchor: new Vector3(a.x, 0.5, a.z), box } }
     if (id === 'chandelier') { const a = at(PROP_SPOTS.chandelier.x, 0); decorItem(b, 'chandelier', [0xf7c6d4, 0xffffff, 0xffffff, 0xfbe0a0], a.x, 2.45, 1.7); around(a.x, 1.7, 0.5, 0.5, 3); return { anchor: new Vector3(a.x, 2.9, 1.7), box } }
     if (id === 'candles') { const dx = toWorld(DESK.x + DESK.w / 2, 0).x + 0.75, dz = toWorld(0, DESK.y + DESK.h / 2).z + 0.12; for (const [ox, h] of [[0, 0.16], [0.08, 0.11], [-0.07, 0.09]] as const) b.kit.add(G.cyl(0.03, 0.03, h, 10), 0xfff4e6, 'satin', tf(dx + ox, 1.055 + h / 2, dz)); around(dx, dz, 0.2, 0.2, 1.4); return { anchor: new Vector3(dx, 1.6, dz), box } }
     // Wall pieces: the fairy lights, the art and the neon.
-    const x = id === 'art' ? at(960, 0).x : id === 'neon' ? at(505, 0).x : 0
-    if (id === 'lights') for (let i = 0; i <= 40; i += 2) b.kit.add(G.sphere(0.03, 6), 0xffffff, 'glow', tf(-ROOM3.w / 2 + 0.3 + (i / 40) * (ROOM3.w - 0.6), 2.55 - 0.18 * Math.sin(((i % 8) / 8) * Math.PI), 0.05))
-    else b.kit.add(G.box(id === 'neon' ? 1.3 : 1.2, id === 'neon' ? 0.6 : 0.9, 0.04, 0.03), 0xffffff, 'satin', tf(x, wallHeight(70), 0.03))
+    const wp = id === 'art' ? ART : NEON
+    const x = id === 'lights' ? 0 : onWall('back', wp.u).x, y = (wp.y0 + wp.y1) / 2
+    if (id === 'lights') for (let i = 0; i <= 40; i += 2) b.kit.add(G.sphere(0.03, 6), 0xffffff, 'glow', tf(-ROOM3.w / 2 + 0.3 + (i / 40) * (ROOM3.w - 0.6), LIGHTS.y1 - 0.03, 0.05))
+    else b.kit.add(G.box(wp.w, wp.y1 - wp.y0, 0.04, 0.03), 0xffffff, 'satin', tf(x, y, 0.03))
     around(x, 0.1, id === 'lights' ? ROOM3.w / 2 : 0.7, 0.3, 2.8)
-    return { anchor: new Vector3(x, id === 'lights' ? 2.7 : wallHeight(70) + 0.7, 0.25), box }
+    return { anchor: new Vector3(x, id === 'lights' ? 2.7 : wp.y1 + 0.4, 0.25), box }
   }
   // Upgrades.
   const f = spot.family
@@ -141,9 +134,10 @@ export function buildAt(b: Build, spot: Spot, ctx: SpotCtx): { anchor: Vector3; 
     return { anchor: new Vector3(a.x, 1.3, a.z), box }
   }
   if (f === 'star') {
-    b.kit.at(tf(SHELF.x, SHELF.y + 0.15, SHELF.z, 0, SHELF.ry, 0), () => starShape(b.kit))
-    around(SHELF.x - 0.2, SHELF.z, 0.3, 0.8, 2.2)
-    return { anchor: new Vector3(SHELF.x - 0.2, SHELF.y + 0.75, SHELF.z), box }
+    const p = onWall(TROPHY.wall, TROPHY.u)
+    b.kit.at(tf(p.x, TROPHY.y + 0.15, p.z, 0, p.ry, 0), () => starShape(b.kit))
+    around(p.x - 0.2, p.z, 0.3, 0.8, 2.2)
+    return { anchor: new Vector3(p.x - 0.2, TROPHY.y + 0.75, p.z), box }
   }
   if (f === 'lights') {
     const p = SLOTS[ctx.stationSlots.facial ?? 0], a = toWorld(p.x, p.y)

@@ -42,7 +42,8 @@ export const PARTITIONS: Rect[] = [
  * little fountain planter in the front right corner.
  */
 export const FIXTURES: Record<'waiting' | 'planter', Rect> = {
-  waiting: { x: 118, y: 384, w: 176, h: 90 },
+  // Clear of the desk's front (two tiles) and of the players' start spots, with a way past it on the door side.
+  waiting: { x: 170, y: 435, w: 100, h: 160 },
   planter: { x: 1190, y: 702, w: 74, h: 86 },
 }
 
@@ -63,7 +64,7 @@ export const SLOTS: Pt[] = [
  * down that the whole figure and its name tag stand clear of the desk (the tag sits about 60 px below it).
  */
 export function spawnPoint(id: number): Pt {
-  return { x: 180 + (Math.max(0, id) % 4) * 60, y: DESK_BOTTOM + 192 }
+  return { x: 306 + (Math.max(0, id) % 4) * 60, y: DESK_BOTTOM + 192 }
 }
 export const STATION_W = 150
 export const STATION_H = 110
