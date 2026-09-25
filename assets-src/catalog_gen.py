@@ -74,12 +74,13 @@ def people():
         'walkSpeed': {k: m['walkSpeed'] for k, m in kinds.items()},
         'outfits': {k: sorted(n[len('outfit_'):] for n in m['meshes'] if n.startswith('outfit_')) for k, m in kinds.items()},
         'outfitTints': OUTFIT_TINTS,
-        'always': ['head_<kind>', 'eyes', 'brows'],
+        'always': ['head_<kind>'],
+        'faces': {'expressions': ['smile', 'happy', 'blink', 'sleepy', 'wow'], 'files': 'people/faces/<kind>_<expression>.png',
+                  'frame': {'x0': -12, 'x1': 12, 'y0': -10.5, 'y1': 13.5, 'size': 256}},
         'hair': HAIR,
         'accessories': {'1': 'bow_<hair>', '2': 'glasses', '3': 'flower_<hair>'},
-        'tints': {'Skin': 'SKIN[look.skin].base (multiplies the face and body texture)', 'Hair': 'HAIR[look.hair].base (multiplies the strand texture)',
-                  'Brows': 'HAIR[look.hair].dark', 'Eyes': 'the iris colour (people.ts irisForSeed or IRIS); EyeWhite stays',
-                  'Accessory': 'OUTFIT[(look.outfit + 5) % 8]', 'fixed': ['EyeWhite', 'Glasses', 'Lens', 'FlowerCentre']},
+        'tints': {'Skin': 'SKIN[look.skin].base (multiplies the body texture)', 'Hair': 'HAIR[look.hair].base (multiplies the strand texture)',
+                  'Face': 'a per-customer painted texture (see faces)', 'Accessory': 'OUTFIT[(look.outfit + 5) % 8]', 'fixed': ['Sole', 'Glasses', 'Lens', 'FlowerCentre']},
         'animations': sorted((fem or masc)['clips']),
         'clipSeconds': (fem or masc)['clips'],
         'seatedClips': ['sit_chair', 'sit_sofa', 'sit_stool', 'sit_pedicure', 'sleepy'],
@@ -129,6 +130,8 @@ export type ModelEntry = {
   sitClip?: string
   /** Animation clips inside the file (the cat). */
   animations?: string[]
+  /** Ground speed (m/s) the in-place walk clip matches (the cat). */
+  walkSpeed?: number
   /** For purchasable items: three styles (the first is the default). */
   styles?: ModelStyle[]
   /** The decor set or regular this item belongs to. */
@@ -147,11 +150,16 @@ export type ModelEntry = {
  *   lighter main). Keep `vertexColors` on (the hair's soft occlusion is in COLOR_0).
  * - Hair: `hair[look.hairStyle]`. Accessories by Look.accessory: 1 bow, 2 glasses, 3 flower clip; `<hair>` is the
  *   hair style's name (each bow and flower sits on its own hair style's surface).
- * - Faces are Quaternius' sculpted faces (in the Skin texture on head_<kind>), with bigger, opened eyes. A customer's
- *   face differs by skin tone, eye colour (the Eyes material) and brow colour.
+ * - Faces are painted: head_<kind>'s `Face` material (its front) takes a 256 px texture in the 2D painter's own frame
+ *   (`faces.frame`, people.ts head units around the head centre, R = 15: x -12..12, y -10.5 at the image top to 13.5).
+ *   Paint each customer with people.ts paintFace (their skin, iris, brows, freckles, expression) into a canvas with
+ *   that frame and the skin base as background, and set it as the Face map (CanvasTexture, flipY = false, sRGB); swap
+ *   the canvas to blink or emote. `faces.files` are ready-made defaults (skin tone 1, brown eyes) for every expression.
  * - Clips: `animations`. The seated ones (`seatedClips`) put the hips (pelvis joint) exactly on the model's origin,
  *   facing +Z: put the character's origin on a station's `seat` node with the node's rotation. For a seat with no
  *   node, `hipsAboveFeet` says how high the hips sit above the floor the feet rest on.
+ * - `sit_down` / `stand_up` (0.6 s) go between standing in front of a sofa-height seat and `sit_sofa`; play them with
+ *   the origin already on the seat node (the feet start `hipsAboveFeet.sit_sofa` below it), then loop the seated clip.
  * - `walkSpeed` is the ground speed (m/s) the in-place walk cycle matches at timeScale 1.
  */
 '''

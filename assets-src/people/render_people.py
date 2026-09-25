@@ -39,13 +39,27 @@ def load(path):
     return arm, parts
 
 
+FACES = {}
+
+
 def tint(o, colors):
-    """Per-object material copies, tinted (as the floor engine does)."""
-    for slot in o.material_slots:
-        m = slot.material
+    """Per-object material copies, tinted (as the floor engine does; the face painted for the skin tone)."""
+    for i, slot in enumerate(o.material_slots):
+        m = o.data.materials[i] if i < len(o.data.materials) else slot.material
         if m is None:
             continue
         base = m.name.split('.')[0]
+        if base == 'Face' and 'tone' in colors:
+            key = (colors['kind'], colors['tone'])
+            if key not in FACES:
+                FACES[key] = bpy.data.images.load(os.path.join(gs.OUT, 'faces', f'{key[0]}_{key[1]}.png'))
+            m2 = m.copy()
+            for n in m2.node_tree.nodes:
+                if n.type == 'TEX_IMAGE':
+                    n.image = FACES[key]
+            slot.link = 'OBJECT'
+            slot.material = m2
+            continue
         if base in colors:
             m2 = m.copy()
             rgba = gs.rgb(colors[base])
@@ -90,7 +104,7 @@ def person(kit, x, y, outfit, style, acc, colors, clip, frame, rot=0.0):
         a.animation_data.action_slot = act.slots[0]
     kind = 'fem' if 'head_fem' in parts else 'masc'
     colors = dict(colors, kind=kind)
-    names = [f'outfit_{outfit}', f'head_{kind}', f'hair_{style}', 'eyes', 'brows']
+    names = [f'outfit_{outfit}', f'head_{kind}', f'hair_{style}']
     if acc:
         names.append(acc if acc == 'glasses' else f'{acc}_{style}')
     made = []
@@ -121,7 +135,7 @@ def look(r, role='customer', tint_col=0xe7799c):
     second = r.choice(OUTFIT)
     c = {'Skin': skin, 'Hair': hair, 'Brows': tuple(int(v * 0.8) for v in hair), 'Eyes': r.choice([(122, 84, 60), (84, 124, 170), (96, 140, 96), (70, 50, 40)]), 'Top': main, 'Bottom': r.choice([(110, 142, 196), (86, 84, 112), (196, 170, 128)]),
          'Shoes': r.choice([(250, 250, 252), (70, 52, 58), (200, 120, 140)]), 'Shirt': (252, 246, 236), 'Detail': second,
-         'Accessory': r.choice(OUTFIT), 'Apron': tint_col, 'Scrubs': (178, 228, 210) if role == 'staff' else (150, 206, 222)}
+         'Accessory': r.choice(OUTFIT), 'Apron': tint_col, 'Scrubs': (178, 228, 210) if role == 'staff' else (150, 206, 222), 'tone': tone}
     return c
 
 
@@ -137,9 +151,9 @@ def main():
     if mode == 'lineup':
         cast = [
             (fem, 'dress', 'long', 'bow', 'idle', 1), (masc, 'suit', 'crop', 'glasses', 'idle', 1), (fem, 'player', 'ponytail', None, 'idle', 1),
-            (fem, 'cardigan', 'bun', 'glasses', 'idle', 1), (masc, 'hoodie', 'curly', None, 'walk', 8), (fem, 'scrubs', 'braids', None, 'idle', 1),
-            (fem, 'dungarees', 'bob', 'flower', 'idle', 1), (masc, 'jacket', 'bun', None, 'idle', 1), (fem, 'sporty', 'curly', None, 'wave', 10),
-            (masc, 'chef', 'crop', None, 'work', 12), (fem, 'jumper', 'long', None, 'idle', 1),
+            (fem, 'cardigan', 'bun', 'glasses', 'idle', 1), (masc, 'hoodie', 'curly', None, 'idle', 1), (fem, 'scrubs', 'braids', None, 'idle', 1),
+            (fem, 'dungarees', 'bob', 'flower', 'idle', 1), (masc, 'jacket', 'bun', None, 'idle', 1), (fem, 'sporty', 'curly', None, 'idle', 1),
+            (masc, 'chef', 'crop', None, 'idle', 1), (fem, 'jumper', 'long', None, 'idle', 1),
         ]
         n = len(cast)
         for i, (kit, o, s, acc, clip, f) in enumerate(cast):

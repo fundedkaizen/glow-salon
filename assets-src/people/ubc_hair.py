@@ -176,8 +176,16 @@ def build_all(kind, pieces, head):
     gs.set_mats(br, ['Hair'])
     out['braids'] = styled('braids', [copy(cap, 'c'), br, ties])
     for o in out.values():
+        # smooth shading everywhere: drop the imported split normals (they kept every facet hard)
+        gs.activate(o)
+        try:
+            bpy.ops.mesh.customdata_custom_splitnormals_clear()
+        except Exception:
+            pass
         for p in o.data.polygons:
             p.use_smooth = True
+        for e in o.data.edges:
+            e.use_edge_sharp = False
     return out, info
 
 
@@ -192,10 +200,13 @@ def glasses(eyes, info):
         r = (max(p.x for p in side) - min(p.x for p in side)) / 2
         front = min(p.y for p in side)
         centres.append((c, r, front))
-    ny = min(f for _, _, f in centres) - 0.014
+    ny = min(f for _, _, f in centres) - 0.012
+    gap = abs(centres[0][0].x - centres[1][0].x)
+    # each lens about the eye socket's size, never touching the other one (a bridge spans the gap over the nose)
+    R = min(r for _, r, _ in centres) * 1.2
+    R = min(R, gap / 2 - 0.009)
     for (c, r, front), s in zip(centres, (1, -1)):
-        R = r * 1.55
-        parts.append(gs.torus('rim', R, 0.0026, 18, 4, loc=(c.x, ny, c.z), rot=(90, 0, 0)))
+        parts.append(gs.torus('rim', R, 0.0022, 24, 5, loc=(c.x, ny, c.z), rot=(90, 0, 0)))
         bm = bmesh.new()
         bmesh.ops.create_circle(bm, cap_ends=True, segments=14, radius=R * 0.96)
         ln = gs.mesh_obj('lens', bm)
@@ -204,9 +215,9 @@ def glasses(eyes, info):
         gs.apply_all(ln)
         lens.append(ln)
     (c1, r1, _), (c2, r2, _) = centres
-    parts.append(gs.limb('bridge', Vector((c2.x + r2 * 1.55, ny, c2.z + 0.004)), Vector((c1.x - r1 * 1.55, ny, c1.z + 0.004)), [(0, 0.0024), (1, 0.0024)], seg=4))
+    parts.append(gs.limb('bridge', Vector((c2.x + R, ny, c2.z + 0.006)), Vector((c1.x - R, ny, c1.z + 0.006)), [(0, 0.002), (1, 0.002)], seg=5))
     for (c, r, _), s in zip(centres, (1, -1)):
-        a = Vector((c.x + s * r * 1.55, ny + 0.004, c.z + 0.002))
+        a = Vector((c.x + s * R, ny + 0.004, c.z + 0.002))
         b = Vector((s * (info['w'] + 0.004), info['C'].y + 0.02, c.z + 0.01))
         parts.append(gs.limb('temple', a, b, [(0, 0.0022), (1, 0.0022)], seg=4))
     frame = gs.join(parts, 'glasses')

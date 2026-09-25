@@ -115,6 +115,13 @@ async function person(kind, parts, look, clip, x, z, rot = 0) {
   const PART = /^(outfit_|hair_|bow_|flower_|head_|glasses$|eyes$|brows$)/
   root.traverse(o => { if (PART.test(o.name)) o.visible = keep.has(o.name) })
   tint(root, look)
+  // the check the lead asked for: every visible Skin slot carries the Look's skin tint
+  root.traverse(m => {
+    if (!m.isMesh || !m.visible) return
+    for (const mt of [].concat(m.material)) {
+      if (mt.name === 'Skin' && mt.color.getHex() !== look.Skin) report.failed.push(`skin tint missing on ${m.parent?.name || m.name}`)
+    }
+  })
   shadowsOn(root)
   root.position.set(x, 0, z)
   root.rotation.y = rot

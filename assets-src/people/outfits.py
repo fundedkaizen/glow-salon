@@ -76,7 +76,8 @@ def _region(M, spec, p: Vector, n: Vector):
     neckz = M['neck'] - 0.012
     if spec['neck'] == 'high':
         neckz = M['neck'] + 0.02
-    if p.z > neckz and (p.x ** 2 + (p.y - 0.008) ** 2) ** 0.5 < 0.062:
+    if p.z > neckz + 0.004 and abs(p.x) < M['armx'] - 0.03:
+        # the neck above the collar band is skin, all of it (a clean edge the rolled band covers)
         return 'Skin'
     front = p.y < -0.01
     if spec['neck'] == 'scoop' and front and p.z > neckz - 0.05 * max(0.0, 1 - (ax / 0.085) ** 2):
@@ -143,7 +144,7 @@ def dress_body(body, M, spec, name):
     idx = {m: i for i, m in enumerate(mats)}
     for p in me.polygons:
         p.material_index = idx[_region(M, spec, p.center, p.normal)]
-    _puff(o, idx)
+    _puff(o, idx, M)
     _drop_unused(o)
     return o
 
@@ -169,11 +170,15 @@ def _bisect_band(o, co, no, M, where=None):
     bm.free()
 
 
-PUFF = {'Top': 0.0045, 'Bottom': 0.003, 'Shirt': 0.0035, 'Scrubs': 0.0045, 'Apron': 0.0045, 'Detail': 0.004, 'Shoes': 0.004, 'Skin': 0.0}
+# The details sit on the dressed surface, which stands PUFF off the skin: they are lifted by LIFT on top of their own
+# offset (they are measured on the bare body).
+LIFT = 0.011
+PUFF = {'Top': 0.009, 'Bottom': 0.009, 'Shirt': 0.006, 'Scrubs': 0.01, 'Apron': 0.009, 'Detail': 0.007, 'Shoes': 0.004, 'Skin': 0.0}
 
 
-def _puff(o, idx):
-    """Clothes stand a little off the skin, and a touch more at their edges (a hem lip)."""
+def _puff(o, idx, M=None):
+    """Clothes stand off the skin with real thickness, a touch more at their edges (a hem lip); trousers loosen toward
+    the ankle and tops toward the waist, so nothing reads as painted on."""
     me = o.data
     names = {i: m for m, i in idx.items()}
     vmat = [set() for _ in me.vertices]
@@ -196,10 +201,16 @@ def _puff(o, idx):
         if not ms:
             continue
         d = max(PUFF.get(m, 0) for m in ms)
+        if M and 'Skin' not in ms:
+            z = v.co.z
+            if ('Bottom' in ms or 'Scrubs' in ms) and z < M['crotch']:
+                d += 0.012 * max(0.0, min(1.0, (M['crotch'] - z) / (M['crotch'] - M['ankle'])))
+            if ('Top' in ms or 'Scrubs' in ms) and M['waist'] - 0.08 < z < M['chest'] and abs(v.co.x) < M['armx']:
+                d += 0.006 * max(0.0, 1 - abs(z - (M['waist'] - 0.02)) / 0.1)
         if v.index in edge_v:
             d = min(PUFF.get(m, 0) for m in ms) * 0.5 + d * 0.5
         elif v.index in near and 'Skin' not in ms:
-            d += 0.0025
+            d += 0.004
         v.co += v.normal * d
     bm.to_mesh(me)
     bm.free()
@@ -235,14 +246,14 @@ def skirt(body, M, top_z, length, mat, folds=11, flare=0.07, name='skirt'):
     seg = 36
     rings = 6
     bm = bmesh.new()
-    top = _torso_ring(body, top_z, 0.004, seg)
+    top = _torso_ring(body, top_z, 0.004 + LIFT, seg)
     center = Vector((0, 0.012, top_z))
     # the widest the hips get under the skirt, so the skirt always clears them
     clear = [0.0] * seg
     for zz in [top_z - k * 0.012 for k in range(1, 16)]:
         if zz < M['crotch'] + 0.01:
             break
-        for i, p in enumerate(_torso_ring(body, zz, 0.01, seg)):
+        for i, p in enumerate(_torso_ring(body, zz, 0.01 + LIFT, seg)):
             q = p - center
             q.z = 0
             clear[i] = max(clear[i], q.length)
@@ -301,7 +312,8 @@ def front_patch(body, poly, offset, thickness, mat, name, back=False, cuts=4):
     sw.use_project_y = True
     sw.use_negative_direction = back
     sw.use_positive_direction = not back
-    sw.offset = offset
+    sw.offset = offset + LIFT
+    offset = offset + LIFT
     gs.apply_all(o)
     # where the projection missed the body (beside the neck), snap to the nearest surface instead
     bvh = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
@@ -326,7 +338,7 @@ def front_patch(body, poly, offset, thickness, mat, name, back=False, cuts=4):
 def band(body, z, grow, height, mat, name):
     """A band around the torso at height z (a sash, a ribbed hem, a stripe, a collar)."""
     r = gs.torus(name, 1.0, 0.1, 36, 4)
-    _fit_ring(r, body, z, grow, height)
+    _fit_ring(r, body, z, grow + LIFT, height)
     gs.set_mats(r, [mat])
     gs.shade_smooth(r)
     return r
@@ -336,6 +348,9 @@ def extras(body, M, spec, kind):
     """The parts beyond the painted body, for one outfit."""
     out = []
     nz = M['neck']
+    # every neckline gets a soft rolled edge, so the cloth ends on a clean band, never on a sawtooth of triangles
+    if spec['neck'] != 'high':
+        out.append(band(body, nz - 0.004, 0.008, 0.04, spec['top'], 'neckline'))
     if spec['legs'] == 'skirt' and kind == 'fem':
         top_z = M['waist'] + 0.01 if spec['hem'] == 'full' else M['hip'] + 0.045
         length = (top_z - M['knee']) * spec['skirt_len'] / 0.72 * 0.86
@@ -407,10 +422,10 @@ def extras(body, M, spec, kind):
 
 
 def _front(body, p: Vector) -> Vector:
-    """The body's front surface at (x, z)."""
+    """The dressed front surface at (x, z): the body's, brought forward by the cloth's lift."""
     bvh = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
     hit = bvh.ray_cast(Vector((p.x, -0.5, p.z)), Vector((0, 1, 0)))
-    return hit[0] if hit[0] is not None else Vector((p.x, -0.08, p.z))
+    return (hit[0] + Vector((0, -LIFT, 0))) if hit[0] is not None else Vector((p.x, -0.08 - LIFT, p.z))
 
 
 def _fit_ring(ring, body, z, grow, height):
@@ -464,7 +479,7 @@ def _apron(body, M, kind):
     top = M['waist'] - 0.01
     length = top - (M['knee'] + 0.09)
     seg, rings = 14, 6
-    ring = _torso_ring(body, top, 0.012, 48)
+    ring = _torso_ring(body, top, 0.012 + LIFT, 48)
     center = Vector((0, 0.012, top))
     bvh = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
     bm = bmesh.new()
@@ -484,7 +499,7 @@ def _apron(body, M, kind):
             if hit[0] is not None:
                 q = hit[0] - Vector((0, center.y, z))
                 q.z = 0
-                rad = max(rad, q.length + 0.02)
+                rad = max(rad, q.length + 0.02 + LIFT)
             row.append(bm.verts.new(Vector((0, center.y, z)) + d * rad))
         rows.append(row)
     for r0, r1 in zip(rows, rows[1:]):
@@ -531,8 +546,10 @@ def shoes(body, M):
         sm.iterations = 3
         sm.lambda_factor = 0.4
         gs.apply_all(o)
-        gs.decimate(o, 360)
+        gs.decimate(o, 420)
         gs.shade_smooth(o)
-        gs.set_mats(o, ['Shoes'])
+        gs.set_mats(o, ['Shoes', 'Sole'])
+        for p in o.data.polygons:
+            p.material_index = 1 if p.center.z < 0.024 else 0
         out.append(o)
     return out
