@@ -231,5 +231,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   .thud-skip { min-height: 40px; font-size: 13px; }
   .tool { width: 54px; height: 54px; }
   .tool img { width: 46px; height: 46px; }
-  .thud-tray { padding: 40px 10px 10px; gap: 6px; }
+  /* The step card at the top already names the tool: no label over the tray, so nothing hangs off its edge. */
+  .thud-tray { padding: 14px 12px 10px; gap: 6px; max-width: calc(100vw - 24px); }
+  .tool .tool-name { display: none; }
+  /* Hidden tools give back exactly the gap they leave (6px here), or the tray measures short and cuts the last tool. */
+  .tool.gone, .tool.far { margin-left: -6px; }
 }
