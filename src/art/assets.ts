@@ -33,7 +33,7 @@ export type PartAssets = {
   /** Facial only: the robe over the shoulders, in art space (it reaches past the sheet). */
   robe?: CropTex
   /** Facial only: the warm towel draped over the face during the steam step (art space). */
-  towel?: Texture
+  towel?: { get: () => Texture; made: Texture | null }
   /** Facial only: pimple parts painted for this skin. */
   pimples?: Record<'halo' | 'dome' | 'deepDome' | 'head' | 'blanch' | 'mark' | 'dab', Texture>
   skinRGB: [number, number, number]
@@ -79,6 +79,14 @@ function backdropTex(c: HTMLCanvasElement) {
   ctx.drawImage(c, 0, 0, 1024, 1024)
   return canvasTexture(small)
 }
+/** The facial room is the same for everyone: painted once, kept for the session. */
+let sharedFacialBackdrop: Texture | null = null
+function facialBackdrop() { return (sharedFacialBackdrop ??= backdropTex(paintBackdrop('facial', { skin: 0, hair: 0, hairStyle: 0, outfit: 0, accessory: 0, freckles: false }))) }
+/** A texture painted on first use. */
+function lazyTex(paint: () => HTMLCanvasElement) {
+  const t = { made: null as Texture | null, get: () => (t.made ??= tex(paint())) }
+  return t
+}
 const cropTex = (c: Crop): CropTex => ({ texture: tex(c.canvas), x: c.x, y: c.y })
 const toTex = <K extends string>(r: Record<K, Crop>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, cropTex(v as Crop)])) as Record<K, CropTex>
 
@@ -99,9 +107,9 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
     }
     return {
       surface: { base: tex(art.base), height: tex(art.height), bump: 2.4, sss: [0.95, 0.32, 0.26], layers, order },
-      backdrop: backdropTex(paintBackdrop('facial', look)),
+      backdrop: facialBackdrop(),
       features: { eyes: toTex(art.eyes), brows: toTex(art.brows), mouth: toTex(art.mouth) },
-      towel: tex(paintSteamTowel(seed)),
+      towel: lazyTex(() => paintSteamTowel(seed)),
       robe: { texture: tex(paintRobe(hex(OUTFIT[look.outfit % OUTFIT.length]), art.skin, seed)), x: ROBE.x, y: ROBE.y },
       pimples: Object.fromEntries(Object.entries(paintPimples(art.skin)).map(([k, c]) => [k, tex(c)])) as PartAssets['pimples'],
       skinRGB: art.skin.base,
@@ -125,11 +133,13 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
 
 /** Free every texture made for one customer (called when the close-up closes; shared bits and tools stay). */
 export function destroyAssets(a: PartAssets) {
-  const all: Texture[] = [a.surface.base, a.surface.height, a.backdrop]
+  // The facial backdrop is shared by every customer and stays.
+  const all: Texture[] = [a.surface.base, a.surface.height]
+  if (a.backdrop !== sharedFacialBackdrop) all.push(a.backdrop)
   for (const l of Object.values(a.surface.layers)) { if (l.art) all.push(l.art); if (l.art2) all.push(l.art2) }
   if (a.features) for (const part of Object.values(a.features)) for (const c of Object.values(part)) all.push(c.texture)
   for (const c of a.tips ?? []) all.push(c.texture)
-  if (a.towel) all.push(a.towel)
+  if (a.towel?.made) all.push(a.towel.made)
   if (a.robe) all.push(a.robe.texture)
   if (a.pimples) all.push(...Object.values(a.pimples))
   for (const t of new Set(all)) t.destroy(true)

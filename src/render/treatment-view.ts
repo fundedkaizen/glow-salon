@@ -291,7 +291,7 @@ export class TreatmentView {
     this.view = { w, h, top: small ? 88 : 84, bottom: small ? 150 : 150 }
     // Frame the subject to fill most of the screen's height (the face or the hand, about 800 art px),
     // never wider than the screen.
-    this.fit = Math.min((0.8 * h) / 800, (0.96 * w) / (this.opts.treatment === 'facial' ? 700 : 660))
+    this.fit = Math.min((0.76 * h) / 800, (0.96 * w) / (this.opts.treatment === 'facial' ? 700 : 660))
   }
 
   private placeCamera(dt: number) {
@@ -344,7 +344,8 @@ export class TreatmentView {
     if (this.exprTimer <= 0) this.setExpr(this.exprBase)
     // Step props.
     if (step.id === 'steam' && !this.towel && this.assets.towel) {
-      this.towel = new Sprite(this.assets.towel)
+      // Its art is painted a few frames in (see update), so the close-up opens without waiting for it.
+      this.towel = new Sprite()
       this.towel.anchor.set(0.5); this.towel.position.set(512, 512); this.towel.alpha = 0
       this.overFx.addChild(this.towel)
     }
@@ -791,6 +792,7 @@ export class TreatmentView {
     }
     if (prev?.id === 'dry') { this.surface.setLayerMix('mask', 1); this.surface.setLayerGloss('mask', 0.05) }
     if (prev?.id === 'peel' && this.flap.visible) this.releaseFlap()
+    this.flap.clear(); this.flap.visible = false
     if (prev?.id === 'cure' && this.uvLamp) { const l = this.uvLamp, g = this.uvGlow!; this.animate(0.5, t => { l.alpha = 1 - t; g.alpha = 0; l.y = 170 - t * 200 }) }
     if (skipped) sfx.click()
     for (const tv of this.targets.values()) {
@@ -808,7 +810,7 @@ export class TreatmentView {
   private onPeel(e: Extract<SessionEvent, { e: 'peel' }>) {
     this.peelTension = e.tension
     if (e.unstuck) { sfx.peelCreep(0, false); this.cam.punch += 0.01; this.flashExpr('tickle', 0.8) }
-    if (e.released) { sfx.peelSnap(); this.flinch(1); this.cam.punch += 0.03; this.cam.shake += 6 }
+    if (e.released) { sfx.peelSnap(); this.flinch(1); this.cam.punch += 0.03; this.cam.shake += 6; if (this.flap.visible) this.releaseFlap() }
     else if (this.personality === 'ticklish' && e.progress > 0.1 && Math.random() < 0.04) this.flashExpr('giggle', 0.5)
   }
 
@@ -834,64 +836,97 @@ export class TreatmentView {
     const speed = (this.peelShown - prev) / Math.max(dt, 1e-3)
     const stuck = this.down && this.grabbing && !this.session.peel.unstuck
     sfx.peelCreep(speed, stuck && this.peelTension > 0.03, this.pan(512))
-    const [lo, hi] = this.faceSpan(lineY)
     const g = this.flap
     g.visible = true
     g.clear()
-    if (hi - lo < 20) return
+    const [lo0, hi0] = this.faceSpan(lineY)
+    if (hi0 - lo0 < 20) return
     const wob = stuck ? Math.sin(this.time * 38) * this.peelTension * 10 : 0
-    const thick = 10 + this.peelShown * 26 + (stuck ? this.peelTension * 16 : 0)
-    const x0 = lo + 22, x1 = hi - 22
+    const thick = 10 + this.peelShown * 22 + (stuck ? this.peelTension * 14 : 0)
     const front = (x: number) => lineY + peelCurve(x)
     // Fresh skin behind the front: dewy, a little flushed.
     if (this.peelShown > 0.02) {
-      for (let x = x0 + 30; x < x1 - 30; x += 70) this.surface.stamp(WET, x, front(x) + 30, 60, 0.12)
+      for (let x = lo0 + 50; x < hi0 - 50; x += 70) this.surface.stamp(WET, x, front(x) + 30, 60, 0.12)
       const skinU = this.surface.skin.uniforms.uniforms.uSkin
-      skinU[0] = Math.max(skinU[0], 0.35)
+      skinU[0] = Math.max(skinU[0], 0.16)
     }
-    // The sheet curls up and back over itself: the matte, paler underside faces us.
-    const hang = 26 + (this.down ? 26 : 10) + this.peelShown * 20
-    const lip = (x: number) => front(x) - hang - thick * 0.4 + Math.sin(x * 0.045 + this.time * 2.2) * 2.5 + wob
-    const arc = (x: number, t: number) => front(x) + (lip(x) - front(x)) * t - Math.sin(Math.PI * t) * 10
-    // A soft shadow the curl casts on the face below the front.
+    // The peeled part folds back over the mask still on the face, its paler underside toward us. Row by
+    // row it is the face below the front, mirrored up over it: as wide as the face was where it came from,
+    // so its sides follow the face outline and taper where the jaw does; the top rolls into a lip.
+    const peeled = PEEL_FROM - lineY
+    const H = Math.min(peeled * 0.9, 34 + (this.down ? 30 : 12) + this.peelShown * 50)
+    if (H < 6) return
+    const ROWS = 12
+    const rows: { l: number; r: number; y: (x: number) => number }[] = []
+    for (let k = 0; k <= ROWS; k++) {
+      const t = k / ROWS
+      const [l, r] = this.faceSpan(Math.min(PEEL_FROM + 20, lineY + t * H))
+      const inset = 6 + t * 4
+      const lift = t * H * 0.86 + Math.sin(Math.PI * t) * 6
+      rows.push({ l: l + inset, r: r - inset, y: (x: number) => front(x) - lift + (t > 0.7 ? Math.sin(x * 0.045 + this.time * 2.2) * 2.5 * t + wob * t : 0) })
+    }
+    const edge = (row: { l: number; r: number; y: (x: number) => number }, from: number, to: number, out: number[]) => {
+      const n = 14
+      for (let i = 0; i <= n; i++) { const x = from + ((to - from) * i) / n; out.push(x, row.y(x)) }
+    }
+    // Soft shadow the fold casts on the fresh skin below the front.
     for (let k = 0; k < 4; k++) {
       const band: number[] = []
-      for (let x = x0; x <= x1; x += 16) band.push(x, front(x) + 2)
-      for (let x = x1; x >= x0; x -= 16) band.push(x, front(x) + 10 + k * 7)
-      g.poly(band).fill({ color: 0x6a3a4a, alpha: 0.07 })
+      edge({ l: lo0, r: hi0, y: x => front(x) + 2 }, lo0 + 14, hi0 - 14, band)
+      const back: number[] = []
+      edge({ l: lo0, r: hi0, y: x => front(x) + 10 + k * 8 }, hi0 - 20, lo0 + 20, back)
+      g.poly([...band, ...back]).fill({ color: 0x5a2e40, alpha: 0.07 })
     }
-    // The underside, shaded from the fold (darker) to the lip (lighter).
-    for (let k = 0; k < 14; k++) {
-      const t0 = k / 14, t1 = (k + 1) / 14
+    // The underside, strip by strip: darker in the fold, lighter toward the lip, darker at the sides.
+    for (let k = 0; k < ROWS; k++) {
+      const a = rows[k], b = rows[k + 1]
       const strip: number[] = []
-      for (let x = x0; x <= x1; x += 16) strip.push(x, arc(x, t0))
-      for (let x = x1; x >= x0; x -= 16) strip.push(x, arc(x, t1) - 0.5)
-      const shadeK = 0.78 + 0.22 * t1
-      const c = ((Math.round(0xd4 * shadeK) << 16) | (Math.round(0xee * shadeK) << 8) | Math.round(0xe2 * shadeK))
-      g.poly(strip).fill({ color: c, alpha: 0.98 })
+      edge(a, a.l, a.r, strip)
+      const top: number[] = []
+      edge(b, b.r, b.l, top)
+      const shadeK = 0.8 + 0.2 * ((k + 1) / ROWS)
+      const c = (Math.round(0xd6 * shadeK) << 16) | (Math.round(0xef * shadeK) << 8) | Math.round(0xe4 * shadeK)
+      g.poly([...strip, ...top]).fill({ color: c, alpha: 0.98 })
     }
+    // The sides turn away: a soft darker edge along each.
+    for (const side of [0, 1]) {
+      const pts: number[] = []
+      for (const row of rows) { const x = side ? row.r : row.l; pts.push(x, row.y(x)) }
+      g.moveTo(pts[0], pts[1])
+      for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1])
+      g.stroke({ width: 5, color: 0x8fbfa9, alpha: 0.6, cap: 'round' })
+    }
+    // The fold line where it leaves the face.
+    const foldPts: number[] = []
+    edge(rows[0], rows[0].l, rows[0].r, foldPts)
+    g.moveTo(foldPts[0], foldPts[1]); for (let i = 2; i < foldPts.length; i += 2) g.lineTo(foldPts[i], foldPts[i + 1])
+    g.stroke({ width: 3, color: 0x7aa892, alpha: 0.7, cap: 'round' })
     // What it pulled out of the pores: dark specks and little creamy plugs, more the further it goes.
     const count = Math.round(20 + this.peelShown * 50)
     for (let i = 0; i < count; i++) {
-      const fx = x0 + 8 + ((i * 97 + 13) % Math.max(1, Math.floor(x1 - x0 - 16)))
-      const t = 0.15 + ((i * 37) % 70) / 100
-      const fy = arc(fx, t)
+      const k = 1 + ((i * 37) % (ROWS - 2))
+      const row = rows[k]
+      const fx = row.l + 8 + ((i * 97 + 13) % Math.max(1, Math.floor(row.r - row.l - 16)))
+      const fy = row.y(fx)
       if (i % 3 === 0) {
         g.ellipse(fx, fy, 1.8, 4.2).fill({ color: 0xf7ecc4, alpha: 0.95 })
         g.circle(fx, fy - 3.4, 1.6).fill({ color: 0x5a4636, alpha: 0.9 })
       } else g.circle(fx, fy, 1.2 + (i % 4) * 0.5).fill({ color: 0x5e4a3a, alpha: 0.55 })
     }
-    // The rolled lip: a soft tube, light on top and shaded beneath, following the curve.
+    // The rolled lip: a soft tube along the top row, light on top and shaded beneath, its ends rounded.
+    const lipRow = rows[ROWS]
     const tube = (dy: number, w: number, color: number, alpha: number) => {
-      g.moveTo(x0 - 4, lip(x0) + dy)
-      for (let x = x0; x <= x1; x += 12) g.lineTo(x, lip(x) + dy)
+      const pts: number[] = []
+      edge(lipRow, lipRow.l + 4, lipRow.r - 4, pts)
+      g.moveTo(pts[0], pts[1] + dy)
+      for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1] + dy)
       g.stroke({ width: w, color, alpha, cap: 'round' })
     }
     tube(0, thick, 0x9fd8bf, 1)
     tube(-thick * 0.24, thick * 0.34, 0xe9fbf2, 0.95)
     tube(thick * 0.26, thick * 0.24, 0x6fb497, 0.75)
     // The fingers hold the lip where the pointer is.
-    this.peelGrip = { x: Math.max(x0 + 20, Math.min(x1 - 20, this.pos.x)), y: lip(this.pos.x) }
+    this.peelGrip = { x: Math.max(lipRow.l + 20, Math.min(lipRow.r - 20, this.pos.x)), y: lipRow.y(this.pos.x) }
     // Before it is lifted: a curled corner at the chin to grab.
     if (!this.session.peel.unstuck) {
       const cy = PEEL_FROM - 12
@@ -1050,7 +1085,7 @@ export class TreatmentView {
     this.fx.update(dt)
     this.surface.update(dt)
     // Paint one waiting layer sheet per frame once the close-up is up.
-    if (this.frames > 3) this.surface.warmOne()
+    if (this.frames > 3 && !this.surface.warmOne() && this.towel && this.assets.towel && !this.assets.towel.made) this.towel.texture = this.assets.towel.get()
     this.placeCamera(dt)
     if (this.captureIn > 0 && --this.captureIn === 0) this.beforeRT = this.capture()
   }
@@ -1184,16 +1219,17 @@ export class TreatmentView {
     this.exprTimer = 0
     this.blinkT = -1
     // The finished look glows: a dewier skin and a soft bloom (seen on the After side of the wipe).
-    this.surface.skin.uniforms.uniforms.uSkin[3] = 1
+    this.surface.skin.uniforms.uniforms.uSkin[3] = 0.6
     const bloom = new Sprite(bits.glow())
     bloom.anchor.set(0.5)
     bloom.position.set(this.camGoal.x, this.camGoal.y)
     bloom.scale.set(13, 15)
-    bloom.tint = 0xfff1f5
+    // Warm and faint: a white additive bloom greys deep skin and blows fair skin out to cream.
+    bloom.tint = 0xffe6d8
     bloom.blendMode = 'add'
     bloom.alpha = 0
     this.overFx.addChild(bloom)
-    this.animate(1.4, t => { bloom.alpha = 0.11 * t })
+    this.animate(1.4, t => { bloom.alpha = 0.04 * t })
   }
 
   private updateReveal(dt: number) {

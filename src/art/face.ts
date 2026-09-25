@@ -735,6 +735,8 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, () => HTMLCan
   const dirt = (i: number, k = 0): RGB => shade(mixRGB(olive, greyBrown, (i * 0.618) % 1), k)
   // Tints follow the tone: on deeper skin a fixed pale colour turns into a grey film.
   const fair = fairOf(skin)
+  // Tints fade out toward the face's edge, so a finished face never shows a lighter oval against the ears.
+  const soft = (sheet: HTMLCanvasElement) => { feather(sheet, 10); return sheet }
   return {
     // Grime: cute and cartoony, never gross. A dusty veil, smudges and soft clumps, all matte.
     grime: () => clipped(S, (ctx) => {
@@ -756,24 +758,25 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, () => HTMLCan
       ctx.fillStyle = 'rgba(180,150,140,0.35)'; ctx.fill(shadow)
       ctx.fillStyle = 'rgba(255,250,244,0.85)'; ctx.fill(light)
     }),
-    oil: () => clipped(512, (ctx) => {
+    oil: () => soft(clipped(512, (ctx) => {
       ctx.drawImage(tintedByNoise(512, mixRGB(shade(skin.light, 0.1), [250, 228, 170], 0.45 * fair), fbm(512, 32, 3, seed + 41), 0.04, 0.22), 0, 0)
-    }, faceBelowBand),
-    redness: () => clipped(512, (ctx) => {
+    }, faceBelowBand)),
+    redness: () => soft(clipped(512, (ctx) => {
       const r = makeRng(seed + 52)
       ctx.drawImage(tintedByNoise(512, mixRGB(skin.blush, [232, 96, 104], 0.5 * fair), fbm(512, 40, 3, seed + 51), 0.1, 0.36), 0, 0)
       dots(ctx, mixRGB(skin.blush, [220, 80, 96], 0.6 * fair), 90, () => ({ x: r.range(100, 412), y: r.range(150, 470), r: r.range(1, 2.5), a: r.range(0.15, 0.4) }), 3)
-    }, faceBelowBand),
+    }, faceBelowBand)),
     marks: () => clipped(512, (ctx) => {
       ctx.drawImage(tintedByNoise(512, [222, 92, 104], fbm(512, 12, 2, seed + 61), 0.32, 0.6), 0, 0)
     }),
-    serum: () => clipped(512, (ctx) => {
+    serum: () => soft(clipped(512, (ctx) => {
       ctx.drawImage(tintedByNoise(512, mixRGB(shade(skin.light, 0.1), [255, 238, 196], 0.2 + 0.3 * fair), fbm(512, 40, 2, seed + 71), 0.12, 0.22), 0, 0)
-    }, faceBelowBand),
-    // A warm lift of the customer's own tone, even across the face (no mottling).
-    glow: () => clipped(512, (ctx) => {
-      ctx.drawImage(tintedByNoise(512, mixRGB(mixRGB(skin.light, skin.blush, 0.15), [255, 232, 226], 0.4 * fair), fbm(512, 90, 2, seed + 81), 0.13, 0.18), 0, 0)
-    }, faceBelowBand),
+    }, faceBelowBand)),
+    // A warm lift of the customer's own tone, even across the face (no mottling): more warmth than light,
+    // so fair skin never blows out to cream and deep skin never greys.
+    glow: () => soft(clipped(512, (ctx) => {
+      ctx.drawImage(tintedByNoise(512, mixRGB(mixRGB(skin.base, skin.blush, 0.22), skin.light, 0.45), fbm(512, 90, 2, seed + 81), 0.14, 0.2), 0, 0)
+    }, faceBelowBand)),
     // Rich white cream: smooth, with soft swirls where it was scooped and spread.
     cream: () => {
       const sheet = clipped(S, (ctx) => {
@@ -821,8 +824,10 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, () => HTMLCan
 /** The mint clay mask, wet (glossy, brush-streaked) or dry (paler, matte, cracked). */
 /** The peel mask's outline: the face, minus organic cut-outs around each eye and brow and around the lips. */
 function maskClip(ctx: Ctx) {
+  // The face first, then the windows cut out of it (an even-odd hole outside the face would fill instead).
+  faceClip(ctx)
   ctx.beginPath()
-  smoothPath(ctx, OUTLINE)
+  ctx.rect(0, 0, S, S)
   // Around each eye and brow together: a soft rounded window.
   for (const [i, e] of FACE.eyes.entries()) {
     const side = i === 0 ? -1 : 1

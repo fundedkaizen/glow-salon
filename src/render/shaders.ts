@@ -67,7 +67,7 @@ void main() {
   // Tiny glints where pores catch the light through a film of water.
   float sparkleSeed = hash(floor(vUV * 700.0));
   float glint = step(0.9975, sparkleSeed) * pow(ndhSoft, 20.0) * smoothstep(0.5, 1.0, wet) * (0.5 + 0.5 * sin(uSkin.z * 3.0 + sparkleSeed * 40.0));
-  float dewy = pow(ndhSoft, 30.0) * uSkin.w * 0.32;
+  float dewy = pow(ndhSoft, 30.0) * uSkin.w * 0.2;
   col *= mix(vec3(1.0), vec3(1.07, 0.95, 0.94), uSkin.x);
   // Wet skin reads a touch deeper and richer under the shine.
   col = mix(col, col * col * 1.18, wet * 0.18);
