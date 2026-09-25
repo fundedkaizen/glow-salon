@@ -1078,7 +1078,7 @@ export class TreatmentView {
     this.burstSparkles(e.x, e.y, 7, 200)
     this.fx.spawn({ texture: bits.glow(), x: e.x, y: e.y, life: 0.5, scale: 0.4, scaleEnd: 2, alpha: 0.6, alphaEnd: 0, blend: 'add', tint: 0xfff0e8 })
     // A breath out: the relief shows a moment after the sting.
-    setTimeout(() => { if (!this.destroyed) this.flashExpr('content', 1) }, 600)
+    setTimeout(() => { if (!this.destroyed) { this.flashExpr('content', 1); this.sayAt = -10; this.say(['Much better!', 'Oh, what a relief.', 'Thank you!']) } }, 700)
   }
 
   /** A deep pimple's first squeeze: it comes to a head (and a little clear fluid). Let go and squeeze again. */
@@ -1485,13 +1485,41 @@ export class TreatmentView {
     const p = this.personality
     if (p === 'calm' && Math.random() < 0.5) { this.flashExpr('worry', 0.3); return }
     const k = p === 'sensitive' ? 1.6 : 1
+    if (this.feet) this.say(p === 'sensitive' ? ['Ow, ow, ow!', 'Eek!', 'Ouch!'] : ['Ouch!', 'Eek!', 'Ooh!'])
     this.flashExpr('flinch', 0.45 * k)
     this.cam.shake += 4 * strength * k
     if (p === 'sensitive') sfx.flinch()
   }
 
+  /**
+   * Feet: the face is off screen, so the customer's reactions come as a little speech bubble under their name
+   * (a sting, a giggle, the warm water). One at a time, never more than every couple of seconds.
+   */
+  private bubble: HTMLDivElement | null = null
+  private sayAt = -10
+  private said = new Set<string>()
+  private say(lines: string[], once = '') {
+    if (!this.feet || this.revealT >= 0 || this.time - this.sayAt < 2.2) return
+    if (once) { if (this.said.has(once)) return; this.said.add(once) }
+    this.sayAt = this.time
+    if (!this.bubble) {
+      const b = document.createElement('div')
+      b.style.cssText = 'position:absolute;right:16px;top:108px;padding:7px 14px;border-radius:16px 4px 16px 16px;background:#fff;color:#8a4a6a;font:700 14px Nunito,sans-serif;box-shadow:0 6px 18px rgba(120,60,90,0.18);opacity:0;transform:scale(0.7);transform-origin:top right;transition:opacity .18s,transform .22s cubic-bezier(.3,1.6,.5,1);pointer-events:none;z-index:5'
+      this.opts.overlay.append(b)
+      this.bubble = b
+    }
+    const b = this.bubble
+    // Under the step header and the skip button (they stack lower on a phone).
+    b.style.top = this.view.w < 700 ? '152px' : '108px'
+    b.textContent = lines[Math.floor(Math.random() * lines.length)]
+    b.style.opacity = '1'; b.style.transform = 'scale(1)'
+    const at = this.sayAt
+    setTimeout(() => { if (this.bubble && this.sayAt === at) { this.bubble.style.opacity = '0'; this.bubble.style.transform = 'scale(0.85)' } }, 1600)
+  }
+
   private flashExpr(e: Expr, seconds: number) {
     if (this.revealT >= 0) return
+    if (this.feet && (e === 'giggle' || e === 'tickle')) this.say(['Hehe!', 'That tickles!', 'Hee hee!'])
     this.setExpr(e)
     this.exprTimer = seconds
     if (e === 'flinch') { this.artRoot.scale.set(1, 0.994); this.animate(0.2, t => this.artRoot.scale.set(1, 0.994 + 0.006 * t)); this.tilt.v += (Math.random() < 0.5 ? -1 : 1) * 0.06 }
@@ -1684,6 +1712,7 @@ export class TreatmentView {
     // The brow tidy brushes the brows up as it goes.
     if (step.id === 'brows') this.setGroom(this.session.progress() / Math.max(0.01, this.session.threshold()))
     if (this.feet && (step.id === 'cream' || step.id === 'creamSole' || step.id === 'massage')) skinU[3] = Math.max(skinU[3], Math.min(0.7, this.session.progress() * 0.8))
+    if (this.feet && step.id === 'massage' && holding && this.session.progress() > 0.3) this.say(['Mmm...', 'Right there.', 'Heavenly.'], 'massage')
     if (this.feet && step.id === 'bath') this.bathVisuals(dt, holding)
     if (step.id === 'cure' && this.uvLamp && this.uvGlow) {
       this.uvLamp.alpha += (0.92 - this.uvLamp.alpha) * Math.min(1, dt * 6)
@@ -1717,6 +1746,7 @@ export class TreatmentView {
       this.fx.spawn({ texture: bits.bubble(), x, y, vx: (Math.random() - 0.5) * 30, vy: -50 - Math.random() * 80, life: 0.9 + Math.random() * 0.9, scale: 0.08 + Math.random() * 0.2, scaleEnd: 0.14 + Math.random() * 0.2, alpha: 0.8 * f.water, alphaEnd: 0, fadeIn: 0.15, onDeath: p => { if (Math.random() < 0.3) this.fx.spawn({ texture: bits.sparkle(), x: p.x, y: p.y, life: 0.25, scale: 0.05, scaleEnd: 0.18, alpha: 0.7, alphaEnd: 0, blend: 'add' }) } })
     }
     if (holding && Math.random() < dt * 5) sfx.bubbles(this.pan(300 + Math.random() * 420))
+    if (holding && this.session.hold > 0.25) this.say(['Ahh, so warm...', 'Oh, that is lovely.', 'Bliss...'], 'bath')
     this.surface.skin.uniforms.uniforms.uSkin[0] = Math.max(this.surface.skin.uniforms.uniforms.uSkin[0], this.session.hold * 0.8)
   }
 
@@ -1933,6 +1963,7 @@ export class TreatmentView {
     window.removeEventListener('pointercancel', this.onPointer)
     window.removeEventListener('keydown', this.onKey)
     this.hud.destroy()
+    this.bubble?.remove()
     for (const sf of this.surfaces) sf.destroy()
     this.beforeRT?.destroy(true)
     this.lensRT?.destroy(true)
