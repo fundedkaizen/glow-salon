@@ -442,7 +442,8 @@ export class FloorView {
       if (!p) continue
       const tex = cachedTex(`decor:${d.id}`, p)
       if (item.place === 'window') { for (const w of CURTAIN_SPOTS) add(this.wallLayer, spriteOf(p, tex), w.x, w.y) }
-      else if (item.place === 'wall') add(this.wallLayer, atLeast(spriteOf(p, tex), p), d.x, d.y)
+      // Wall pieces (shelves, frames) are long and thin: size them by their long side so they read on the wall.
+      else if (item.place === 'wall') add(this.wallLayer, atLeast(spriteOf(p, tex), p, 110), d.x, d.y)
       else if (item.place === 'rug') add(this.rugLayer, spriteOf(p, tex), d.x, d.y)
       else if (item.place === 'ceiling') add(this.ceilingLayer, atLeast(spriteOf(p, tex), p), d.x, 0)
       else if (item.place === 'table') {

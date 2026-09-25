@@ -120,7 +120,7 @@ export function paintFace(look: Look, seed: number, profile: FaceProfile, maskKi
   const fig: Figure = lookFigure(look)
   const fr = makeRng(seed + 23)
   // Face shape: oval, round, heart (wide cheekbones) or square (more often masculine).
-  const shape = fig.masc ? fr.pick([3, 3, 1, 0]) : fr.pick([0, 1, 2, 0])
+  const shape = fig.masc ? fr.pick([3, 3, 1]) : fr.pick([0, 1, 2, 1, 3])
   OUTLINE = faceOutline(shape)
   const feat: Feat = {
     ...profile.features, iris: irisForSeed(seed),
