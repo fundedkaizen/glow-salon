@@ -510,6 +510,8 @@ export class TreatmentView {
     const cx = this.view.w / 2, cy = this.view.top + (this.view.h - this.view.top - this.view.bottom) / 2
     this.world.scale.set(scale)
     this.world.position.set(cx - c.x * scale + c.shakeX, cy - c.y * scale + c.shakeY)
+    const ppt = scale * (this.opts.app.renderer.resolution || 1)
+    for (const sf of this.surfaces) sf.setZoomDetail(ppt)
   }
 
   private toArt(sx: number, sy: number) { const s = this.world.scale.x; return { x: (sx - this.world.x) / s, y: (sy - this.world.y) / s } }

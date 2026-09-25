@@ -96,6 +96,7 @@ export class Surface {
     if (grid > 0) this.grid = gridGeometry(grid)
     const geometry = this.grid?.geometry
     this.skin = skinMesh(art.base, art.height, this.wet.source, art.sss, flipMask, art.bump, geometry)
+    this.fineBump = this.skin.uniforms.uniforms.uBump[1]
     this.root.addChild(this.skin.mesh)
     for (const id of art.order) {
       const def = art.layers[id]
@@ -227,6 +228,14 @@ export class Surface {
     this.renderer.render({ container: holder, target, clear: false })
     holder.removeChildren()
   }
+
+  private fineBump = 1
+  /**
+   * How many screen pixels one texel of the height map covers (the camera's zoom times the pixel ratio). The fine
+   * pore normals are sampled a texel apart, so when the sheet is magnified their bilinear steps would show as a
+   * woven grain: their strength eases off as the texels grow.
+   */
+  setZoomDetail(pxPerTexel: number) { this.skin.uniforms.uniforms.uBump[1] = this.fineBump / Math.max(1, pxPerTexel) }
 
   /** Dry the skin at once (before the reveal photo). */
   dryAll() { this.renderer.render({ container: new Container(), target: this.wet, clear: true }); this.wetPending.length = 0 }
