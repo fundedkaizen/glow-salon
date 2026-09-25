@@ -108,6 +108,9 @@ export function paintRobe(color: RGB, skin: SkinTone, seed: number): HTMLCanvasE
   }
   // Its soft shadow on the bed and pillow.
   softBatch(ctx, 16, k => { k.translate(10, 14); k.fillStyle = 'rgba(120,60,90,0.3)'; body(k); k.fill() })
+  // The V of the neckline is left open, so the neck and chest painted on the art sheet show through with no
+  // seam; the lapels cross above the sheet's edge.
+  const vee = (k: Ctx2) => { k.beginPath(); k.moveTo(404, 880); k.lineTo(620, 880); k.lineTo(512, 1004); k.closePath() }
   ctx.save()
   body(ctx)
   const g = ctx.createLinearGradient(0, 900, 0, 1340)
@@ -121,29 +124,35 @@ export function paintRobe(color: RGB, skin: SkinTone, seed: number): HTMLCanvasE
   ctx.fillStyle = sg
   ctx.fillRect(-340, 880, 1704, 470)
   terry(ctx, -340, 890, 1704, 460, robe, seed + 3, 0.012)
-  // Soft folds sweeping over the shoulders and down.
-  softBatch(ctx, 9, k => {
-    for (let i = 0; i < 12; i++) {
-      const side = i % 2 ? 1 : -1, x = 512 + side * r.range(240, 780), y = r.range(960, 1200)
-      k.strokeStyle = i % 3 ? rgba(fold, 0.5) : rgba(lit, 0.6)
-      k.lineWidth = r.range(8, 16)
-      k.beginPath(); k.moveTo(x - side * 70, y - 60); k.quadraticCurveTo(x, y, x + side * 50, y + 120); k.stroke()
+  // The shoulders round up toward the light: a broad lit crown on each, falling into shade below.
+  softBatch(ctx, 40, k => {
+    k.fillStyle = rgba(lit, 0.7)
+    for (const side of [-1, 1]) { k.beginPath(); k.ellipse(512 + side * 360, 985, 230, 70, side * 0.18, 0, Math.PI * 2); k.fill() }
+  })
+  softBatch(ctx, 40, k => { k.fillStyle = rgba(fold, 0.6); k.fillRect(-340, 1180, 1704, 200) }, 'multiply')
+  // Folds sweeping over the shoulders and down: each a shaded valley with a lit ridge beside it.
+  softBatch(ctx, 7, k => {
+    for (let i = 0; i < 14; i++) {
+      const side = i % 2 ? 1 : -1, x = 512 + side * r.range(250, 760), y = r.range(980, 1220)
+      const bend = r.range(-30, 30)
+      k.strokeStyle = rgba(shade(fold, -0.1), 0.6); k.lineWidth = r.range(9, 16)
+      k.beginPath(); k.moveTo(x - side * 80, y - 70); k.quadraticCurveTo(x + bend, y, x + side * 60, y + 140); k.stroke()
+      k.strokeStyle = rgba(lit, 0.7); k.lineWidth = r.range(6, 10)
+      k.beginPath(); k.moveTo(x - side * 80 - 12, y - 76); k.quadraticCurveTo(x + bend - 12, y - 6, x + side * 60 - 12, y + 134); k.stroke()
     }
   })
-  // The skin of the chest in the V, shadowed under the collar.
-  ctx.beginPath(); ctx.moveTo(400, 896); ctx.lineTo(624, 896); ctx.lineTo(512, 1150); ctx.closePath()
-  const cg = ctx.createLinearGradient(0, 900, 0, 1150)
-  cg.addColorStop(0, rgba(mixRGB(skin.base, skin.shadow, 0.55))); cg.addColorStop(1, rgba(mixRGB(skin.base, skin.shadow, 0.25)))
-  ctx.fillStyle = cg
-  ctx.fill()
-  blob(ctx, 490, 1000, 40, 70, skin.light, 0.25)
+  ctx.restore()
+  ctx.save()
+  ctx.globalCompositeOperation = 'destination-out'
+  ctx.filter = 'blur(1px)'
+  vee(ctx); ctx.fill()
   ctx.restore()
   // The shawl collar: the right lapel first, then the left crossing over it.
   for (const side of [1, -1]) {
     const lapel = (k: Ctx2) => {
       k.beginPath()
       k.moveTo(512 + side * 96, 892)
-      k.bezierCurveTo(512 + side * 90, 980, 512 + side * 40, 1080, 512 - side * 34, 1190)
+      k.bezierCurveTo(512 + side * 86, 940, 512 + side * 40, 985, 512 - side * 30, 1050)
       k.lineTo(512 - side * 70, 1345)
       k.lineTo(512 + side * 60, 1345)
       k.bezierCurveTo(512 + side * 120, 1180, 512 + side * 200, 1020, 512 + side * 226, 898)
@@ -163,17 +172,18 @@ export function paintRobe(color: RGB, skin: SkinTone, seed: number): HTMLCanvasE
     // The roll: a lit ridge along the inner edge, shade toward the outer.
     softBatch(ctx, 5, k => {
       k.strokeStyle = rgba(shade(lit, 0.2), 0.8); k.lineWidth = 12
-      k.beginPath(); k.moveTo(512 + side * 106, 900); k.bezierCurveTo(512 + side * 100, 985, 512 + side * 52, 1080, 512 - side * 22, 1190); k.stroke()
+      k.beginPath(); k.moveTo(512 + side * 106, 900); k.bezierCurveTo(512 + side * 96, 945, 512 + side * 50, 990, 512 - side * 18, 1052); k.stroke()
       k.strokeStyle = rgba(fold, 0.55); k.lineWidth = 16
       k.beginPath(); k.moveTo(512 + side * 212, 910); k.bezierCurveTo(512 + side * 190, 1020, 512 + side * 116, 1170, 512 + side * 64, 1340); k.stroke()
     })
     ctx.restore()
   }
-  // The collar shades the neck where it stands up behind it.
+  // The collar shades the neck where it stands up behind it (a normal blend: this sprite has no neck
+  // under it to multiply).
   softBatch(ctx, 12, k => {
-    k.fillStyle = rgba(skin.deep, 0.35)
-    k.beginPath(); k.ellipse(512, 890, 110, 22, 0, 0, Math.PI * 2); k.fill()
-  }, 'multiply')
+    k.fillStyle = rgba(skin.deep, 0.3)
+    k.beginPath(); k.ellipse(512, 900, 100, 20, 0, 0, Math.PI * 2); k.fill()
+  })
   return c
 }
 type Ctx2 = CanvasRenderingContext2D

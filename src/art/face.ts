@@ -145,7 +145,7 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   // Neck, shadowed under the jaw.
   ctx.save()
   ctx.beginPath()
-  ctx.moveTo(414, 780); ctx.lineTo(610, 780); ctx.bezierCurveTo(614, 860, 626, 900, 660, 930); ctx.lineTo(364, 930); ctx.bezierCurveTo(398, 900, 410, 860, 414, 780)
+  ctx.moveTo(414, 780); ctx.lineTo(610, 780); ctx.bezierCurveTo(614, 860, 626, 900, 660, 930); ctx.lineTo(700, 1030); ctx.lineTo(324, 1030); ctx.lineTo(364, 930); ctx.bezierCurveTo(398, 900, 410, 860, 414, 780)
   ctx.closePath()
   const ng = ctx.createLinearGradient(0, 800, 0, 1024)
   ng.addColorStop(0, rgba(skin.shadow)); ng.addColorStop(0.5, rgba(mixRGB(skin.base, skin.shadow, 0.45))); ng.addColorStop(1, rgba(skin.base))
@@ -730,7 +730,7 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, () => HTMLCan
   // Dirt stays earthy on every tone: olive-brown and grey-brown on fair skin; on deep skin a darker, richer
   // mud brown (a pale khaki over deep skin reads as an ashy grey film).
   const kf = clamp01((fairOf(skin) - 0.45) / 0.4)
-  const olive = mixRGB([80, 54, 28], [128, 108, 68], kf), greyBrown = mixRGB([74, 52, 36], [122, 104, 86], kf)
+  const olive = mixRGB([82, 54, 28], [132, 104, 64], kf), greyBrown = mixRGB([76, 52, 36], [124, 100, 80], kf)
   const dirt = (i: number, k = 0): RGB => shade(mixRGB(olive, greyBrown, (i * 0.618) % 1), k)
   // Tints follow the tone: on deeper skin a fixed pale colour turns into a grey film.
   const fair = fairOf(skin)
@@ -1203,8 +1203,9 @@ function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: Sk
   if (state === 'beam' || state === 'o') {
     const beam = state === 'beam'
     // A small, soft smile: corners lifted and tucked into the cheeks, only the upper teeth showing.
-    const w = beam ? 48 : 17, cy = my - (beam ? 5 : -4)
-    const top = beam ? my - 7 : my - 8, bottom = beam ? my + 20 : my + 20
+    // The beam: a wide crescent smile, corners lifted into the cheeks, the upper edge dipping below them.
+    const w = beam ? 56 : 17, cy = my - (beam ? 11 : -4)
+    const top = beam ? my + 1 : my - 8, bottom = beam ? my + 15 : my + 20
     const opening = () => {
       ctx.beginPath()
       if (!beam) { ctx.ellipse(mx, my + 6, w, 15, 0, 0, Math.PI * 2); return }
@@ -1235,7 +1236,7 @@ function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: Sk
     if (beam) {
       // Upper teeth: one soft white band, barely separated, shaded under the lip.
       ctx.fillStyle = '#f8f2ee'
-      ctx.beginPath(); ctx.ellipse(mx, top + 2, w * 0.82, 10, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.ellipse(mx, top + 2, w * 0.66, 6, 0, 0, Math.PI * 2); ctx.fill()
       ctx.strokeStyle = 'rgba(190,168,168,0.28)'; ctx.lineWidth = 1
       for (const k of [-1, 0, 1]) { ctx.beginPath(); ctx.moveTo(mx + k * 15, top - 4); ctx.lineTo(mx + k * 15, top + 8 - Math.abs(k) * 2); ctx.stroke() }
       const sh = ctx.createLinearGradient(0, top - 6, 0, top + 4)
@@ -1246,8 +1247,8 @@ function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: Sk
     blob(ctx, mx, bottom + 2, w * 0.55, 9, mixRGB(skin.lip, [222, 108, 118], 0.45), 0.85)
     ctx.restore()
     // A soft gloss on the lower lip, and the cheeks lifting at the corners.
-    blob(ctx, mx + 5, bottom + 8 * full, w * 0.34, 3.5, lipLight, 0.55)
-    blob(ctx, mx - 4, bottom + 7 * full, w * 0.14, 2, [255, 255, 255], 0.45)
+    blob(ctx, mx + 5, bottom + 5 * full, w * 0.34, 3.5, lipLight, 0.55)
+    blob(ctx, mx - 4, bottom + 4.5 * full, w * 0.14, 2, [255, 255, 255], 0.45)
     if (beam) for (const sd of [-1, 1]) blob(ctx, mx + sd * (w + 16), cy - 5, 9, 12, skin.shadow, 0.16)
     return
   }

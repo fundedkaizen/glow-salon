@@ -156,19 +156,23 @@ function paintLocks(ctx: Ctx, locks: Lock[], pal: HairPal, sheen: Sheen, r: Rng,
   S.flush(ctx)
 }
 
-/** Fine flyaway hairs lifting off the outline of the hair. */
+/**
+ * A few fine flyaways lifting off the outline: short, the hair's own colour fading to a light tip, low
+ * contrast (long dark ones read as insect legs).
+ */
 function flyaways(ctx: Ctx, pal: HairPal, r: Rng, at: () => { p: P; dir: number }, count: number) {
   const S = new Strands()
-  const T = [rgba(pal.light, 0.4), rgba(pal.base, 0.45)]
+  const root = rgba(pal.base, 0.3), tip = rgba(pal.light, 0.3)
   for (let i = 0; i < count; i++) {
     const { p, dir } = at()
-    const len = r.range(30, 90), bend = r.range(-0.6, 0.6)
+    const len = r.range(16, 34), bend = r.range(-0.5, 0.5)
     const pts: P[] = []
-    for (let j = 0; j <= 8; j++) {
-      const t = j / 8, a = dir + bend * t
-      pts.push(clampP({ x: p.x + Math.cos(a) * len * t, y: p.y + Math.sin(a) * len * t + Math.sin(t * 3) * 4 }))
+    for (let j = 0; j <= 6; j++) {
+      const t = j / 6, a = dir + bend * t
+      pts.push(clampP({ x: p.x + Math.cos(a) * len * t, y: p.y + Math.sin(a) * len * t }))
     }
-    S.add(pts, T[i % 2], 0.8)
+    S.add(pts.slice(0, 4), root, 0.6)
+    S.add(pts.slice(3), tip, 0.6)
   }
   S.flush(ctx)
 }
@@ -317,10 +321,11 @@ export function paintHairBack(ctx: Ctx, hair: HairPal, styleIndex: number, seed:
   ctx.restore()
   // Flyaways off the outline.
   if (style !== 'curly') flyaways(ctx, pal, r, () => {
-    const a = r.range(Math.PI * 1.02, Math.PI * 1.98)
+    // Near the crown and the upper sides only.
+    const a = r() < 0.5 ? r.range(Math.PI * 1.1, Math.PI * 1.35) : r.range(Math.PI * 1.55, Math.PI * 1.85)
     const rx = long || bob ? 410 * volume : SCALP.rx, ry = long || bob ? 300 : SCALP.ry
     return { p: { x: 512 + Math.cos(a) * rx * 0.97, y: (long || bob ? 360 : SCALP.cy) + Math.sin(a) * ry * 0.97 }, dir: a + r.range(-0.5, 0.5) }
-  }, style === 'crop' ? 10 : 24)
+  }, style === 'crop' ? 3 : 3 + r.int(0, 3))
 }
 
 function paintBun(ctx: Ctx, pal: HairPal, r: Rng, sheen: Sheen) {
