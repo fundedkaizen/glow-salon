@@ -847,7 +847,8 @@ export class FloorView {
       const mine = p.id === this.playerId
       const st = p.station ? state.stations.find(s => s.id === p.station) : null
       let tx = mine ? this.me.x : p.x, ty = mine ? this.me.y : p.y
-      if (st && !mine) { const spot = stationSpot(st.slot); tx = spot.x; ty = spot.y }
+      // The lead works at the station's spot; a helper stands beside them, never on top.
+      if (st && !mine) { const k = st.helpers.indexOf(p.id); const spots = this.asideSpots(st.slot); const spot = k < 0 ? stationSpot(st.slot) : spots[k % spots.length]; tx = spot.x; ty = spot.y }
       const px = v.x, py = v.y
       if (mine) { v.x = tx; v.y = ty } else { const k = Math.min(1, dt * 12); v.x += (tx - v.x) * k; v.y += (ty - v.y) * k }
       const moving = mine ? this.me.moving : Math.hypot(v.x - px, v.y - py) / Math.max(dt, 1e-3) > 14 || p.moving
@@ -862,6 +863,19 @@ export class FloorView {
     }
   }
 
+  /** Open places to stand beside a station (helpers and waiting staff), clear of furniture, nearest first. */
+  private asideSpots(slot: number): Pt[] {
+    const spot = stationSpot(slot)
+    const out: Pt[] = []
+    for (const [dx, dy] of [[-44, 52], [-70, 4], [0, -70], [30, 60]]) {
+      const p = { x: spot.x + dx, y: spot.y + dy }
+      if (p.x < 24 || p.x > FLOOR_W - 24 || p.y < 186 || p.y > FLOOR_H - 22) continue
+      if (!this.grid[Math.floor(p.y / CELL) * COLS + Math.floor(p.x / CELL)]) out.push(p)
+    }
+    if (!out.length) out.push({ x: spot.x - 34, y: spot.y + 18 })
+    return out
+  }
+
   private updateStaff(state: FloorState, dt: number) {
     const staff = state.ext?.staff ?? []
     staff.forEach((s: StaffMember, i) => {
@@ -871,7 +885,9 @@ export class FloorView {
       const where = s.task?.station ?? s.station
       const st = where ? state.stations.find(x => x.id === where && x.slot >= 0) : null
       const onBreak = s.breakLeft > 0
-      const goal: Pt = onBreak || !st ? { x: 356 + i * 34, y: 336 + (i % 2) * 12 } : stationSpot(st.slot)
+      // Working: at the station's spot. Waiting at their own station: beside it, clear of any player there.
+      const aside = st ? this.asideSpots(st.slot) : []
+      const goal: Pt = onBreak || !st ? { x: 356 + i * 34, y: 336 + (i % 2) * 12 } : s.task ? stationSpot(st.slot) : aside[st.helpers.length % aside.length]
       if (Math.hypot(goal.x - v.goal.x, goal.y - v.goal.y) > 2) { v.goal = goal; v.path = findPath(this.grid, v, goal) }
       let moving = false
       if (v.path.length) {
