@@ -19,7 +19,7 @@ only (`erasableSyntaxOnly` is on: no enums, no parameter properties) and import 
 
 - `src/core/`: pure game logic, no DOM or Pixi, all unit-tested.
   - `treatments/`: the data-driven step pipeline. `types.ts` (a treatment is data: layers + steps),
-    `facial.ts`, `nails.ts` (the data), `session.ts` (runs any treatment from ops; emits events),
+    `facial.ts`, `nails.ts`, `feet.ts` (the data; a foot's layers and regions carry their side, `top.` or `sole.`), `session.ts` (runs any treatment from ops; emits events),
     `profile.ts` (every customer's problem, seeded: pimples, grime, polish, damage, personality),
     `anatomy.ts` (face and hand geometry shared by logic and art), `grid.ts` (coverage grids).
     A new treatment is a data file plus its art; see "Adding a treatment".
@@ -37,7 +37,8 @@ only (`erasableSyntaxOnly` is on: no enums, no parameter properties) and import 
 - `src/ui/`: DOM overlay (`treatment-hud.ts`, `style.css`, and the salon screens).
 - `src/net/coop-link.ts`: the relay client. `server/coop-relay.mjs`: the relay (also a Vite plugin in dev).
 - `src/game/`: thin glue. `treatment-glue.ts` opens a close-up for a station and names the co-op hooks.
-- `src/main.ts`: boot, plus the `?view=` debug close-ups.
+- `src/main.ts`: boot, plus the `?view=` debug close-ups (`facial`, `nails`, `pedicure`), the pedicure art preview
+  (`feet`) and the floor people and gifts lineup (`people`, `people&gifts`).
 - `scripts/browser/*.js`: browser checks run with `npx agent-browser --session glow1 eval --stdin < file`.
 - `artifacts/`: screenshots and evidence (git-ignored).
 
