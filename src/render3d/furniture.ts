@@ -387,10 +387,15 @@ export function framed(b: Build, texture: Texture, x: number, y: number, z: numb
 /** A flat textured decal lying on the floor (a rug). */
 export function floorDecal(b: Build, texture: Texture, x: number, z: number, w: number, d: number, y = 0.006, rot = 0, unlit = false) {
   const mat = unlit ? new MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false }) : new MeshStandardMaterial({ map: texture, roughness: 0.95, transparent: true, depthWrite: false })
+  // Decals (rugs, pads) lie at least 5 mm over the floor and its shade layer, and are pulled towards the camera in
+  // depth too, so they never flicker against the floor on a phone's coarser depth buffer.
+  mat.polygonOffset = true
+  mat.polygonOffsetFactor = -4
+  mat.polygonOffsetUnits = -8
   const m = new Mesh(new PlaneGeometry(w, d), mat)
   m.rotation.x = -Math.PI / 2
   m.rotation.z = rot
-  m.position.set(x, y, z)
+  m.position.set(x, 0.005 + y, z)
   m.receiveShadow = true
   m.renderOrder = 0
   b.extra.add(m)
