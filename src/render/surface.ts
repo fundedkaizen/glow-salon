@@ -1,7 +1,7 @@
 import { Container, Graphics, RenderTexture, Sprite, Texture, type Geometry, type Mesh, type Renderer, type Shader } from 'pixi.js'
 import { GRID } from '../core/treatments/grid.ts'
 import { canvas } from '../art/paint.ts'
-import { layerMesh, skinMesh } from './shaders.ts'
+import { gridGeometry, layerMesh, skinMesh } from './shaders.ts'
 
 /**
  * A body part on screen: the lit skin at the bottom and one mesh per treatment layer above it, each
@@ -87,18 +87,22 @@ export class Surface {
 
   private renderer: Renderer
   private art: SurfaceArt
-  constructor(renderer: Renderer, art: SurfaceArt, flipMask = 0) {
+  /** A bendable sheet (set when the surface is made with a grid): see deform(). */
+  private grid: ReturnType<typeof gridGeometry> | null = null
+  constructor(renderer: Renderer, art: SurfaceArt, flipMask = 0, grid = 0) {
     this.renderer = renderer
     this.art = art
     this.wet = RenderTexture.create({ width: MASK_SIZE, height: MASK_SIZE })
-    this.skin = skinMesh(art.base, art.height, this.wet.source, art.sss, flipMask, art.bump)
+    if (grid > 0) this.grid = gridGeometry(grid)
+    const geometry = this.grid?.geometry
+    this.skin = skinMesh(art.base, art.height, this.wet.source, art.sss, flipMask, art.bump, geometry)
     this.root.addChild(this.skin.mesh)
     for (const id of art.order) {
       const def = art.layers[id]
       if (!def) continue
       const rt = RenderTexture.create({ width: MASK_SIZE, height: MASK_SIZE })
       const art0 = def.art ?? Texture.EMPTY
-      const { mesh, uniforms } = layerMesh(art0, def.art2 ?? art0, rt.source, def.style, MASK_SIZE, flipMask)
+      const { mesh, uniforms } = layerMesh(art0, def.art2 ?? art0, rt.source, def.style, MASK_SIZE, flipMask, geometry)
       mesh.visible = false
       this.root.addChild(mesh)
       this.layers.set(id, { id, mesh, rt, uniforms, style: def.style, pending: [], resolving: null, hasPaint: false })
@@ -117,6 +121,22 @@ export class Surface {
     const res = layer.mesh.shader!.resources as Record<string, unknown>
     res.uArt = made.art.source
     res.uArt2 = (made.art2 ?? made.art).source
+  }
+
+  /**
+   * Bend the sheet (surfaces made with a grid only): every vertex moves by `offset` of its rest position, in art
+   * space. The skin, the layers and their masks all move together, since they share the sheet.
+   */
+  deform(offset: (x: number, y: number) => [number, number]) {
+    const g = this.grid
+    if (!g) return
+    for (let k = 0; k < g.rest.length; k += 2) {
+      const [dx, dy] = offset(g.rest[k], g.rest[k + 1])
+      g.positions[k] = g.rest[k] + dx; g.positions[k + 1] = g.rest[k + 1] + dy
+    }
+    const buf = g.geometry.getBuffer('aPosition')
+    buf.data = g.positions
+    buf.update()
   }
 
   /** Show a layer with other art (a step's own look for it), or its own art again with null. */
@@ -295,6 +315,7 @@ export class Surface {
   destroy() {
     // Shaders first: they hold the textures, and freeing a texture a shader still holds warns.
     this.skin.mesh.shader?.destroy()
+    this.grid?.geometry.destroy()
     for (const layer of this.layers.values()) layer.mesh.shader?.destroy()
     for (const layer of this.layers.values()) layer.rt.destroy(true)
     this.wet.destroy(true)

@@ -141,11 +141,31 @@ export function artQuad(size = 1024) {
   return quad
 }
 
+/**
+ * A subdivided art-space sheet (n x n cells) for a surface that bends: the skin and every layer share it, so
+ * moving its vertices (the hand's idle finger motion) moves the art, the layers and their masks together.
+ */
+export function gridGeometry(n: number, size = 1024) {
+  const positions = new Float32Array((n + 1) * (n + 1) * 2), uvs = new Float32Array(positions.length)
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
+    const k = (j * (n + 1) + i) * 2
+    positions[k] = (i / n) * size; positions[k + 1] = (j / n) * size
+    uvs[k] = i / n; uvs[k + 1] = j / n
+  }
+  const index: number[] = []
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const a = j * (n + 1) + i, b = a + 1, c = a + n + 1, d = c + 1
+    index.push(a, b, d, a, d, c)
+  }
+  const geometry = new Geometry({ attributes: { aPosition: positions, aUV: uvs }, indexBuffer: index })
+  return { geometry, rest: positions.slice(), positions }
+}
+
 /** Light from the top left, a little in front: the same for every close-up so they match. */
 export const LIGHT: [number, number, number] = [-0.32, -0.5, 0.8]
 
 /** `height` is a greyscale height map (the form and the pores); the shader derives the normals from it. */
-export function skinMesh(albedo: Texture, height: Texture, wet: TextureSource, sss: [number, number, number], flipMask: number, bump = 2.4) {
+export function skinMesh(albedo: Texture, height: Texture, wet: TextureSource, sss: [number, number, number], flipMask: number, bump = 2.4, geometry: Geometry = artQuad()) {
   const uniforms = new UniformGroup({
     uLight: { value: new Float32Array(LIGHT), type: 'vec3<f32>' },
     uSkin: { value: new Float32Array([0, 0, 0, 0]), type: 'vec4<f32>' },
@@ -157,13 +177,13 @@ export function skinMesh(albedo: Texture, height: Texture, wet: TextureSource, s
     glProgram: GlProgram.from({ vertex, fragment: skinFragment, name: 'glow-skin' }),
     resources: { uAlbedo: albedo.source, uHeight: height.source, uWet: wet, skinUniforms: uniforms },
   })
-  const mesh = new Mesh({ geometry: artQuad(), shader })
+  const mesh = new Mesh({ geometry, shader })
   return { mesh, uniforms }
 }
 
 export type LayerUniforms = UniformGroup<{ uP: { value: Float32Array; type: 'vec4<f32>' }; uTint: { value: Float32Array; type: 'vec4<f32>' }; uLight: { value: Float32Array; type: 'vec3<f32>' }; uTexel: { value: Float32Array; type: 'vec2<f32>' }; uFlipMask: { value: number; type: 'f32' } }>
 
-export function layerMesh(art: Texture, art2: Texture, mask: TextureSource, style: { gloss: number; relief: number; opacity?: number }, maskSize: number, flipMask: number) {
+export function layerMesh(art: Texture, art2: Texture, mask: TextureSource, style: { gloss: number; relief: number; opacity?: number }, maskSize: number, flipMask: number, geometry: Geometry = artQuad()) {
   const uniforms = new UniformGroup({
     uP: { value: new Float32Array([0, style.gloss, style.relief, style.opacity ?? 1]), type: 'vec4<f32>' },
     uTint: { value: new Float32Array([1, 1, 1, 0]), type: 'vec4<f32>' },
@@ -175,6 +195,6 @@ export function layerMesh(art: Texture, art2: Texture, mask: TextureSource, styl
     glProgram: GlProgram.from({ vertex, fragment: layerFragment, name: 'glow-layer' }),
     resources: { uArt: art.source, uArt2: art2.source, uMask: mask, layerUniforms: uniforms },
   })
-  const mesh = new Mesh({ geometry: artQuad(), shader })
+  const mesh = new Mesh({ geometry, shader })
   return { mesh, uniforms }
 }

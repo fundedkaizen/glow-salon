@@ -147,7 +147,8 @@ export class TreatmentView {
     this.assets = assetsFor(treatment, customer.look, customer.seed, order, this.session.profile, eager, this.maskKind)
     this.buildMs = Math.round(performance.now() - t0)
     this.builtAt = t0
-    this.surface = new Surface(app.renderer, this.assets.surface, 0)
+    // The hand's sheet bends a little (the fingers' idle motion), so it gets a grid.
+    this.surface = new Surface(app.renderer, this.assets.surface, 0, treatment === 'nails' ? 40 : 0)
     this.foam = new FoamField(this.fx, (x, y) => this.coverage('foam', x, y))
 
     const backdrop = new Sprite(this.assets.backdrop)
@@ -1105,6 +1106,7 @@ export class TreatmentView {
     tl.bob = tl.bobT > 0 ? Math.sin(this.time * 24) * 3 * Math.min(1, tl.bobT * 3) : tl.bob * Math.exp(-dt * 12)
     this.artRoot.rotation = tl.a + sway
     this.artRoot.position.set(512, 540 + tl.bob)
+    if (this.opts.treatment === 'nails') this.fingerLife(still)
     // The key light sways a hair with the breath, so the highlights on the skin drift with it.
     const breath = Math.sin(this.time * 1.4)
     this.surface.setLight(-0.32 + breath * 0.035, -0.5 + breath * 0.045, 0.8)
@@ -1124,6 +1126,42 @@ export class TreatmentView {
     this.mouthDrawn = { ...this.mouthP }
     this.scrubShown = scrub
     live.draw(this.mouthP, scrub)
+  }
+
+  /**
+   * The hand is alive: each finger curls and relaxes a hair on its own slow rhythm (it turns a fraction of a
+   * degree about its knuckle and shortens a little, as a finger does when it curls). The whole sheet bends, so
+   * the polish and every layer move with it, and the clippable tips ride along. Still for the photos.
+   */
+  private fingerLife(still: boolean) {
+    const t = this.time, k = still ? 0 : 1
+    const moves = HAND.fingers.map((f, i) => {
+      const curl = (Math.sin(t * (0.5 + i * 0.07) + i * 1.7) * 0.6 + Math.sin(t * 0.21 + i) * 0.4) * k
+      return { f, d: fingerDir(f), len: Math.hypot(f.tip.x - f.base.x, f.tip.y - f.base.y), ang: curl * (i === 0 ? 0.01 : 0.013), shrink: Math.max(0, curl) * 0.018 }
+    })
+    const offset = (x: number, y: number): [number, number] => {
+      let ox = 0, oy = 0
+      for (const m of moves) {
+        const rx = x - m.f.base.x, ry = y - m.f.base.y
+        const along = (rx * m.d.x + ry * m.d.y) / m.len, across = Math.abs(rx * -m.d.y + ry * m.d.x)
+        if (along <= 0) continue
+        // Full weight along the finger, fading in past the knuckle and out beside it.
+        const w = Math.min(1, along / 0.25) * Math.max(0, 1 - Math.max(0, across - m.f.r0) / (m.f.r0 * 0.9))
+        if (w <= 0) continue
+        const c = Math.cos(m.ang), s = Math.sin(m.ang)
+        const nx = rx * c - ry * s - m.d.x * m.shrink * along * m.len, ny = rx * s + ry * c - m.d.y * m.shrink * along * m.len
+        ox += (nx - rx) * w; oy += (ny - ry) * w
+      }
+      return [ox, oy]
+    }
+    this.surface.deform(offset)
+    for (const tv of this.targets.values()) {
+      // Clipped tips and hangnails fly off on their own; the rest ride along with their finger.
+      if (tv.gone || (tv.t.kind !== 'tip' && tv.t.kind !== 'hangnail' && tv.t.kind !== 'gem')) continue
+      const bx = tv.t.kind === 'tip' ? nailOf(HAND.fingers[tv.t.n ?? 0]).tip.x : tv.t.x, by = tv.t.kind === 'tip' ? nailOf(HAND.fingers[tv.t.n ?? 0]).tip.y : tv.t.y
+      const [dx, dy] = offset(bx, by)
+      tv.root.position.set(bx + dx, by + dy)
+    }
   }
 
   private updateExpr(dt: number) {

@@ -198,6 +198,27 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
     c.strokeStyle = rgba(veinCol, 0.08 + 0.07 * fairH); c.lineWidth = 5
     for (const v of veins) { c.beginPath(); c.moveTo(v[0][0], v[0][1]); for (let k = 1; k < v.length; k++) { const m = [(v[k - 1][0] + v[k][0]) / 2, (v[k - 1][1] + v[k][1]) / 2]; c.quadraticCurveTo(v[k - 1][0], v[k - 1][1], m[0], m[1]) } c.stroke() }
   }, 'multiply')
+  // The same fine skin lines, just visible in the colour: the lit side of each crease a touch paler.
+  {
+    const lines = new Path2D(), lr = rng2(seed + 515)
+    for (const ang of [0.62, -0.62, 1.45]) {
+      const dx = Math.cos(ang), dy = Math.sin(ang), nx = -dy, ny = dx
+      for (let o = -900; o < 900; o += lr.range(6, 10)) {
+        const cx = 512 + nx * o, cy = 760 + ny * o
+        let started = false
+        for (let t = -500; t <= 500; t += 25) {
+          const x = cx + dx * t + Math.sin(t * 0.02 + o) * 2, y = cy + dy * t + Math.cos(t * 0.021 + o) * 2
+          if (!started) { lines.moveTo(x, y); started = true } else lines.lineTo(x, y)
+        }
+      }
+    }
+    sctx.save()
+    sctx.globalAlpha = 0.05; sctx.strokeStyle = rgba(skin.deep); sctx.lineWidth = 1
+    sctx.stroke(lines)
+    sctx.translate(0.8, 0.8); sctx.globalAlpha = 0.05; sctx.strokeStyle = rgba(skin.light)
+    sctx.stroke(lines)
+    sctx.restore()
+  }
   // Darker where fingers meet, and around the whole edge.
   for (let i = 1; i < HAND.fingers.length - 1; i++) {
     const a = HAND.fingers[i], b = HAND.fingers[i + 1]
@@ -359,6 +380,24 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
   hctx.globalAlpha = 0.6
   hctx.drawImage(jewel, 0, 0)
   hctx.globalAlpha = 1
+  // Fine skin texture: the shallow criss-cross lines of the back of the hand (a diamond mesh, strongest over
+  // the back and the knuckles), bent a little so it never reads as a grid.
+  const mesh = new Path2D(), mr = rng2(seed + 515)
+  for (const ang of [0.62, -0.62, 1.45]) {
+    const dx = Math.cos(ang), dy = Math.sin(ang), nx = -dy, ny = dx
+    for (let o = -900; o < 900; o += mr.range(6, 10)) {
+      const cx = 512 + nx * o, cy = 760 + ny * o
+      let started = false
+      for (let t = -500; t <= 500; t += 25) {
+        const x = cx + dx * t + Math.sin(t * 0.02 + o) * 2, y = cy + dy * t + Math.cos(t * 0.021 + o) * 2
+        if (!started) { mesh.moveTo(x, y); started = true } else mesh.lineTo(x, y)
+      }
+    }
+  }
+  hctx.save()
+  hctx.globalAlpha = 0.09; hctx.strokeStyle = '#000'; hctx.lineWidth = 1.1
+  hctx.stroke(mesh)
+  hctx.restore()
   // Tendons stand a little proud of the back of the hand.
   softBatch(hctx, 9, c => {
     c.strokeStyle = 'rgba(255,255,255,0.16)'; c.lineWidth = 12
