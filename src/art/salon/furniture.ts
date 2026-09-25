@@ -539,6 +539,40 @@ export function paintBaseRug(): Piece {
   })
 }
 
+/**
+ * A long woven runner for the front of the salon: soft mint with a blush border, a band of little diamonds down
+ * the middle, fringes at both ends, and the slight give of a rug on the floor (a soft shadow, a lit near edge).
+ */
+export function paintRunnerRug(): Piece {
+  return piece(300, 96, 150, 48, ctx => {
+    const x0 = 22, x1 = 278, y0 = 20, y1 = 76
+    blurred(ctx, 4, () => { ctx.fillStyle = 'rgba(120,60,84,0.2)'; ctx.beginPath(); ctx.roundRect(x0 + 4, y0 + 6, x1 - x0, y1 - y0, 10); ctx.fill() })
+    // Fringes at the ends.
+    ctx.strokeStyle = '#f4eee6'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'
+    for (let y = y0 + 4; y <= y1 - 4; y += 4) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 - 9, y + 1); ctx.moveTo(x1, y); ctx.lineTo(x1 + 9, y + 1); ctx.stroke() }
+    // The rug: a blush border around a mint field.
+    ctx.fillStyle = '#f6cfdb'; ctx.beginPath(); ctx.roundRect(x0, y0, x1 - x0, y1 - y0, 9); ctx.fill()
+    ctx.strokeStyle = 'rgba(206,140,164,0.6)'; ctx.lineWidth = 1.2; ctx.stroke()
+    const g = ctx.createLinearGradient(0, y0 + 8, 0, y1 - 8)
+    g.addColorStop(0, '#dff5ec'); g.addColorStop(1, '#bfe8d8')
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x0 + 9, y0 + 8, x1 - x0 - 18, y1 - y0 - 16, 6); ctx.fill()
+    // Stitched lines inside the border.
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4])
+    ctx.beginPath(); ctx.roundRect(x0 + 5, y0 + 4, x1 - x0 - 10, y1 - y0 - 8, 7); ctx.stroke(); ctx.setLineDash([])
+    // A band of little diamonds down the middle, alternating blush and butter.
+    const cy = (y0 + y1) / 2
+    for (let x = x0 + 26, k = 0; x < x1 - 20; x += 18, k++) {
+      ctx.fillStyle = k % 2 ? '#fbe0a0' : '#f7b7cc'
+      ctx.beginPath(); ctx.moveTo(x, cy - 8); ctx.lineTo(x + 7, cy); ctx.lineTo(x, cy + 8); ctx.lineTo(x - 7, cy); ctx.closePath(); ctx.fill()
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(x, cy, 1.6, 0, Math.PI * 2); ctx.fill()
+    }
+    // The weave: faint lengthwise lines, and light on the near edge.
+    ctx.strokeStyle = 'rgba(120,180,160,0.18)'; ctx.lineWidth = 1
+    for (let y = y0 + 11; y < y1 - 10; y += 3) { ctx.beginPath(); ctx.moveTo(x0 + 11, y); ctx.lineTo(x1 - 11, y); ctx.stroke() }
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 + 8, y1 - 1.5); ctx.lineTo(x1 - 8, y1 - 1.5); ctx.stroke()
+  })
+}
+
 /** An arc floor lamp with a warm shade, next to the sofa. */
 export function paintFloorLamp(): Piece {
   return piece(90, 170, 20, 164, ctx => {

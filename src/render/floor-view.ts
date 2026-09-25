@@ -1,7 +1,7 @@
 import { Container, Graphics, Sprite, Text, type Application, type FederatedPointerEvent, type Texture } from 'pixi.js'
 import { bits } from '../art/bits.ts'
 import { CURTAIN_SPOTS, decorPiece } from '../art/salon/decor-art.ts'
-import { fairyBulbs, paintBaseRug, paintDoorBell, paintFillerFrame, paintFloorLamp, paintLampGlow, paintMagazineTable, paintSoonScreen, paintSucculent, paintTeaCorner, paintWelcomeSign, paintAquarium, paintCandles, paintChandelier, paintCloudRug, paintDesk, paintFacialChair, paintFairyLights, paintNailDesk, paintNeonGlow, paintPedicureChair, paintPlant, paintSofa, paintStationGlow, paintWallArt, type Piece } from '../art/salon/furniture.ts'
+import { fairyBulbs, paintBaseRug, paintDoorBell, paintFillerFrame, paintFloorLamp, paintLampGlow, paintMagazineTable, paintSoonScreen, paintSucculent, paintTeaCorner, paintWelcomeSign, paintAquarium, paintCandles, paintChandelier, paintCloudRug, paintDesk, paintFacialChair, paintFairyLights, paintNailDesk, paintNeonGlow, paintPedicureChair, paintRunnerRug, paintPlant, paintSofa, paintStationGlow, paintWallArt, type Piece } from '../art/salon/furniture.ts'
 import { icons, treatmentIcon } from '../art/salon/icons.ts'
 import { paintGift } from '../art/salon/gift-art.ts'
 import { canvasTexture, DOOR_Y0, DOOR_Y1, OUTSIDE_W, paintFront, paintLight, paintOutside, paintRoom, paintVignette, WALL_T } from '../art/salon/room.ts'
@@ -308,9 +308,7 @@ export class FloorView {
     add(this.sortLayer, spriteOf(cached('tea', paintTeaCorner)), 54, 334)
     // Cozy touches in the front of the salon, so it never feels bare: a long soft runner, a reading lamp
     // and a magazine table in the corner.
-    const runner = spriteOf(cached('baseRug', paintBaseRug))
-    runner.scale.set(0.62, 0.42); runner.tint = 0xd8f3e8; runner.alpha = 0.85
-    add(this.rugLayer, runner, 440, 700)
+    add(this.rugLayer, spriteOf(cached('runner', paintRunnerRug)), 440, 700)
     add(this.sortLayer, spriteOf(cached('lamp', paintFloorLamp)), 652, 792)
     add(this.sortLayer, spriteOf(cached('magazines', paintMagazineTable)), 1228, 770)
     // Empty station slots wait behind a soft folding screen: more room is coming. While a new station waits
@@ -847,6 +845,8 @@ export class FloorView {
       const moving = mine ? this.me.moving : Math.hypot(v.x - px, v.y - py) / Math.max(dt, 1e-3) > 14 || p.moving
       const person = v.person
       person.pose = st ? 'work' : moving ? 'walk' : 'stand'
+      const job = st ? state.customers.find(x => x.id === st.customer)?.plan.treatment : undefined
+      person.tool = job === 'nails' ? 'file' : job === 'feet' ? 'footBrush' : job ? 'brush' : null
       person.facing = st ? 1 : mine ? this.me.facing : p.facing
       person.setExpr(st ? 'happy' : 'smile')
       person.root.position.set(v.x, v.y)
@@ -876,6 +876,8 @@ export class FloorView {
         moving = true
       }
       v.person.pose = moving ? 'walk' : s.task ? 'work' : 'stand'
+      const job = st ? state.customers.find(x => x.id === st.customer)?.plan.treatment : undefined
+      v.person.tool = job === 'nails' ? 'file' : job === 'feet' ? 'footBrush' : job ? 'brush' : null
       if (!moving && st && !onBreak) v.person.facing = 1
       v.person.setExpr(onBreak ? 'sleepy' : s.task ? 'happy' : 'smile')
       v.person.root.position.set(v.x, v.y)
