@@ -1,0 +1,1817 @@
+{
+ "foam": [
+  {
+   "file": "foam/foam-1.mp3",
+   "loop": false,
+   "length": 2.298,
+   "from": "https://bigsoundbank.com/shaving-foam-s0045.html",
+   "peak_db": -2.4,
+   "mean_db": -26.4
+  },
+  {
+   "file": "foam/foam-2.mp3",
+   "loop": false,
+   "length": 1.169,
+   "from": "https://bigsoundbank.com/shaving-foam-s0045.html",
+   "peak_db": -4.3,
+   "mean_db": -19.6
+  },
+  {
+   "file": "foam/foam-3.mp3",
+   "loop": false,
+   "length": 0.555,
+   "from": "https://bigsoundbank.com/shaving-foam-s0045.html",
+   "peak_db": -7.0,
+   "mean_db": -19.6
+  },
+  {
+   "file": "foam/foam-4.mp3",
+   "loop": false,
+   "length": 1.633,
+   "from": "https://bigsoundbank.com/shaving-foam-1-s3069.html",
+   "peak_db": -3.3,
+   "mean_db": -19.7
+  },
+  {
+   "file": "foam/foam-5.mp3",
+   "loop": false,
+   "length": 1.951,
+   "from": "https://bigsoundbank.com/shaving-foam-4-s3072.html",
+   "peak_db": -2.5,
+   "mean_db": -20.0
+  },
+  {
+   "file": "foam/foam-6.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/shaving-foam-7-s3075.html",
+   "peak_db": -2.0,
+   "mean_db": -21.4
+  },
+  {
+   "file": "foam/foam-7.mp3",
+   "loop": false,
+   "length": 0.607,
+   "from": "https://bigsoundbank.com/shaving-foam-10-s3078.html",
+   "peak_db": -4.4,
+   "mean_db": -20.1
+  },
+  {
+   "file": "foam/foam-8.mp3",
+   "loop": false,
+   "length": 0.618,
+   "from": "https://bigsoundbank.com/shaving-foam-10-s3078.html",
+   "peak_db": -3.6,
+   "mean_db": -20.2
+  },
+  {
+   "file": "foam/foam-9.mp3",
+   "loop": false,
+   "length": 0.715,
+   "from": "https://bigsoundbank.com/shaving-foam-10-s3078.html",
+   "peak_db": -3.0,
+   "mean_db": -20.4
+  },
+  {
+   "file": "foam/foam-10.mp3",
+   "loop": false,
+   "length": 1.22,
+   "from": "https://bigsoundbank.com/shaving-foam-10-s3078.html",
+   "peak_db": -3.8,
+   "mean_db": -19.0
+  },
+  {
+   "file": "foam/foam-loop-11.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/sponge-and-foam-s0778.html",
+   "peak_db": -2.0,
+   "mean_db": -25.0
+  }
+ ],
+ "water": [
+  {
+   "file": "water/water-loop-1.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/faucet-3-s0652.html",
+   "peak_db": -2.6,
+   "mean_db": -23.1
+  },
+  {
+   "file": "water/water-loop-2.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/flowing-water-s1522.html",
+   "peak_db": -2.4,
+   "mean_db": -22.8
+  },
+  {
+   "file": "water/water-loop-3.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/small-stream-4-s1354.html",
+   "peak_db": -5.3,
+   "mean_db": -25.4
+  },
+  {
+   "file": "water/water-loop-4.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/glass-of-water-filling-1-s1242.html",
+   "peak_db": -2.5,
+   "mean_db": -26.1
+  },
+  {
+   "file": "water/water-loop-5.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/hot-water-in-mug-2-s3312.html",
+   "peak_db": -1.7,
+   "mean_db": -22.8
+  },
+  {
+   "file": "water/water-loop-6.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/splash-small-1-s1529.html",
+   "peak_db": -2.6,
+   "mean_db": -25.2
+  },
+  {
+   "file": "water/water-loop-7.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/splash-small-2-s1530.html",
+   "peak_db": -2.6,
+   "mean_db": -26.5
+  },
+  {
+   "file": "water/water-loop-8.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/splash-small-3-s1531.html",
+   "peak_db": -3.1,
+   "mean_db": -22.8
+  },
+  {
+   "file": "water/water-loop-9.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/shoes-in-the-water-s0690.html",
+   "peak_db": -2.1,
+   "mean_db": -25.5
+  }
+ ],
+ "drip": [
+  {
+   "file": "drip/drip-1.mp3",
+   "loop": false,
+   "length": 0.382,
+   "from": "https://bigsoundbank.com/drops-of-water-1-s1384.html",
+   "peak_db": -1.8,
+   "mean_db": -19.8
+  },
+  {
+   "file": "drip/drip-2.mp3",
+   "loop": false,
+   "length": 0.343,
+   "from": "https://bigsoundbank.com/drops-of-water-1-s1384.html",
+   "peak_db": -1.9,
+   "mean_db": -19.3
+  },
+  {
+   "file": "drip/drip-3.mp3",
+   "loop": false,
+   "length": 0.379,
+   "from": "https://bigsoundbank.com/drops-of-water-1-s1384.html",
+   "peak_db": -2.0,
+   "mean_db": -23.2
+  },
+  {
+   "file": "drip/drip-4.mp3",
+   "loop": false,
+   "length": 0.336,
+   "from": "https://bigsoundbank.com/drops-of-water-1-s1384.html",
+   "peak_db": -1.7,
+   "mean_db": -18.1
+  },
+  {
+   "file": "drip/drip-5.mp3",
+   "loop": false,
+   "length": 0.364,
+   "from": "https://bigsoundbank.com/drops-of-water-2-s1385.html",
+   "peak_db": -2.1,
+   "mean_db": -22.3
+  },
+  {
+   "file": "drip/drip-6.mp3",
+   "loop": false,
+   "length": 0.401,
+   "from": "https://bigsoundbank.com/drops-of-water-2-s1385.html",
+   "peak_db": -1.7,
+   "mean_db": -21.7
+  },
+  {
+   "file": "drip/drip-7.mp3",
+   "loop": false,
+   "length": 0.341,
+   "from": "https://bigsoundbank.com/drops-of-water-2-s1385.html",
+   "peak_db": -2.2,
+   "mean_db": -24.2
+  },
+  {
+   "file": "drip/drip-8.mp3",
+   "loop": false,
+   "length": 0.349,
+   "from": "https://bigsoundbank.com/drops-of-water-2-s1385.html",
+   "peak_db": -1.9,
+   "mean_db": -22.3
+  },
+  {
+   "file": "drip/drip-9.mp3",
+   "loop": false,
+   "length": 0.364,
+   "from": "https://bigsoundbank.com/drops-of-water-3-s1386.html",
+   "peak_db": -2.1,
+   "mean_db": -22.3
+  },
+  {
+   "file": "drip/drip-10.mp3",
+   "loop": false,
+   "length": 0.401,
+   "from": "https://bigsoundbank.com/drops-of-water-3-s1386.html",
+   "peak_db": -1.7,
+   "mean_db": -21.7
+  },
+  {
+   "file": "drip/drip-11.mp3",
+   "loop": false,
+   "length": 0.341,
+   "from": "https://bigsoundbank.com/drops-of-water-3-s1386.html",
+   "peak_db": -2.2,
+   "mean_db": -24.2
+  },
+  {
+   "file": "drip/drip-12.mp3",
+   "loop": false,
+   "length": 0.349,
+   "from": "https://bigsoundbank.com/drops-of-water-3-s1386.html",
+   "peak_db": -1.9,
+   "mean_db": -22.3
+  },
+  {
+   "file": "drip/drip-13.mp3",
+   "loop": false,
+   "length": 0.394,
+   "from": "https://bigsoundbank.com/drops-of-water-4-s1387.html",
+   "peak_db": -1.8,
+   "mean_db": -22.2
+  },
+  {
+   "file": "drip/drip-14.mp3",
+   "loop": false,
+   "length": 0.352,
+   "from": "https://bigsoundbank.com/drops-of-water-4-s1387.html",
+   "peak_db": -2.1,
+   "mean_db": -24.4
+  },
+  {
+   "file": "drip/drip-15.mp3",
+   "loop": false,
+   "length": 0.399,
+   "from": "https://bigsoundbank.com/drops-of-water-4-s1387.html",
+   "peak_db": -1.8,
+   "mean_db": -21.5
+  },
+  {
+   "file": "drip/drip-16.mp3",
+   "loop": false,
+   "length": 0.38,
+   "from": "https://bigsoundbank.com/drops-of-water-4-s1387.html",
+   "peak_db": -1.9,
+   "mean_db": -20.7
+  },
+  {
+   "file": "drip/drip-17.mp3",
+   "loop": false,
+   "length": 0.27,
+   "from": "https://bigsoundbank.com/drops-metal-sink-s1383.html",
+   "peak_db": -2.0,
+   "mean_db": -22.1
+  },
+  {
+   "file": "drip/drip-18.mp3",
+   "loop": false,
+   "length": 0.275,
+   "from": "https://bigsoundbank.com/drops-metal-sink-s1383.html",
+   "peak_db": -2.2,
+   "mean_db": -19.5
+  },
+  {
+   "file": "drip/drip-19.mp3",
+   "loop": false,
+   "length": 0.272,
+   "from": "https://bigsoundbank.com/drops-metal-sink-s1383.html",
+   "peak_db": -1.6,
+   "mean_db": -21.3
+  },
+  {
+   "file": "drip/drip-20.mp3",
+   "loop": false,
+   "length": 0.281,
+   "from": "https://bigsoundbank.com/drops-metal-sink-s1383.html",
+   "peak_db": -1.9,
+   "mean_db": -23.3
+  }
+ ],
+ "bubble": [
+  {
+   "file": "bubble/bubble-1.mp3",
+   "loop": false,
+   "length": 1.392,
+   "from": "https://bigsoundbank.com/water-bubbles-s0150.html",
+   "peak_db": -1.9,
+   "mean_db": -23.3
+  },
+  {
+   "file": "bubble/bubble-2.mp3",
+   "loop": false,
+   "length": 1.255,
+   "from": "https://bigsoundbank.com/water-bubbles-s0150.html",
+   "peak_db": -1.9,
+   "mean_db": -23.1
+  },
+  {
+   "file": "bubble/bubble-3.mp3",
+   "loop": false,
+   "length": 1.72,
+   "from": "https://bigsoundbank.com/water-bubbles-s0150.html",
+   "peak_db": -1.9,
+   "mean_db": -23.6
+  },
+  {
+   "file": "bubble/bubble-4.mp3",
+   "loop": false,
+   "length": 1.557,
+   "from": "https://bigsoundbank.com/water-bubbles-s0150.html",
+   "peak_db": -2.0,
+   "mean_db": -21.8
+  },
+  {
+   "file": "bubble/bubble-5.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/bubbles-burst-s1074.html",
+   "peak_db": -2.0,
+   "mean_db": -26.7
+  },
+  {
+   "file": "bubble/bubble-6.mp3",
+   "loop": false,
+   "length": 0.125,
+   "from": "https://bigsoundbank.com/glass-of-soda-s0117.html",
+   "peak_db": -2.8,
+   "mean_db": -28.3
+  },
+  {
+   "file": "bubble/bubble-7.mp3",
+   "loop": false,
+   "length": 0.312,
+   "from": "https://bigsoundbank.com/glass-of-soda-s0117.html",
+   "peak_db": -2.4,
+   "mean_db": -22.2
+  },
+  {
+   "file": "bubble/bubble-8.mp3",
+   "loop": false,
+   "length": 0.606,
+   "from": "https://bigsoundbank.com/sparkling-water-s0230.html",
+   "peak_db": -4.0,
+   "mean_db": -31.6
+  },
+  {
+   "file": "bubble/bubble-9.mp3",
+   "loop": false,
+   "length": 0.148,
+   "from": "https://bigsoundbank.com/sparkling-water-s0230.html",
+   "peak_db": -2.5,
+   "mean_db": -31.7
+  }
+ ],
+ "pop": [
+  {
+   "file": "pop/pop-1.mp3",
+   "loop": false,
+   "length": 0.121,
+   "from": "https://bigsoundbank.com/bubble-wrap-breakouts-s0462.html",
+   "peak_db": -1.3,
+   "mean_db": -24.8
+  },
+  {
+   "file": "pop/pop-2.mp3",
+   "loop": false,
+   "length": 0.121,
+   "from": "https://bigsoundbank.com/bubble-wrap-breakouts-s0462.html",
+   "peak_db": -3.3,
+   "mean_db": -28.8
+  },
+  {
+   "file": "pop/pop-3.mp3",
+   "loop": false,
+   "length": 0.131,
+   "from": "https://bigsoundbank.com/bubble-wrap-breakouts-s0462.html",
+   "peak_db": -2.4,
+   "mean_db": -26.8
+  },
+  {
+   "file": "pop/pop-4.mp3",
+   "loop": false,
+   "length": 0.117,
+   "from": "https://bigsoundbank.com/bubble-wrap-breakouts-s0462.html",
+   "peak_db": -2.4,
+   "mean_db": -26.7
+  },
+  {
+   "file": "pop/pop-5.mp3",
+   "loop": false,
+   "length": 2.359,
+   "from": "https://bigsoundbank.com/pop-corn-corn-bursting-s0413.html",
+   "peak_db": -1.7,
+   "mean_db": -25.8
+  },
+  {
+   "file": "pop/pop-6.mp3",
+   "loop": false,
+   "length": 1.466,
+   "from": "https://bigsoundbank.com/pop-corn-corn-bursting-s0413.html",
+   "peak_db": -2.1,
+   "mean_db": -31.7
+  },
+  {
+   "file": "pop/pop-7.mp3",
+   "loop": false,
+   "length": 1.405,
+   "from": "https://bigsoundbank.com/pop-corn-corn-bursting-s0413.html",
+   "peak_db": -2.4,
+   "mean_db": -28.7
+  },
+  {
+   "file": "pop/pop-8.mp3",
+   "loop": false,
+   "length": 2.63,
+   "from": "https://bigsoundbank.com/pop-corn-corn-bursting-s0413.html",
+   "peak_db": -2.2,
+   "mean_db": -27.5
+  },
+  {
+   "file": "pop/pop-9.mp3",
+   "loop": false,
+   "length": 0.167,
+   "from": "https://bigsoundbank.com/champagne-cork-s0211.html",
+   "peak_db": -1.8,
+   "mean_db": -20.4
+  },
+  {
+   "file": "pop/pop-10.mp3",
+   "loop": false,
+   "length": 0.174,
+   "from": "https://bigsoundbank.com/champagne-cork-s0211.html",
+   "peak_db": -1.8,
+   "mean_db": -18.0
+  }
+ ],
+ "peel": [
+  {
+   "file": "peel/peel-1.mp3",
+   "loop": false,
+   "length": 0.23,
+   "from": "https://bigsoundbank.com/adhesive-tape-1-s0297.html",
+   "peak_db": -6.6,
+   "mean_db": -27.9
+  },
+  {
+   "file": "peel/peel-2.mp3",
+   "loop": false,
+   "length": 0.262,
+   "from": "https://bigsoundbank.com/adhesive-tape-1-s0297.html",
+   "peak_db": -4.7,
+   "mean_db": -29.4
+  },
+  {
+   "file": "peel/peel-3.mp3",
+   "loop": false,
+   "length": 0.822,
+   "from": "https://bigsoundbank.com/adhesive-tape-1-s0297.html",
+   "peak_db": -6.7,
+   "mean_db": -30.8
+  },
+  {
+   "file": "peel/peel-4.mp3",
+   "loop": false,
+   "length": 1.377,
+   "from": "https://bigsoundbank.com/adhesive-tape-1-s0297.html",
+   "peak_db": -4.2,
+   "mean_db": -28.7
+  },
+  {
+   "file": "peel/peel-5.mp3",
+   "loop": false,
+   "length": 2.888,
+   "from": "https://bigsoundbank.com/adhesive-tape-2-s0298.html",
+   "peak_db": -4.7,
+   "mean_db": -26.6
+  },
+  {
+   "file": "peel/peel-6.mp3",
+   "loop": false,
+   "length": 1.971,
+   "from": "https://bigsoundbank.com/adhesive-tape-3-s0299.html",
+   "peak_db": -5.8,
+   "mean_db": -25.1
+  },
+  {
+   "file": "peel/peel-7.mp3",
+   "loop": false,
+   "length": 0.79,
+   "from": "https://bigsoundbank.com/raw-carrot-peeled-s1601.html",
+   "peak_db": -2.7,
+   "mean_db": -21.8
+  },
+  {
+   "file": "peel/peel-8.mp3",
+   "loop": false,
+   "length": 0.715,
+   "from": "https://bigsoundbank.com/raw-carrot-peeled-s1601.html",
+   "peak_db": -2.6,
+   "mean_db": -21.1
+  },
+  {
+   "file": "peel/peel-9.mp3",
+   "loop": false,
+   "length": 0.726,
+   "from": "https://bigsoundbank.com/raw-carrot-peeled-s1601.html",
+   "peak_db": -3.4,
+   "mean_db": -23.2
+  },
+  {
+   "file": "peel/peel-10.mp3",
+   "loop": false,
+   "length": 0.672,
+   "from": "https://bigsoundbank.com/raw-carrot-peeled-s1601.html",
+   "peak_db": -2.6,
+   "mean_db": -24.3
+  },
+  {
+   "file": "peel/peel-11.mp3",
+   "loop": false,
+   "length": 0.511,
+   "from": "https://bigsoundbank.com/plastic-cover-2-s2896.html",
+   "peak_db": -2.1,
+   "mean_db": -20.1
+  }
+ ],
+ "rip": [
+  {
+   "file": "rip/rip-1.mp3",
+   "loop": false,
+   "length": 0.644,
+   "from": "https://bigsoundbank.com/velcro-tape-s0629.html",
+   "peak_db": -3.9,
+   "mean_db": -26.0
+  },
+  {
+   "file": "rip/rip-2.mp3",
+   "loop": false,
+   "length": 0.506,
+   "from": "https://bigsoundbank.com/velcro-tape-s0629.html",
+   "peak_db": -2.3,
+   "mean_db": -27.9
+  },
+  {
+   "file": "rip/rip-3.mp3",
+   "loop": false,
+   "length": 0.533,
+   "from": "https://bigsoundbank.com/velcro-tape-s0629.html",
+   "peak_db": -4.2,
+   "mean_db": -26.0
+  },
+  {
+   "file": "rip/rip-4.mp3",
+   "loop": false,
+   "length": 0.342,
+   "from": "https://bigsoundbank.com/velcro-tape-s0629.html",
+   "peak_db": -2.8,
+   "mean_db": -24.3
+  },
+  {
+   "file": "rip/rip-5.mp3",
+   "loop": false,
+   "length": 0.28,
+   "from": "https://bigsoundbank.com/cloth-s0013.html",
+   "peak_db": -3.0,
+   "mean_db": -23.6
+  },
+  {
+   "file": "rip/rip-6.mp3",
+   "loop": false,
+   "length": 2.799,
+   "from": "https://bigsoundbank.com/cloth-s0013.html",
+   "peak_db": -1.8,
+   "mean_db": -25.3
+  },
+  {
+   "file": "rip/rip-7.mp3",
+   "loop": false,
+   "length": 0.201,
+   "from": "https://bigsoundbank.com/cloth-s0013.html",
+   "peak_db": -2.4,
+   "mean_db": -23.8
+  },
+  {
+   "file": "rip/rip-8.mp3",
+   "loop": false,
+   "length": 2.515,
+   "from": "https://bigsoundbank.com/cloth-s0013.html",
+   "peak_db": -2.1,
+   "mean_db": -23.9
+  },
+  {
+   "file": "rip/rip-9.mp3",
+   "loop": false,
+   "length": 0.933,
+   "from": "https://bigsoundbank.com/torn-paper-s0018.html",
+   "peak_db": -4.2,
+   "mean_db": -21.8
+  },
+  {
+   "file": "rip/rip-10.mp3",
+   "loop": false,
+   "length": 1.136,
+   "from": "https://bigsoundbank.com/torn-paper-s0018.html",
+   "peak_db": -3.3,
+   "mean_db": -21.7
+  },
+  {
+   "file": "rip/rip-11.mp3",
+   "loop": false,
+   "length": 0.478,
+   "from": "https://bigsoundbank.com/torn-paper-s0018.html",
+   "peak_db": -6.2,
+   "mean_db": -21.7
+  },
+  {
+   "file": "rip/rip-12.mp3",
+   "loop": false,
+   "length": 0.468,
+   "from": "https://bigsoundbank.com/torn-paper-s0018.html",
+   "peak_db": -2.1,
+   "mean_db": -23.6
+  },
+  {
+   "file": "rip/rip-13.mp3",
+   "loop": false,
+   "length": 0.616,
+   "from": "https://bigsoundbank.com/torn-paper-2-s3239.html",
+   "peak_db": -2.1,
+   "mean_db": -24.7
+  },
+  {
+   "file": "rip/rip-14.mp3",
+   "loop": false,
+   "length": 0.428,
+   "from": "https://bigsoundbank.com/torn-paper-5-s3242.html",
+   "peak_db": -6.6,
+   "mean_db": -21.7
+  }
+ ],
+ "brush": [
+  {
+   "file": "brush/brush-1.mp3",
+   "loop": false,
+   "length": 1.642,
+   "from": "https://bigsoundbank.com/toothbrush-s0718.html",
+   "peak_db": -2.2,
+   "mean_db": -23.6
+  },
+  {
+   "file": "brush/brush-2.mp3",
+   "loop": false,
+   "length": 1.875,
+   "from": "https://bigsoundbank.com/toothbrush-s0718.html",
+   "peak_db": -2.7,
+   "mean_db": -21.2
+  },
+  {
+   "file": "brush/brush-3.mp3",
+   "loop": false,
+   "length": 2.38,
+   "from": "https://bigsoundbank.com/toothbrush-s0718.html",
+   "peak_db": -2.4,
+   "mean_db": -28.8
+  },
+  {
+   "file": "brush/brush-4.mp3",
+   "loop": false,
+   "length": 2.27,
+   "from": "https://bigsoundbank.com/toothbrush-s0718.html",
+   "peak_db": -2.0,
+   "mean_db": -25.3
+  },
+  {
+   "file": "brush/brush-5.mp3",
+   "loop": false,
+   "length": 0.554,
+   "from": "https://bigsoundbank.com/horsehair-brush-s1856.html",
+   "peak_db": -3.0,
+   "mean_db": -22.3
+  },
+  {
+   "file": "brush/brush-6.mp3",
+   "loop": false,
+   "length": 0.54,
+   "from": "https://bigsoundbank.com/horsehair-brush-s1856.html",
+   "peak_db": -5.3,
+   "mean_db": -29.1
+  },
+  {
+   "file": "brush/brush-7.mp3",
+   "loop": false,
+   "length": 0.543,
+   "from": "https://bigsoundbank.com/horsehair-brush-s1856.html",
+   "peak_db": -3.6,
+   "mean_db": -28.4
+  },
+  {
+   "file": "brush/brush-8.mp3",
+   "loop": false,
+   "length": 0.553,
+   "from": "https://bigsoundbank.com/horsehair-brush-s1856.html",
+   "peak_db": -3.1,
+   "mean_db": -24.7
+  },
+  {
+   "file": "brush/brush-9.mp3",
+   "loop": false,
+   "length": 1.165,
+   "from": "https://bigsoundbank.com/brushing-a-horse-1-s1857.html",
+   "peak_db": -3.5,
+   "mean_db": -21.5
+  },
+  {
+   "file": "brush/brush-10.mp3",
+   "loop": false,
+   "length": 0.987,
+   "from": "https://bigsoundbank.com/brushing-a-horse-1-s1857.html",
+   "peak_db": -5.6,
+   "mean_db": -22.9
+  },
+  {
+   "file": "brush/brush-11.mp3",
+   "loop": false,
+   "length": 2.603,
+   "from": "https://bigsoundbank.com/brushing-a-horse-1-s1857.html",
+   "peak_db": -2.3,
+   "mean_db": -22.6
+  },
+  {
+   "file": "brush/brush-12.mp3",
+   "loop": false,
+   "length": 0.975,
+   "from": "https://bigsoundbank.com/brushing-a-horse-1-s1857.html",
+   "peak_db": -3.9,
+   "mean_db": -23.4
+  },
+  {
+   "file": "brush/brush-13.mp3",
+   "loop": false,
+   "length": 0.716,
+   "from": "https://bigsoundbank.com/brush-s1961.html",
+   "peak_db": -6.9,
+   "mean_db": -22.3
+  },
+  {
+   "file": "brush/brush-14.mp3",
+   "loop": false,
+   "length": 0.712,
+   "from": "https://bigsoundbank.com/brush-s1961.html",
+   "peak_db": -5.8,
+   "mean_db": -22.1
+  },
+  {
+   "file": "brush/brush-15.mp3",
+   "loop": false,
+   "length": 0.689,
+   "from": "https://bigsoundbank.com/brush-s1961.html",
+   "peak_db": -7.7,
+   "mean_db": -22.8
+  },
+  {
+   "file": "brush/brush-16.mp3",
+   "loop": false,
+   "length": 0.777,
+   "from": "https://bigsoundbank.com/brush-s1961.html",
+   "peak_db": -4.4,
+   "mean_db": -21.7
+  },
+  {
+   "file": "brush/brush-17.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/cleaning-s0109.html",
+   "peak_db": -0.0,
+   "mean_db": -8.4
+  }
+ ],
+ "comb": [
+  {
+   "file": "comb/comb-1.mp3",
+   "loop": false,
+   "length": 0.895,
+   "from": "https://bigsoundbank.com/comb-teeth-1-s0349.html",
+   "peak_db": -4.6,
+   "mean_db": -29.4
+  },
+  {
+   "file": "comb/comb-2.mp3",
+   "loop": false,
+   "length": 0.595,
+   "from": "https://bigsoundbank.com/comb-teeth-2-s0350.html",
+   "peak_db": -2.7,
+   "mean_db": -27.0
+  },
+  {
+   "file": "comb/comb-3.mp3",
+   "loop": false,
+   "length": 1.058,
+   "from": "https://bigsoundbank.com/comb-teeth-3-s0351.html",
+   "peak_db": -8.9,
+   "mean_db": -31.5
+  }
+ ],
+ "rub": [
+  {
+   "file": "rub/rub-1.mp3",
+   "loop": false,
+   "length": 1.531,
+   "from": "https://bigsoundbank.com/rubbing-hands-s0663.html",
+   "peak_db": -4.0,
+   "mean_db": -22.0
+  },
+  {
+   "file": "rub/rub-2.mp3",
+   "loop": false,
+   "length": 2.266,
+   "from": "https://bigsoundbank.com/rubbing-hands-s0663.html",
+   "peak_db": -4.7,
+   "mean_db": -21.5
+  },
+  {
+   "file": "rub/rub-3.mp3",
+   "loop": false,
+   "length": 1.94,
+   "from": "https://bigsoundbank.com/rubbing-hands-s0663.html",
+   "peak_db": -2.6,
+   "mean_db": -29.2
+  },
+  {
+   "file": "rub/rub-4.mp3",
+   "loop": false,
+   "length": 1.53,
+   "from": "https://bigsoundbank.com/rubbing-hands-s0663.html",
+   "peak_db": -2.6,
+   "mean_db": -21.6
+  },
+  {
+   "file": "rub/rub-5.mp3",
+   "loop": false,
+   "length": 0.536,
+   "from": "https://bigsoundbank.com/synthetic-coat-rubbed-s1104.html",
+   "peak_db": -7.0,
+   "mean_db": -22.1
+  },
+  {
+   "file": "rub/rub-6.mp3",
+   "loop": false,
+   "length": 0.536,
+   "from": "https://bigsoundbank.com/synthetic-coat-rubbed-s1104.html",
+   "peak_db": -6.4,
+   "mean_db": -22.3
+  },
+  {
+   "file": "rub/rub-7.mp3",
+   "loop": false,
+   "length": 0.571,
+   "from": "https://bigsoundbank.com/synthetic-coat-rubbed-s1104.html",
+   "peak_db": -7.4,
+   "mean_db": -22.5
+  },
+  {
+   "file": "rub/rub-8.mp3",
+   "loop": false,
+   "length": 0.498,
+   "from": "https://bigsoundbank.com/synthetic-coat-rubbed-s1104.html",
+   "peak_db": -5.0,
+   "mean_db": -22.3
+  },
+  {
+   "file": "rub/rub-9.mp3",
+   "loop": false,
+   "length": 0.217,
+   "from": "https://bigsoundbank.com/floor-cloth-s0668.html",
+   "peak_db": -2.2,
+   "mean_db": -27.5
+  },
+  {
+   "file": "rub/rub-10.mp3",
+   "loop": false,
+   "length": 0.198,
+   "from": "https://bigsoundbank.com/floor-cloth-s0668.html",
+   "peak_db": -2.0,
+   "mean_db": -20.2
+  },
+  {
+   "file": "rub/rub-11.mp3",
+   "loop": false,
+   "length": 0.218,
+   "from": "https://bigsoundbank.com/floor-cloth-s0668.html",
+   "peak_db": -2.2,
+   "mean_db": -26.0
+  },
+  {
+   "file": "rub/rub-12.mp3",
+   "loop": false,
+   "length": 0.19,
+   "from": "https://bigsoundbank.com/floor-cloth-s0668.html",
+   "peak_db": -2.5,
+   "mean_db": -23.8
+  },
+  {
+   "file": "rub/rub-13.mp3",
+   "loop": false,
+   "length": 0.41,
+   "from": "https://bigsoundbank.com/cleaning-glass-s0689.html",
+   "peak_db": -8.4,
+   "mean_db": -17.8
+  },
+  {
+   "file": "rub/rub-14.mp3",
+   "loop": false,
+   "length": 0.539,
+   "from": "https://bigsoundbank.com/cleaning-glass-s0689.html",
+   "peak_db": -3.8,
+   "mean_db": -18.3
+  },
+  {
+   "file": "rub/rub-15.mp3",
+   "loop": false,
+   "length": 0.399,
+   "from": "https://bigsoundbank.com/cleaning-glass-s0689.html",
+   "peak_db": -1.9,
+   "mean_db": -11.2
+  },
+  {
+   "file": "rub/rub-16.mp3",
+   "loop": false,
+   "length": 0.368,
+   "from": "https://bigsoundbank.com/cleaning-glass-s0689.html",
+   "peak_db": -1.9,
+   "mean_db": -12.7
+  }
+ ],
+ "scissors": [
+  {
+   "file": "scissors/scissors-1.mp3",
+   "loop": false,
+   "length": 1.186,
+   "from": "https://bigsoundbank.com/scissors-s0008.html",
+   "peak_db": -2.0,
+   "mean_db": -23.8
+  },
+  {
+   "file": "scissors/scissors-2.mp3",
+   "loop": false,
+   "length": 1.199,
+   "from": "https://bigsoundbank.com/scissors-s0008.html",
+   "peak_db": -2.2,
+   "mean_db": -27.0
+  },
+  {
+   "file": "scissors/scissors-3.mp3",
+   "loop": false,
+   "length": 1.201,
+   "from": "https://bigsoundbank.com/scissors-s0008.html",
+   "peak_db": -2.3,
+   "mean_db": -26.2
+  },
+  {
+   "file": "scissors/scissors-4.mp3",
+   "loop": false,
+   "length": 1.156,
+   "from": "https://bigsoundbank.com/scissors-s0008.html",
+   "peak_db": -2.6,
+   "mean_db": -25.7
+  }
+ ],
+ "clipper": [
+  {
+   "file": "clipper/clipper-1.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/hair-clippersin-1-s0891.html",
+   "peak_db": -7.3,
+   "mean_db": -21.9
+  },
+  {
+   "file": "clipper/clipper-2.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/hair-clippersin-2-s0892.html",
+   "peak_db": -7.7,
+   "mean_db": -21.9
+  }
+ ],
+ "dryer": [
+  {
+   "file": "dryer/dryer-loop-1.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/hair-dryer-minimum-speed-s0661.html",
+   "peak_db": -8.3,
+   "mean_db": -21.7
+  },
+  {
+   "file": "dryer/dryer-loop-2.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/hair-dryer-maximum-speed-s0662.html",
+   "peak_db": -8.2,
+   "mean_db": -21.8
+  },
+  {
+   "file": "dryer/dryer-loop-3.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/hair-dryer-s2680.html",
+   "peak_db": -6.7,
+   "mean_db": -22.1
+  }
+ ],
+ "suction": [
+  {
+   "file": "suction/suction-1.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/sucker-s0928.html",
+   "peak_db": -2.1,
+   "mean_db": -36.6
+  },
+  {
+   "file": "suction/suction-2.mp3",
+   "loop": false,
+   "length": 0.114,
+   "from": "https://bigsoundbank.com/suction-cup-on-plastic-s1261.html",
+   "peak_db": -2.6,
+   "mean_db": -23.9
+  },
+  {
+   "file": "suction/suction-3.mp3",
+   "loop": false,
+   "length": 0.123,
+   "from": "https://bigsoundbank.com/suction-cup-on-plastic-s1261.html",
+   "peak_db": -1.7,
+   "mean_db": -25.7
+  },
+  {
+   "file": "suction/suction-4.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/straw-suction-1-s1244.html",
+   "peak_db": -2.0,
+   "mean_db": -27.3
+  }
+ ],
+ "drill": [
+  {
+   "file": "drill/drill-1.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/drill-s0184.html",
+   "peak_db": -8.3,
+   "mean_db": -21.7
+  },
+  {
+   "file": "drill/drill-2.mp3",
+   "loop": false,
+   "length": 2.464,
+   "from": "https://bigsoundbank.com/drill-s0791.html",
+   "peak_db": -4.6,
+   "mean_db": -21.9
+  },
+  {
+   "file": "drill/drill-3.mp3",
+   "loop": false,
+   "length": 2.244,
+   "from": "https://bigsoundbank.com/drill-s0791.html",
+   "peak_db": -3.5,
+   "mean_db": -21.3
+  },
+  {
+   "file": "drill/drill-4.mp3",
+   "loop": false,
+   "length": 0.107,
+   "from": "https://bigsoundbank.com/drill-s0791.html",
+   "peak_db": -2.2,
+   "mean_db": -15.8
+  },
+  {
+   "file": "drill/drill-5.mp3",
+   "loop": false,
+   "length": 2.998,
+   "from": "https://bigsoundbank.com/drill-s0791.html",
+   "peak_db": -5.4,
+   "mean_db": -22.8
+  }
+ ],
+ "gel": [
+  {
+   "file": "gel/gel-1.mp3",
+   "loop": false,
+   "length": 1.086,
+   "from": "https://bigsoundbank.com/hydroalcoholic-gel-s1651.html",
+   "peak_db": -4.8,
+   "mean_db": -21.9
+  },
+  {
+   "file": "gel/gel-2.mp3",
+   "loop": false,
+   "length": 0.409,
+   "from": "https://bigsoundbank.com/hydroalcoholic-gel-s1651.html",
+   "peak_db": -2.4,
+   "mean_db": -27.3
+  },
+  {
+   "file": "gel/gel-3.mp3",
+   "loop": false,
+   "length": 0.438,
+   "from": "https://bigsoundbank.com/hydroalcoholic-gel-s1651.html",
+   "peak_db": -7.0,
+   "mean_db": -21.4
+  },
+  {
+   "file": "gel/gel-4.mp3",
+   "loop": false,
+   "length": 0.923,
+   "from": "https://bigsoundbank.com/hydroalcoholic-gel-s1651.html",
+   "peak_db": -4.3,
+   "mean_db": -21.6
+  },
+  {
+   "file": "gel/gel-5.mp3",
+   "loop": false,
+   "length": 0.391,
+   "from": "https://bigsoundbank.com/plastic-tube-s0628.html",
+   "peak_db": -2.3,
+   "mean_db": -15.8
+  },
+  {
+   "file": "gel/gel-6.mp3",
+   "loop": false,
+   "length": 0.391,
+   "from": "https://bigsoundbank.com/plastic-tube-s0628.html",
+   "peak_db": -1.8,
+   "mean_db": -15.8
+  },
+  {
+   "file": "gel/gel-7.mp3",
+   "loop": false,
+   "length": 0.288,
+   "from": "https://bigsoundbank.com/yoghurt-pot-s0686.html",
+   "peak_db": -2.1,
+   "mean_db": -23.7
+  },
+  {
+   "file": "gel/gel-8.mp3",
+   "loop": false,
+   "length": 0.313,
+   "from": "https://bigsoundbank.com/yoghurt-pot-s0686.html",
+   "peak_db": -1.9,
+   "mean_db": -25.6
+  },
+  {
+   "file": "gel/gel-9.mp3",
+   "loop": false,
+   "length": 0.291,
+   "from": "https://bigsoundbank.com/yoghurt-pot-s0686.html",
+   "peak_db": -2.0,
+   "mean_db": -22.1
+  },
+  {
+   "file": "gel/gel-10.mp3",
+   "loop": false,
+   "length": 0.295,
+   "from": "https://bigsoundbank.com/yoghurt-pot-s0686.html",
+   "peak_db": -1.9,
+   "mean_db": -23.8
+  },
+  {
+   "file": "gel/gel-11.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/plastic-squeaks-s1508.html",
+   "peak_db": -1.9,
+   "mean_db": -22.1
+  }
+ ],
+ "cap": [
+  {
+   "file": "cap/cap-1.mp3",
+   "loop": false,
+   "length": 0.355,
+   "from": "https://bigsoundbank.com/wine-stopper-s0274.html",
+   "peak_db": -1.0,
+   "mean_db": -22.8
+  },
+  {
+   "file": "cap/cap-2.mp3",
+   "loop": false,
+   "length": 0.184,
+   "from": "https://bigsoundbank.com/wine-plastic-cap-s0878.html",
+   "peak_db": -2.0,
+   "mean_db": -23.2
+  },
+  {
+   "file": "cap/cap-3.mp3",
+   "loop": false,
+   "length": 0.346,
+   "from": "https://bigsoundbank.com/bottle-caps-s1392.html",
+   "peak_db": -2.0,
+   "mean_db": -25.3
+  },
+  {
+   "file": "cap/cap-4.mp3",
+   "loop": false,
+   "length": 0.322,
+   "from": "https://bigsoundbank.com/bottle-caps-s1392.html",
+   "peak_db": -1.8,
+   "mean_db": -19.6
+  },
+  {
+   "file": "cap/cap-5.mp3",
+   "loop": false,
+   "length": 0.226,
+   "from": "https://bigsoundbank.com/bottle-caps-s1392.html",
+   "peak_db": -3.2,
+   "mean_db": -23.5
+  },
+  {
+   "file": "cap/cap-6.mp3",
+   "loop": false,
+   "length": 0.241,
+   "from": "https://bigsoundbank.com/bottle-caps-s1392.html",
+   "peak_db": -2.6,
+   "mean_db": -26.1
+  },
+  {
+   "file": "cap/cap-7.mp3",
+   "loop": false,
+   "length": 0.372,
+   "from": "https://bigsoundbank.com/glass-placed-on-table-s1204.html",
+   "peak_db": -2.0,
+   "mean_db": -19.5
+  },
+  {
+   "file": "cap/cap-8.mp3",
+   "loop": false,
+   "length": 0.359,
+   "from": "https://bigsoundbank.com/glass-placed-on-table-s1204.html",
+   "peak_db": -1.9,
+   "mean_db": -20.9
+  },
+  {
+   "file": "cap/cap-9.mp3",
+   "loop": false,
+   "length": 0.332,
+   "from": "https://bigsoundbank.com/glass-placed-on-table-s1204.html",
+   "peak_db": -1.9,
+   "mean_db": -19.2
+  },
+  {
+   "file": "cap/cap-10.mp3",
+   "loop": false,
+   "length": 0.301,
+   "from": "https://bigsoundbank.com/glass-placed-on-table-s1204.html",
+   "peak_db": -1.9,
+   "mean_db": -25.0
+  }
+ ],
+ "spray": [
+  {
+   "file": "spray/spray-1.mp3",
+   "loop": false,
+   "length": 0.532,
+   "from": "https://bigsoundbank.com/long-spray-s0043.html",
+   "peak_db": -2.9,
+   "mean_db": -26.3
+  },
+  {
+   "file": "spray/spray-2.mp3",
+   "loop": false,
+   "length": 0.708,
+   "from": "https://bigsoundbank.com/long-spray-s0043.html",
+   "peak_db": -3.0,
+   "mean_db": -29.2
+  },
+  {
+   "file": "spray/spray-3.mp3",
+   "loop": false,
+   "length": 0.64,
+   "from": "https://bigsoundbank.com/long-spray-s0043.html",
+   "peak_db": -3.0,
+   "mean_db": -23.1
+  },
+  {
+   "file": "spray/spray-4.mp3",
+   "loop": false,
+   "length": 0.478,
+   "from": "https://bigsoundbank.com/long-spray-s0043.html",
+   "peak_db": -7.4,
+   "mean_db": -22.0
+  },
+  {
+   "file": "spray/spray-5.mp3",
+   "loop": false,
+   "length": 0.217,
+   "from": "https://bigsoundbank.com/short-spray-s0044.html",
+   "peak_db": -3.8,
+   "mean_db": -18.9
+  },
+  {
+   "file": "spray/spray-6.mp3",
+   "loop": false,
+   "length": 0.167,
+   "from": "https://bigsoundbank.com/short-spray-s0044.html",
+   "peak_db": -2.3,
+   "mean_db": -19.2
+  },
+  {
+   "file": "spray/spray-7.mp3",
+   "loop": false,
+   "length": 0.167,
+   "from": "https://bigsoundbank.com/short-spray-s0044.html",
+   "peak_db": -2.0,
+   "mean_db": -21.9
+  },
+  {
+   "file": "spray/spray-8.mp3",
+   "loop": false,
+   "length": 1.26,
+   "from": "https://bigsoundbank.com/spray-s0048.html",
+   "peak_db": -5.5,
+   "mean_db": -21.9
+  },
+  {
+   "file": "spray/spray-9.mp3",
+   "loop": false,
+   "length": 0.267,
+   "from": "https://bigsoundbank.com/spray-s0048.html",
+   "peak_db": -2.4,
+   "mean_db": -18.6
+  },
+  {
+   "file": "spray/spray-10.mp3",
+   "loop": false,
+   "length": 0.954,
+   "from": "https://bigsoundbank.com/spray-s0048.html",
+   "peak_db": -4.8,
+   "mean_db": -21.9
+  },
+  {
+   "file": "spray/spray-11.mp3",
+   "loop": false,
+   "length": 0.803,
+   "from": "https://bigsoundbank.com/spray-s0048.html",
+   "peak_db": -7.8,
+   "mean_db": -21.8
+  },
+  {
+   "file": "spray/spray-12.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/watering-1-s1302.html",
+   "peak_db": -2.1,
+   "mean_db": -29.1
+  }
+ ],
+ "steam": [
+  {
+   "file": "steam/steam-loop-1.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/electric-kettle-s0660.html",
+   "peak_db": -6.2,
+   "mean_db": -21.5
+  },
+  {
+   "file": "steam/steam-loop-2.mp3",
+   "loop": true,
+   "from": "https://bigsoundbank.com/pressure-cooker-s0805.html",
+   "peak_db": -9.9,
+   "mean_db": -23.8
+  }
+ ],
+ "cash": [
+  {
+   "file": "cash/cash-1.mp3",
+   "loop": false,
+   "length": 2.56,
+   "from": "https://bigsoundbank.com/supermarket-cash-registers-s0579.html",
+   "peak_db": -0.1,
+   "mean_db": -17.5
+  },
+  {
+   "file": "cash/cash-2.mp3",
+   "loop": false,
+   "length": 0.16,
+   "from": "https://bigsoundbank.com/beep-of-a-cash-register-s1417.html",
+   "peak_db": -1.0,
+   "mean_db": -4.1
+  },
+  {
+   "file": "cash/cash-3.mp3",
+   "loop": false,
+   "length": 0.23,
+   "from": "https://bigsoundbank.com/beep-of-a-cash-register-2-s3527.html",
+   "peak_db": -2.0,
+   "mean_db": -9.0
+  },
+  {
+   "file": "cash/cash-4.mp3",
+   "loop": false,
+   "length": 1.703,
+   "from": "https://bigsoundbank.com/coins-1-s0193.html",
+   "peak_db": -3.2,
+   "mean_db": -31.2
+  },
+  {
+   "file": "cash/cash-5.mp3",
+   "loop": false,
+   "length": 1.503,
+   "from": "https://bigsoundbank.com/coins-1-s0193.html",
+   "peak_db": -4.0,
+   "mean_db": -34.7
+  },
+  {
+   "file": "cash/cash-6.mp3",
+   "loop": false,
+   "length": 1.054,
+   "from": "https://bigsoundbank.com/coins-1-s0193.html",
+   "peak_db": -4.7,
+   "mean_db": -34.1
+  },
+  {
+   "file": "cash/cash-7.mp3",
+   "loop": false,
+   "length": 0.691,
+   "from": "https://bigsoundbank.com/coins-2-s0194.html",
+   "peak_db": -2.8,
+   "mean_db": -28.7
+  },
+  {
+   "file": "cash/cash-8.mp3",
+   "loop": false,
+   "length": 1.378,
+   "from": "https://bigsoundbank.com/coins-2-s0194.html",
+   "peak_db": -3.0,
+   "mean_db": -25.6
+  },
+  {
+   "file": "cash/cash-9.mp3",
+   "loop": false,
+   "length": 0.69,
+   "from": "https://bigsoundbank.com/coins-2-s0194.html",
+   "peak_db": -2.1,
+   "mean_db": -26.7
+  },
+  {
+   "file": "cash/cash-10.mp3",
+   "loop": false,
+   "length": 0.639,
+   "from": "https://bigsoundbank.com/coin-in-cup-1-s0339.html",
+   "peak_db": -2.6,
+   "mean_db": -21.3
+  }
+ ],
+ "door": [
+  {
+   "file": "door/door-1.mp3",
+   "loop": false,
+   "length": 2.696,
+   "from": "https://bigsoundbank.com/shop-doorbell-chime-s3588.html",
+   "peak_db": -5.7,
+   "mean_db": -25.7
+  },
+  {
+   "file": "door/door-2.mp3",
+   "loop": false,
+   "length": 0.86,
+   "from": "https://bigsoundbank.com/counter-bell-s0479.html",
+   "peak_db": -2.8,
+   "mean_db": -25.9
+  },
+  {
+   "file": "door/door-3.mp3",
+   "loop": false,
+   "length": 1.168,
+   "from": "https://bigsoundbank.com/counter-bell-3-s2531.html",
+   "peak_db": -2.9,
+   "mean_db": -26.5
+  },
+  {
+   "file": "door/door-4.mp3",
+   "loop": false,
+   "length": 0.112,
+   "from": "https://bigsoundbank.com/counter-bell-3-s2531.html",
+   "peak_db": -2.1,
+   "mean_db": -10.6
+  }
+ ],
+ "chime": [
+  {
+   "file": "chime/chime-1.mp3",
+   "loop": false,
+   "length": 1.903,
+   "from": "https://bigsoundbank.com/chimes-dream-1-s2079.html",
+   "peak_db": -2.6,
+   "mean_db": -22.4
+  },
+  {
+   "file": "chime/chime-2.mp3",
+   "loop": false,
+   "length": 1.218,
+   "from": "https://bigsoundbank.com/chimes-dream-2-s2080.html",
+   "peak_db": -3.3,
+   "mean_db": -22.5
+  },
+  {
+   "file": "chime/chime-3.mp3",
+   "loop": false,
+   "length": 0.864,
+   "from": "https://bigsoundbank.com/chimes-dream-3-s2081.html",
+   "peak_db": -2.6,
+   "mean_db": -23.5
+  },
+  {
+   "file": "chime/chime-4.mp3",
+   "loop": false,
+   "length": 1.62,
+   "from": "https://bigsoundbank.com/chimes-dream-4-s2082.html",
+   "peak_db": -3.7,
+   "mean_db": -22.7
+  },
+  {
+   "file": "chime/chime-5.mp3",
+   "loop": false,
+   "length": 1.287,
+   "from": "https://bigsoundbank.com/chimes-dream-5-s2083.html",
+   "peak_db": -5.4,
+   "mean_db": -24.3
+  },
+  {
+   "file": "chime/chime-6.mp3",
+   "loop": false,
+   "length": 1.239,
+   "from": "https://bigsoundbank.com/chimes-dream-6-s2084.html",
+   "peak_db": -3.1,
+   "mean_db": -25.0
+  },
+  {
+   "file": "chime/chime-7.mp3",
+   "loop": false,
+   "length": 1.491,
+   "from": "https://bigsoundbank.com/chimes-dream-7-s2085.html",
+   "peak_db": -4.7,
+   "mean_db": -23.8
+  },
+  {
+   "file": "chime/chime-8.mp3",
+   "loop": false,
+   "length": 2.066,
+   "from": "https://bigsoundbank.com/chimes-dream-8-s2086.html",
+   "peak_db": -3.6,
+   "mean_db": -22.7
+  },
+  {
+   "file": "chime/chime-9.mp3",
+   "loop": false,
+   "length": 0.26,
+   "from": "https://bigsoundbank.com/chimes-butterfly-1-s2087.html",
+   "peak_db": -2.0,
+   "mean_db": -14.7
+  },
+  {
+   "file": "chime/chime-10.mp3",
+   "loop": false,
+   "length": 0.474,
+   "from": "https://bigsoundbank.com/chimes-butterfly-1-s2087.html",
+   "peak_db": -1.9,
+   "mean_db": -25.7
+  },
+  {
+   "file": "chime/chime-11.mp3",
+   "loop": false,
+   "length": 0.522,
+   "from": "https://bigsoundbank.com/chimes-butterfly-1-s2087.html",
+   "peak_db": -2.2,
+   "mean_db": -24.2
+  },
+  {
+   "file": "chime/chime-12.mp3",
+   "loop": false,
+   "length": 0.63,
+   "from": "https://bigsoundbank.com/chimes-butterfly-2-s2088.html",
+   "peak_db": -5.3,
+   "mean_db": -21.0
+  },
+  {
+   "file": "chime/chime-13.mp3",
+   "loop": false,
+   "length": 1.112,
+   "from": "https://bigsoundbank.com/chimes-butterfly-2-s2088.html",
+   "peak_db": -4.6,
+   "mean_db": -23.0
+  },
+  {
+   "file": "chime/chime-14.mp3",
+   "loop": false,
+   "length": 1.129,
+   "from": "https://bigsoundbank.com/chimes-butterfly-3-s2089.html",
+   "peak_db": -3.2,
+   "mean_db": -23.4
+  },
+  {
+   "file": "chime/chime-15.mp3",
+   "loop": false,
+   "length": 0.458,
+   "from": "https://bigsoundbank.com/chimes-butterfly-3-s2089.html",
+   "peak_db": -3.4,
+   "mean_db": -22.9
+  },
+  {
+   "file": "chime/chime-16.mp3",
+   "loop": false,
+   "length": 0.328,
+   "from": "https://bigsoundbank.com/chimes-butterfly-4-s2090.html",
+   "peak_db": -1.8,
+   "mean_db": -20.3
+  },
+  {
+   "file": "chime/chime-17.mp3",
+   "loop": false,
+   "length": 1.81,
+   "from": "https://bigsoundbank.com/chimes-butterfly-4-s2090.html",
+   "peak_db": -5.6,
+   "mean_db": -26.1
+  },
+  {
+   "file": "chime/chime-18.mp3",
+   "loop": false,
+   "length": 0.203,
+   "from": "https://bigsoundbank.com/chimes-butterfly-4-s2090.html",
+   "peak_db": -2.3,
+   "mean_db": -16.2
+  },
+  {
+   "file": "chime/chime-19.mp3",
+   "loop": false,
+   "length": 0.268,
+   "from": "https://bigsoundbank.com/chimes-butterfly-5-s2091.html",
+   "peak_db": -3.4,
+   "mean_db": -22.3
+  },
+  {
+   "file": "chime/chime-20.mp3",
+   "loop": false,
+   "length": 0.522,
+   "from": "https://bigsoundbank.com/chimes-butterfly-5-s2091.html",
+   "peak_db": -2.2,
+   "mean_db": -22.3
+  },
+  {
+   "file": "chime/chime-21.mp3",
+   "loop": false,
+   "length": 0.469,
+   "from": "https://bigsoundbank.com/chimes-butterfly-5-s2091.html",
+   "peak_db": -3.7,
+   "mean_db": -22.4
+  },
+  {
+   "file": "chime/chime-22.mp3",
+   "loop": false,
+   "length": 2.95,
+   "from": "https://bigsoundbank.com/cluster-chimes-1-s2687.html",
+   "peak_db": -0.1,
+   "mean_db": -20.6
+  },
+  {
+   "file": "chime/chime-23.mp3",
+   "loop": false,
+   "length": 2.874,
+   "from": "https://bigsoundbank.com/cluster-chimes-1-s2687.html",
+   "peak_db": -3.6,
+   "mean_db": -21.0
+  },
+  {
+   "file": "chime/chime-24.mp3",
+   "loop": false,
+   "length": 2.986,
+   "from": "https://bigsoundbank.com/cluster-chimes-1-s2687.html",
+   "peak_db": -0.7,
+   "mean_db": -24.4
+  },
+  {
+   "file": "chime/chime-25.mp3",
+   "loop": false,
+   "length": 0.433,
+   "from": "https://bigsoundbank.com/dreamcatcher-s0040.html",
+   "peak_db": -6.1,
+   "mean_db": -22.1
+  },
+  {
+   "file": "chime/chime-26.mp3",
+   "loop": false,
+   "length": 0.399,
+   "from": "https://bigsoundbank.com/dreamcatcher-s0040.html",
+   "peak_db": -1.4,
+   "mean_db": -14.4
+  },
+  {
+   "file": "chime/chime-27.mp3",
+   "loop": false,
+   "length": 0.16,
+   "from": "https://bigsoundbank.com/dreamcatcher-s0040.html",
+   "peak_db": -2.0,
+   "mean_db": -19.2
+  }
+ ],
+ "click": [
+  {
+   "file": "click/click-1.mp3",
+   "loop": false,
+   "length": 0.162,
+   "from": "https://bigsoundbank.com/pen-click-s0613.html",
+   "peak_db": -1.8,
+   "mean_db": -32.0
+  },
+  {
+   "file": "click/click-2.mp3",
+   "loop": false,
+   "length": 0.138,
+   "from": "https://bigsoundbank.com/pen-click-s0613.html",
+   "peak_db": -3.3,
+   "mean_db": -33.1
+  },
+  {
+   "file": "click/click-3.mp3",
+   "loop": false,
+   "length": 0.113,
+   "from": "https://bigsoundbank.com/pen-click-s0613.html",
+   "peak_db": -2.1,
+   "mean_db": -32.1
+  },
+  {
+   "file": "click/click-4.mp3",
+   "loop": false,
+   "length": 0.5,
+   "from": "https://bigsoundbank.com/macbook-pro-trackpad-single-click-s1738.html",
+   "peak_db": -2.0,
+   "mean_db": -30.4
+  },
+  {
+   "file": "click/click-5.mp3",
+   "loop": false,
+   "length": 0.234,
+   "from": "https://bigsoundbank.com/slow-macbook-keyboard-1-s1726.html",
+   "peak_db": -1.4,
+   "mean_db": -25.7
+  },
+  {
+   "file": "click/click-6.mp3",
+   "loop": false,
+   "length": 0.22,
+   "from": "https://bigsoundbank.com/slow-macbook-keyboard-1-s1726.html",
+   "peak_db": -2.2,
+   "mean_db": -26.8
+  },
+  {
+   "file": "click/click-7.mp3",
+   "loop": false,
+   "length": 0.218,
+   "from": "https://bigsoundbank.com/slow-macbook-keyboard-1-s1726.html",
+   "peak_db": -2.6,
+   "mean_db": -33.3
+  },
+  {
+   "file": "click/click-8.mp3",
+   "loop": false,
+   "length": 0.414,
+   "from": "https://bigsoundbank.com/iphone-camera-s0448.html",
+   "peak_db": -0.8,
+   "mean_db": -23.6
+  },
+  {
+   "file": "click/click-9.mp3",
+   "loop": false,
+   "length": 0.409,
+   "from": "https://bigsoundbank.com/iphone-camera-s0448.html",
+   "peak_db": -3.4,
+   "mean_db": -23.5
+  }
+ ]
+}
