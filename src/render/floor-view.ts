@@ -3,6 +3,7 @@ import { bits } from '../art/bits.ts'
 import { CURTAIN_SPOTS, decorPiece } from '../art/salon/decor-art.ts'
 import { fairyBulbs, paintBaseRug, paintDoorBell, paintFillerFrame, paintFloorLamp, paintLampGlow, paintMagazineTable, paintSoonScreen, paintSucculent, paintTeaCorner, paintWelcomeSign, paintAquarium, paintCandles, paintChandelier, paintCloudRug, paintDesk, paintFacialChair, paintFairyLights, paintNailDesk, paintNeonGlow, paintPedicureChair, paintPlant, paintSofa, paintStationGlow, paintWallArt, type Piece } from '../art/salon/furniture.ts'
 import { icons, treatmentIcon } from '../art/salon/icons.ts'
+import { paintGift } from '../art/salon/gift-art.ts'
 import { canvasTexture, DOOR_Y0, DOOR_Y1, OUTSIDE_W, paintFront, paintLight, paintOutside, paintRoom, paintVignette, WALL_T } from '../art/salon/room.ts'
 import { PLAYER_COLORS } from '../art/palette.ts'
 import { purr, softPop } from '../audio/salon-sfx.ts'
@@ -1119,7 +1120,11 @@ const GIFT_ART: Record<string, string | (() => Piece)> = {
   iris: () => paintSucculent(), finn: 'zen-garden:paper-lantern',
 }
 function giftPiece(id: string): Piece {
-  const art = GIFT_ART[GIFT_BY_ID[id]?.regular ?? '']
+  const regular = GIFT_BY_ID[id]?.regular ?? ''
+  // Each regular's gift has its own painted piece; older stand-ins remain for any without one.
+  const own = cached(`giftArt:${regular}`, () => paintGift(regular) ?? cached('succulent', paintSucculent))
+  if (own) return own
+  const art = GIFT_ART[regular]
   if (typeof art === 'function') return cached(`gift:${id}`, art)
   return (art && decorPiece(art)) || cached('succulent', paintSucculent)
 }

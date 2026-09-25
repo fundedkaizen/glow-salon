@@ -1,4 +1,7 @@
-import { Container, Graphics, Text, type Application } from 'pixi.js'
+import { Container, Graphics, Sprite, Text, type Application } from 'pixi.js'
+import { paintGift } from '../art/salon/gift-art.ts'
+import { canvasTexture } from '../art/salon/room.ts'
+import { REGULARS_DATA } from '../content/regulars.ts'
 import { randomLook, type Look } from '../core/customers.ts'
 import { makeRng } from '../core/rng.ts'
 import { PLAYER_COLORS } from '../art/palette.ts'
@@ -11,6 +14,7 @@ import { Person, type Pose } from './floor-person.ts'
  *   &zoom=N    how large (default 3)
  *   &pose=walk|stand|sit|work   one pose for everyone (default: a mix)
  *   &seed=N    other customers
+ *   &gifts     the regulars' gift pieces instead, each with its giver's name
  */
 export function peoplePreview(app: Application, params: URLSearchParams) {
   const zoom = Number(params.get('zoom') ?? 3)
@@ -20,6 +24,21 @@ export function peoplePreview(app: Application, params: URLSearchParams) {
   app.stage.addChild(root)
   const bg = new Graphics().rect(0, 0, 4000, 3000).fill(0xf6e3d6)
   root.addChild(bg)
+  if (params.has('gifts')) {
+    const cols = Math.max(4, Math.floor(app.screen.width / (80 * zoom * 0.7)))
+    REGULARS_DATA.regulars.forEach((reg, i) => {
+      const p = paintGift(reg.id)
+      if (!p) return
+      const s = new Sprite(canvasTexture(p.canvas))
+      s.anchor.set(p.ax / p.w, p.ay / p.h)
+      const x = (i % cols) * 80 * zoom * 0.7 + 40 * zoom * 0.7, y = Math.floor(i / cols) * 100 * zoom * 0.7 + 86 * zoom * 0.7
+      s.position.set(x, y); s.scale.set(zoom * 0.7)
+      const label = new Text({ text: reg.id, style: { fontFamily: 'Nunito, sans-serif', fontSize: 11, fontWeight: '700', fill: 0x8a6a80 } })
+      label.anchor.set(0.5, 0); label.position.set(x, y + 4)
+      root.addChild(s, label)
+    })
+    return
+  }
   const people: Person[] = []
   const archetypes = ['student', 'businessman', 'grandma', 'athlete', 'nurse', 'chef', 'rocker', 'bride', 'farmer', 'gamer', 'teacher', 'grandpa', 'influencer', 'pilot']
   const r = makeRng(seed)
