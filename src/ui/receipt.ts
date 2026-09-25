@@ -55,7 +55,7 @@ function starsHtml(v: number) {
   return `<span class="gs-stars">${out}</span>`
 }
 
-const AWARD_ICON: Record<string, string> = { 'Most pimples popped': ICON.heart, 'Tip magnet': ICON.coin, 'Busiest hands': ICON.trophy, 'Speedy hands': ICON.star, 'Nail artist': ICON.sparkle, 'Foam artist': ICON.cup, 'Blackhead hunter': ICON.tools }
+const AWARD_ICON: Record<string, string> = { 'Most pimples popped': ICON.heart, 'Tip magnet': ICON.coin, 'Busiest hands': ICON.trophy, 'Speedy hands': ICON.star, 'Nail artist': ICON.sparkle, 'Foam artist': ICON.cup, 'Blackhead hunter': ICON.tools, 'Polish pro': ICON.polish, 'Glow getter': ICON.sparkle, 'Happy feet': ICON.heart, 'Steady hands': ICON.star }
 
 export class Receipt {
   readonly el = h('div', 'gs gs-veil gs-veil-top')

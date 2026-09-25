@@ -543,16 +543,21 @@ function reseat(state: SalonState) {
   }
 }
 
-/** The day's awards, for the receipt. */
+/**
+ * The day's awards, for the receipt: each title to the player who did the most of it. Everyone who served a
+ * customer gets one first (their best title, or a title of their own), then the rest fill up to four, so a
+ * guest who ran their own station never leaves with nothing.
+ */
 export function awards(stats: DayStats): { title: string; name: string; value: string }[] {
   const players = Object.values(stats.byPlayer)
   if (!players.length) return []
-  const out: { title: string; name: string; value: string }[] = []
+  type Award = { title: string; name: string; value: string; who: PlayerStats }
+  const all: Award[] = []
   type Key = 'popped' | 'extracted' | 'tips' | 'served' | 'foam' | 'nails' | 'feet'
   const best = (key: Key) => players.reduce((a, b) => ((b[key] ?? 0) > (a[key] ?? 0) ? b : a))
   const add = (title: string, key: Key, unit: (n: number) => string) => {
     const p = best(key)
-    if ((p[key] ?? 0) > 0) out.push({ title, name: p.name, value: unit(p[key] ?? 0) })
+    if ((p[key] ?? 0) > 0) all.push({ title, name: p.name, value: unit(p[key] ?? 0), who: p })
   }
   add('Most pimples popped', 'popped', n => `${n} popped`)
   add('Blackhead hunter', 'extracted', n => `${n} extracted`)
@@ -562,8 +567,23 @@ export function awards(stats: DayStats): { title: string; name: string; value: s
   add('Nail artist', 'nails', n => `${n} manicures`)
   add('Foot whisperer', 'feet', n => `${n} ${n === 1 ? 'pedicure' : 'pedicures'}`)
   const fastest = players.filter(p => p.fastest !== null).sort((a, b) => a.fastest! - b.fastest!)[0]
-  if (fastest) out.push({ title: 'Speedy hands', name: fastest.name, value: `${Math.floor(fastest.fastest! / 60)}:${String(fastest.fastest! % 60).padStart(2, '0')}` })
-  return out.slice(0, 4)
+  if (fastest) all.push({ title: 'Speedy hands', name: fastest.name, value: `${Math.floor(fastest.fastest! / 60)}:${String(fastest.fastest! % 60).padStart(2, '0')}`, who: fastest })
+  const out: Award[] = []
+  for (const p of players.filter(pl => pl.served >= 1)) out.push(all.find(a => a.who === p && !out.includes(a)) ?? ownTitle(p, out))
+  for (const a of all) { if (out.length >= 4) break; if (!out.includes(a)) out.push(a) }
+  return out.map(({ title, name, value }) => ({ title, name, value }))
+}
+
+/** A title for a player who topped nothing today, from what they did do (never one already given). */
+function ownTitle(p: PlayerStats, given: { title: string }[]): { title: string; name: string; value: string; who: PlayerStats } {
+  const facials = p.served - p.nails - (p.feet ?? 0)
+  const options: [string, number, string][] = [
+    ['Polish pro', p.nails, `${p.nails} ${p.nails === 1 ? 'manicure' : 'manicures'}`],
+    ['Happy feet', p.feet ?? 0, `${p.feet} ${p.feet === 1 ? 'pedicure' : 'pedicures'}`],
+    ['Glow getter', facials, `${facials} ${facials === 1 ? 'facial' : 'facials'}`],
+  ]
+  const pick = options.filter(([t, n]) => n > 0 && !given.some(g => g.title === t)).sort((a, b) => b[1] - a[1])[0]
+  return pick ? { title: pick[0], name: p.name, value: pick[2], who: p } : { title: 'Steady hands', name: p.name, value: `${p.served} served`, who: p }
 }
 
 /** Everything the receipt shows. */
