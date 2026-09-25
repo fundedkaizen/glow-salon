@@ -293,7 +293,9 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
       ctx.beginPath(); ctx.arc(x, y, r.range(1.8, 4), 0, Math.PI * 2); ctx.fill()
     }
   }
+  paintPlanes(ctx, skin)
   paintForm(ctx, skin, feat)
+  paintPores(ctx, skin, seed)
   // A warm rim of light along the far edge of the face.
   blurred(ctx, 5, () => {
     ctx.strokeStyle = rgba(mixRGB(skin.light, [255, 214, 190], 0.5), 0.55)
@@ -506,6 +508,56 @@ function paintSkinVariation(ctx: Ctx, skin: SkinTone, seed: number) {
   ctx.globalCompositeOperation = 'multiply'
   blob(ctx, 512, 830, 230, 110, [236, 238, 246], 0.5)
   ctx.restore()
+}
+
+/**
+ * Painted planes: the flat facets a portrait painter blocks in before blending, kept just visible. Lit from
+ * the top left, the front of the forehead, the apples of the cheeks, the upper lip and the chin face the
+ * light; the temples, the sides of the cheeks and the jaw turn away (more on the far side). Each facet is a
+ * soft-edged polygon at low strength, so the face reads as carved form rather than a smooth balloon.
+ */
+function paintPlanes(ctx: Ctx, skin: SkinTone) {
+  const lit = (pts: number[], a: number) => ({ pts, a, lit: true })
+  const dim = (pts: number[], a: number) => ({ pts, a, lit: false })
+  const mirror = (pts: number[]) => pts.map((v, i) => (i % 2 ? v : 1024 - v))
+  const cheekFront = [440, 562, 350, 556, 334, 618, 402, 688, 472, 656]
+  const cheekSide = [318, 560, 262, 584, 246, 700, 286, 770, 332, 704]
+  const temple = [296, 384, 356, 352, 364, 426, 312, 474]
+  const jaw = [292, 748, 350, 786, 424, 856, 380, 870, 312, 812]
+  const planes = [
+    lit([392, 336, 632, 336, 660, 418, 364, 418], 0.12),
+    lit([370, 424, 470, 418, 468, 446, 380, 452], 0.1),
+    lit(cheekFront, 0.14), lit(mirror(cheekFront), 0.07),
+    lit([470, 690, 554, 690, 570, 730, 454, 730], 0.07),
+    lit([460, 822, 564, 822, 580, 868, 512, 890, 444, 868], 0.12),
+    dim(temple, 0.06), dim(mirror(temple), 0.12),
+    dim(cheekSide, 0.06), dim(mirror(cheekSide), 0.13),
+    dim(jaw, 0.06), dim(mirror(jaw), 0.12),
+  ]
+  const ao = aoColor(skin)
+  softBatch(ctx, 7, c => { for (const pl of planes) if (pl.lit) { c.fillStyle = rgba(mixRGB(skin.light, [255, 244, 234], 0.2), pl.a); c.beginPath(); smoothPath(c, pl.pts); c.fill() } })
+  softBatch(ctx, 9, c => { for (const pl of planes) if (!pl.lit) { c.fillStyle = rgba(ao, pl.a); c.beginPath(); smoothPath(c, pl.pts); c.fill() } }, 'multiply')
+}
+
+/**
+ * Pores that read softly at normal zoom: on the nose and the inner cheeks only, each a faint darker dot with
+ * a lighter rim on its lit side, thinning out toward the edges of those zones (never an even noise).
+ */
+function paintPores(ctx: Ctx, skin: SkinTone, seed: number) {
+  const r = makeRng(seed + 919)
+  const zones = [{ x: 512, y: 610, rx: 58, ry: 70, n: 520 }, { x: 402, y: 640, rx: 92, ry: 58, n: 700 }, { x: 622, y: 640, rx: 92, ry: 58, n: 700 }, { x: 512, y: 860, rx: 60, ry: 26, n: 160 }]
+  const pores: { x: number; y: number; r: number; a: number }[] = []
+  for (const z of zones) for (let i = 0; i < z.n; i++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r())
+    // Denser toward the middle of the zone.
+    if (r() < d * 0.7) continue
+    pores.push({ x: z.x + Math.cos(a) * z.rx * d, y: z.y + Math.sin(a) * z.ry * d, r: r.range(1.3, 2), a: r.range(0.11, 0.18) * (1 - d * 0.6) })
+  }
+  const pore = mixRGB(skin.shadow, skin.deep, 0.4)
+  softBatch(ctx, 0.7, c => {
+    dots(c, pore, pores.length, i => pores[i], 3)
+    dots(c, mixRGB(skin.light, [255, 248, 240], 0.3), pores.length, i => ({ x: pores[i].x - 1.2, y: pores[i].y - 1.3, r: pores[i].r * 0.55, a: pores[i].a * 0.7 }), 2)
+  })
 }
 
 /**
