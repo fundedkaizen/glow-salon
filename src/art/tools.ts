@@ -1,4 +1,5 @@
-import { Texture } from 'pixi.js'
+import type { Texture } from 'pixi.js'
+import { canvasTexture, trimmed } from './tex.ts'
 import { makeRng } from '../core/rng.ts'
 import { blob, blurred, canvas, rgba, shade, terry, type Ctx, type RGB } from './paint.ts'
 
@@ -240,9 +241,10 @@ export function toolArt(id: string): ToolArt {
   const painter = PAINTERS[id] ?? PAINTERS.fingers
   const [c, ctx] = canvas(TOOL)
   dropShadow(ctx, () => painter.draw(ctx))
-  const [ic, ictx] = canvas(112)
-  ictx.drawImage(c, 0, 0, 112, 112)
-  art = { texture: Texture.from(c), icon: ic.toDataURL(), tip: painter.tip, size: TOOL }
+  // The tray icon: the same art, trimmed so the tool fills its button.
+  const [clean, cctx] = canvas(TOOL)
+  painter.draw(cctx)
+  art = { texture: canvasTexture(c), icon: trimmed(clean, 112, 4).toDataURL(), tip: painter.tip, size: TOOL }
   cache.set(id, art)
   return art
 }

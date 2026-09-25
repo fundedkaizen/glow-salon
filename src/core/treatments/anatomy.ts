@@ -32,7 +32,7 @@ function faceOutline(): number[] {
     const top = c > 0
     const ry = top ? 372 : 388
     // The lower half narrows into a soft jaw and chin; the temples narrow a little too.
-    const jaw = top ? 1 - 0.07 * c ** 4 : 1 - 0.3 * (-c) ** 2.1
+    const jaw = top ? 1 - 0.07 * c ** 4 : 1 - 0.27 * (-c) ** 3
     const cheek = 1 + 0.03 * Math.exp(-(((t % Math.PI) - Math.PI / 2) ** 2) * 6)
     pts.push(cx + 282 * s * jaw * cheek, cy - ry * c)
   }

@@ -42,12 +42,14 @@ export class TreatmentHud {
           <div class="thud-title"></div>
           <div class="thud-hint"></div>
         </div>
-        <div class="thud-chip"></div>
+        <div class="thud-side">
+          <div class="thud-chip"></div>
+          <button class="pill thud-skip">Skip step</button>
+        </div>
       </div>
       <div class="thud-choice" hidden></div>
       <div class="thud-bottom">
         <div class="thud-actions">
-          <button class="pill thud-skip">Skip step</button>
           <button class="pill pill-main thud-finish" hidden>Finish</button>
         </div>
         <div class="thud-tray"></div>
@@ -68,7 +70,7 @@ export class TreatmentHud {
     this.el.querySelector('.thud-leave')!.addEventListener('click', () => opts.actions.leave())
     this.skipBtn.addEventListener('click', () => opts.actions.skip())
     this.finishBtn.addEventListener('click', () => opts.actions.finish())
-    this.tray.innerHTML = def.steps.map((s, i) => `<div class="tool" data-i="${i}" title="${esc(s.label)}"><svg class="tool-ring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" /></svg><img alt="" src="${toolArt(s.tool).icon}"><span class="tool-check">&#10003;</span>${s.optional ? '<span class="tool-opt">extra</span>' : ''}</div>`).join('')
+    this.tray.innerHTML = def.steps.map((s, i) => `<div class="tool" data-i="${i}" title="${esc(s.label)}"><svg class="tool-ring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" /></svg><img alt="" src="${toolArt(s.tool).icon}"><span class="tool-check">&#10003;</span><span class="tool-name">${esc(s.label)}</span>${s.optional ? '<span class="tool-opt">extra</span>' : ''}</div>`).join('')
     this.choice.innerHTML = `<span>Pick a colour</span>` + POLISH_COLORS.map((c, i) => `<button class="swatch${opts.wish === i ? ' wish' : ''}" data-i="${i}" style="--c:#${c.hex.toString(16).padStart(6, '0')}" aria-label="${c.name}"></button>`).join('')
     this.choice.querySelectorAll<HTMLButtonElement>('.swatch').forEach(b => b.addEventListener('click', () => opts.actions.choose(Number(b.dataset.i))))
   }
@@ -77,7 +79,9 @@ export class TreatmentHud {
     const s = this.def.steps[step]
     if (!s) return
     this.title.textContent = `${s.label}`
-    this.title.dataset.count = `${step + 1} / ${this.def.steps.length}`
+    const visible = [...this.tray.querySelectorAll<HTMLElement>('.tool:not(.gone)')]
+    const pos = visible.findIndex(el => el.dataset.i === String(step))
+    this.title.dataset.count = `${Math.max(1, pos + 1)} / ${visible.length || this.def.steps.length}`
     this.hint.textContent = this.opts.role === 'helper' && s.lamp ? 'Hold the magnifier lamp over the spot your partner is working on, or help with the tool' : s.hint
     this.finishBtn.hidden = !s.optional || this.opts.role === 'helper'
     this.skipBtn.hidden = this.opts.role === 'helper' || !!s.optional
@@ -118,6 +122,11 @@ export class TreatmentHud {
   }
 
   hideControls() { this.el.classList.add('revealing') }
+
+  /** A step this customer does not need: it leaves the tray. */
+  hideStep(i: number) {
+    this.tray.querySelector<HTMLElement>(`.tool[data-i="${i}"]`)?.classList.add('gone')
+  }
 
   showReveal(o: { name: string; stars: number; lead: boolean }) {
     this.card.hidden = false

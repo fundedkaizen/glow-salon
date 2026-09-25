@@ -1,4 +1,5 @@
-import { Texture } from 'pixi.js'
+import type { Texture } from 'pixi.js'
+import { canvasTexture } from './tex.ts'
 import { blob, blurred, canvas, rgba, type Ctx } from './paint.ts'
 
 /**
@@ -12,7 +13,7 @@ function make(key: string, w: number, h: number, draw: (ctx: Ctx) => void): Text
   if (!t) {
     const [c, ctx] = canvas(w, h)
     draw(ctx)
-    t = Texture.from(c)
+    t = canvasTexture(c)
     cache.set(key, t)
   }
   return t

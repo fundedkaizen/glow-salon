@@ -38,23 +38,25 @@ void main() {
   if (alb.a < 0.003) discard;
   vec3 base = alb.rgb / alb.a;
   vec3 n = normalize(texture(uNormal, vUV).xyz * 2.0 - 1.0);
+  vec3 nSoft = normalize(texture(uNormal, vUV, 3.5).xyz * 2.0 - 1.0);
   vec3 L = normalize(uLight);
-  float ndl = dot(n, L);
+  float ndl = dot(nSoft, L);
   float wrap = clamp((ndl + 0.5) / 1.5, 0.0, 1.0);
   // Light that has travelled under the skin comes out warm, strongest where the light turns away.
   float scatter = smoothstep(0.05, 0.55, wrap) * (1.0 - smoothstep(0.45, 1.0, wrap));
-  vec3 col = base * (0.66 + 0.44 * wrap) + uSss * scatter * 0.26;
+  vec3 col = base * (0.8 + 0.3 * wrap) + uSss * scatter * 0.2;
   vec2 muv = vec2(vUV.x, mix(vUV.y, 1.0 - vUV.y, uFlipMask));
   float wet = clamp(texture(uWet, muv).a * 1.25 + uSkin.y, 0.0, 1.0);
   vec3 V = vec3(0.0, 0.0, 1.0);
   vec3 H = normalize(L + V);
   float ndh = max(dot(n, H), 0.0);
-  float drySheen = pow(ndh, 14.0) * 0.05;
+  float ndhSoft = max(dot(nSoft, H), 0.0);
+  float drySheen = pow(ndhSoft, 14.0) * 0.05;
   float wetSpec = pow(ndh, 70.0 + 220.0 * wet) * 1.1 * wet;
   // Tiny glints where pores catch the light through a film of water.
   float sparkleSeed = hash(floor(vUV * 700.0));
   float glint = step(0.985, sparkleSeed) * pow(ndh, 60.0) * wet * (0.6 + 0.4 * sin(uSkin.z * 3.0 + sparkleSeed * 40.0));
-  float dewy = pow(ndh, 30.0) * uSkin.w * 0.32;
+  float dewy = pow(ndhSoft, 30.0) * uSkin.w * 0.32;
   col *= mix(vec3(1.0), vec3(1.07, 0.95, 0.94), uSkin.x);
   // Wet skin reads a touch deeper and richer under the shine.
   col = mix(col, col * col * 1.18, wet * 0.18);
