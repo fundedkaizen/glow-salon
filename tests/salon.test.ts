@@ -108,13 +108,15 @@ export function run() {
   const save = toSave(state)
   check('save keeps money', save.money === state.money)
   state.money = 1000
+  check('the second chair arrives in the shop on day 4', !reduce(state, 0, { a: 'buy', item: 'facial-chair-2' }) && state.owned.length === 0)
+  state.day = 5
   check('buy decor', reduce(state, 0, { a: 'buy', item: 'plant' }) && state.owned.includes('plant') && state.money === 955)
   check('cannot buy twice', !reduce(state, 0, { a: 'buy', item: 'plant' }))
   check('solo big buy needs no vote', reduce(state, 0, { a: 'buy', item: 'facial-chair-2' }) && state.stations.length === 2)
   check('a new station waits to be placed', state.stations[1].slot === -1)
   check('placing it in a taken slot is refused', !reduce(state, 0, { a: 'place', station: 's1', slot: state.stations[0].slot }))
   check('the player places it in a free slot', reduce(state, 0, { a: 'place', station: 's1', slot: 6 }) && state.stations[1].slot === 6 && state.events.some(e => e.kind === 'placed'))
-  check('next day', reduce(state, 0, { a: 'next' }) && state.day === 2 && state.phase === 'prep')
+  check('next day', reduce(state, 0, { a: 'next' }) && state.day === 6 && state.phase === 'prep')
   check('stations kept', state.stations.length === 2 && state.players.length === 1 && state.stations[1].slot === 6)
   check('swap slots in prep', reduce(state, 0, { a: 'swap', station: 's1', slot: 5 }) && state.stations[1].slot === 5)
   check('the nail bar comes with its desk for about $200', (() => { state.money = 205; return reduce(state, 0, { a: 'buy', item: 'treat-nails' }) && state.owned.includes('nail-desk') && state.stations.some(st => st.kind === 'nails') && state.money === 5 })())

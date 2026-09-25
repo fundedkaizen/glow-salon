@@ -44,18 +44,18 @@ export const BASE_CUSTOMERS = 4
 export const ITEMS: Item[] = [
   // Tools: faster, prettier.
   { id: 'facial-kit-2', tab: 'tools', name: 'Pro facial kit', blurb: 'Bigger brushes and a stronger loop. Facials go 50% faster and look prettier.', price: 140, unlockDay: 3, effect: { kind: 'toolTier', treatment: 'facial', tier: 2 } },
-  { id: 'facial-kit-3', tab: 'tools', name: 'Luxe facial kit', blurb: 'Rose-gold tools. Facials go twice as fast, with sparkle trails.', price: 480, needs: ['facial-kit-2'], unlockDay: 12, effect: { kind: 'toolTier', treatment: 'facial', tier: 3 } },
-  { id: 'facial-kit-4', tab: 'tools', name: 'Diamond facial kit', blurb: 'The best tools money can buy. The quickest, sparkliest facials in town.', price: 1100, needs: ['facial-kit-3'], unlockDay: 27, effect: { kind: 'toolTier', treatment: 'facial', tier: 4 } },
+  { id: 'facial-kit-3', tab: 'tools', name: 'Luxe facial kit', blurb: 'Rose-gold tools. Facials go twice as fast, with sparkle trails.', price: 520, needs: ['facial-kit-2'], unlockDay: 12, effect: { kind: 'toolTier', treatment: 'facial', tier: 3 } },
+  { id: 'facial-kit-4', tab: 'tools', name: 'Diamond facial kit', blurb: 'The best tools money can buy. The quickest, sparkliest facials in town.', price: 1500, needs: ['facial-kit-3'], unlockDay: 27, effect: { kind: 'toolTier', treatment: 'facial', tier: 4 } },
   { id: 'nail-kit-2', tab: 'tools', name: 'Pro nail kit', blurb: 'Precision files and brushes. Manicures go 50% faster.', price: 120, needs: ['treat-nails'], unlockDay: 6, effect: { kind: 'toolTier', treatment: 'nails', tier: 2 } },
-  { id: 'nail-kit-3', tab: 'tools', name: 'Luxe nail kit', blurb: 'Salon-grade everything. Manicures go twice as fast.', price: 440, needs: ['nail-kit-2'], unlockDay: 18, effect: { kind: 'toolTier', treatment: 'nails', tier: 3 } },
-  { id: 'nail-kit-4', tab: 'tools', name: 'Diamond nail kit', blurb: 'Crystal files and a studio lamp. Manicures fly.', price: 980, needs: ['nail-kit-3'], unlockDay: 30, effect: { kind: 'toolTier', treatment: 'nails', tier: 4 } },
+  { id: 'nail-kit-3', tab: 'tools', name: 'Luxe nail kit', blurb: 'Salon-grade everything. Manicures go twice as fast.', price: 480, needs: ['nail-kit-2'], unlockDay: 18, effect: { kind: 'toolTier', treatment: 'nails', tier: 3 } },
+  { id: 'nail-kit-4', tab: 'tools', name: 'Diamond nail kit', blurb: 'Crystal files and a studio lamp. Manicures fly.', price: 1300, needs: ['nail-kit-3'], unlockDay: 30, effect: { kind: 'toolTier', treatment: 'nails', tier: 4 } },
   // Stations.
   { id: 'facial-chair-2', tab: 'stations', name: 'Second facial chair', blurb: 'Two facials at once, or one each in co-op.', price: 300, unlockDay: 4, effect: { kind: 'station', station: 'facial' } },
   { id: 'nail-desk', tab: 'stations', name: 'Nail desk', blurb: 'A pastel desk for manicures.', price: 180, needs: ['treat-nails'], effect: { kind: 'station', station: 'nails' } },
   { id: 'nail-desk-2', tab: 'stations', name: 'Second nail desk', blurb: 'More manicures, shorter waits.', price: 380, needs: ['nail-desk'], unlockDay: 9, effect: { kind: 'station', station: 'nails' } },
   { id: 'facial-chair-3', tab: 'stations', name: 'Third facial chair', blurb: 'For a busy salon.', price: 520, needs: ['facial-chair-2'], unlockDay: 15, effect: { kind: 'station', station: 'facial' } },
-  { id: 'nail-desk-3', tab: 'stations', name: 'Third nail desk', blurb: 'A whole nail bar. More regulars, more gems.', price: 640, needs: ['nail-desk-2'], unlockDay: 21, effect: { kind: 'station', station: 'nails' } },
-  { id: 'facial-chair-4', tab: 'stations', name: 'Fourth facial chair', blurb: 'The full spa row, in the front of the salon.', price: 760, needs: ['facial-chair-3'], unlockDay: 24, effect: { kind: 'station', station: 'facial' } },
+  { id: 'nail-desk-3', tab: 'stations', name: 'Third nail desk', blurb: 'A whole nail bar. More regulars, more gems.', price: 820, needs: ['nail-desk-2'], unlockDay: 21, effect: { kind: 'station', station: 'nails' } },
+  { id: 'facial-chair-4', tab: 'stations', name: 'Fourth facial chair', blurb: 'The full spa row, in the front of the salon.', price: 1000, needs: ['facial-chair-3'], unlockDay: 24, effect: { kind: 'station', station: 'facial' } },
   // Treatments.
   { id: 'treat-nails', tab: 'treatments', name: 'Nail bar', blurb: 'Manicures, with a pastel nail desk to do them at: soak, clip, file, polish and gems.', price: 200, includes: ['nail-desk'], effect: { kind: 'treatment', treatment: 'nails' } },
   // Decor: ambience stars raise tips.

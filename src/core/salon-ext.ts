@@ -388,7 +388,7 @@ export function extReview(state: SalonState, c: Customer, by: number, stars: num
   const review = writeGoogleReview({
     id: `d${state.day}c${c.id}`, day: state.day, name: c.plan.name, stars, result, mood: c.mood, regular: met, disaster: c.plan.disaster, ambience,
     seed: c.plan.seed, voice: persona.voice, archetype: persona.archetype, budget: persona.budget, price, look: c.plan.look,
-    salon: e.salonName, staff: who, cat: e.today.pets > 0, recent: e.recent,
+    salon: e.salonName, staff: who, cat: e.today.pets > 0, recent: e.recent, owned: state.owned, byStaff: by >= STAFF_ID_BASE,
   })
   e.stars[Math.max(1, Math.min(5, review.stars)) - 1]++
   if (c.plan.regular && stars >= 4) {

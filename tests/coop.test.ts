@@ -3,7 +3,8 @@ import { newSave, startDay, reduce, tick } from '../src/core/salon.ts'
 import { handleGuestMessage, parseGuestMessage, publicState, routeOps, stationCrew } from '../src/core/coop/protocol.ts'
 
 export function run() {
-  const state = startDay(newSave(7))
+  // Day 5: the second chair is in the shop by then.
+  const state = startDay({ ...newSave(7), day: 5 })
   reduce(state, 0, { a: 'join', name: 'Kaizen' })
   // A guest says hello and becomes a player.
   handleGuestMessage(state, 1, { t: 'hello', name: 'Anna<script>' })
