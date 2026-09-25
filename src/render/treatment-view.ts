@@ -742,7 +742,8 @@ export class TreatmentView {
     const step = this.step
     if (!step) return
     this.hud.ready()
-    sfx.ding(this.pan(step.camera.x))
+    const done = this.session.status.filter(st => st === 'done').length
+    sfx.ding(this.pan(step.camera.x), done)
     const c = step.camera
     this.burstSparkles(c.x, c.y, 14, 420)
     this.fx.spawn({ texture: bits.glow(), x: c.x, y: c.y, life: 0.6, scale: 1, scaleEnd: 7, alpha: 0.35, alphaEnd: 0, blend: 'add', tint: 0xfff0f6 })

@@ -243,11 +243,14 @@ export class Sfx {
 
   // ------------------------------------------------------------------ the sounds
 
-  /** The step-complete ding: a dyad from a pentatonic set, soft enough for the hundredth time. */
-  ding(pan = 0) {
+  /**
+   * The step-complete ding: a soft glass bell with its fifth. Each step climbs one note of a pentatonic
+   * scale, so a whole treatment plays a gentle rising melody and the reveal resolves it.
+   */
+  ding(pan = 0, step = -1) {
     if (!this.ctx) return
-    const notes = [1046.5, 1174.7, 1318.5, 1568.0]
-    const a = pick(notes)
+    const scale = [880, 987.8, 1108.7, 1318.5, 1480.0, 1760, 1975.5]
+    const a = step >= 0 ? scale[step % scale.length] : pick(scale)
     this.bell(a, 0.16, pan * 0.4)
     this.bell(a * 1.4983, 0.07, pan * 0.4, 0.07)
     this.clip(KIT.bell, { gain: 0.22, pan: pan * 0.4, bus: 'ding', lowpass: 9000, delay: 0.02 })
