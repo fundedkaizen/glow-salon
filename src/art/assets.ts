@@ -109,3 +109,14 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
     skinRGB: art.skin.base,
   }
 }
+
+/** Free every texture made for one customer (called when the close-up closes; shared bits and tools stay). */
+export function destroyAssets(a: PartAssets) {
+  const all: Texture[] = [a.surface.base, a.surface.height, a.backdrop]
+  for (const l of Object.values(a.surface.layers)) { all.push(l.art); if (l.art2) all.push(l.art2) }
+  if (a.features) for (const part of Object.values(a.features)) for (const c of Object.values(part)) all.push(c.texture)
+  for (const c of a.tips ?? []) all.push(c.texture)
+  if (a.towel) all.push(a.towel)
+  if (a.pimples) all.push(...Object.values(a.pimples))
+  for (const t of new Set(all)) t.destroy(true)
+}

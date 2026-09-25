@@ -5,7 +5,7 @@ import { GRID, CELL } from '../core/treatments/grid.ts'
 import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, peelCurve, regionMask, type Op, type SessionEvent, type SessionSnapshot, type Target, type TreatmentResult } from '../core/treatments/session.ts'
 import { POLISH_COLORS, type StepDef, type TreatmentId } from '../core/treatments/types.ts'
 import { starsFor } from '../core/reviews.ts'
-import { assetsFor, type PartAssets } from '../art/assets.ts'
+import { assetsFor, destroyAssets, type PartAssets } from '../art/assets.ts'
 import { BACKDROP, BACKDROP_OFFSET } from '../art/backdrop.ts'
 import { bits } from '../art/bits.ts'
 import { toolArt } from '../art/tools.ts'
@@ -1222,6 +1222,7 @@ export class TreatmentView {
     this.beforeRT?.destroy(true)
     this.afterRT?.destroy(true)
     this.root.destroy({ children: true })
+    destroyAssets(this.assets)
     const w = window as unknown as { __treatment?: TreatmentView }
     if (w.__treatment === this) delete w.__treatment
   }
