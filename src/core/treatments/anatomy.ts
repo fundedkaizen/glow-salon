@@ -10,6 +10,13 @@ export type BodyPartId = 'face' | 'hand'
 export type Point = { x: number; y: number }
 
 // ---------------------------------------------------------------- face
+/** Face shape parameters, see faceOutline. */
+const FACE_SHAPES = [
+  { jaw: 0.3, pow: 2, cheek: 0.03, ry: 368 },
+  { jaw: 0.2, pow: 2, cheek: 0.05, ry: 368 },
+  { jaw: 0.3, pow: 2, cheek: 0.075, ry: 372 },
+  { jaw: 0.3, pow: 3.4, cheek: 0.035, ry: 374 },
+]
 export const FACE = {
   cx: 512,
   cy: 520,
@@ -37,17 +44,23 @@ function hairCapPoly(): number[] {
   return pts
 }
 
-function faceOutline(): number[] {
+/**
+ * Face outlines for the art: 0 oval (the shared outline the treatment logic measures), 1 round, 2 heart
+ * (wide cheekbones), 3 square jaw. Every other shape contains shape 0, so layers, which the logic keeps
+ * inside shape 0, never reach past a painted face.
+ */
+export function faceOutline(shape = 0): number[] {
+  const f = FACE_SHAPES[((shape % FACE_SHAPES.length) + FACE_SHAPES.length) % FACE_SHAPES.length]
   const pts: number[] = []
   const cx = 512, cy = 520
   for (let i = 0; i < 72; i++) {
     const t = (i / 72) * Math.PI * 2
     const s = Math.sin(t), c = Math.cos(t)
     const top = c > 0
-    const ry = top ? 360 : 368
+    const ry = top ? 360 : f.ry
     // The lower half narrows into a soft jaw and chin; the temples narrow a little too.
-    const jaw = top ? 1 - 0.07 * c ** 4 : 1 - 0.3 * (-c) ** 2.0
-    const cheek = 1 + 0.03 * Math.exp(-(((t % Math.PI) - Math.PI / 2) ** 2) * 6)
+    const jaw = top ? 1 - 0.07 * c ** 4 : 1 - f.jaw * (-c) ** f.pow
+    const cheek = 1 + f.cheek * Math.exp(-(((t % Math.PI) - Math.PI / 2) ** 2) * 6)
     pts.push(cx + 280 * s * jaw * cheek, cy - ry * c)
   }
   return pts

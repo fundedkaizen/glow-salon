@@ -27,10 +27,11 @@ async function boot() {
   document.getElementById('boot')?.classList.add('done')
 }
 
-/** `&skin=N&hair=N&style=N` pin parts of the look (for side-by-side checks of every tone). */
+/** `&skin=N&hair=N&style=N` pin parts of the look (for side-by-side checks of every tone); `&masc`, `&age=0.9` the figure. */
 function debugLook(look: Look, params: URLSearchParams): Look {
   const pin = (k: string) => (params.has(k) ? Number(params.get(k)) : undefined)
-  return { ...look, skin: pin('skin') ?? look.skin, hair: pin('hair') ?? look.hair, hairStyle: pin('style') ?? look.hairStyle }
+  const figure = params.has('masc') || params.has('age') ? { masc: params.has('masc'), age: pin('age') ?? 0.35 } : undefined
+  return { ...look, skin: pin('skin') ?? look.skin, hair: pin('hair') ?? look.hair, hairStyle: pin('style') ?? look.hairStyle, figure }
 }
 
 type DebugMsg = { t: 'ops'; ops: Op[]; from?: number } | { t: 'syncReq'; from?: number } | { t: 'sync'; snap: SessionSnapshot; from?: number }

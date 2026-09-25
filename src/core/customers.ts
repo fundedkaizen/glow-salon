@@ -11,6 +11,8 @@ export type Look = {
   /** A headband, a clip, glasses...: 0 is none. */
   accessory: number
   freckles: boolean
+  /** Masculine or not, and age (see core/figure.ts); set where the name and archetype are known. */
+  figure?: import('./figure.ts').Figure
 }
 
 export const LOOK_SIZES = { skin: 6, hair: 8, hairStyle: 6, outfit: 8, accessory: 4 }

@@ -5,7 +5,7 @@ import { HAND, SHAPES, fingerDir, nailOf, type Finger } from '../core/treatments
 import { POLISH_COLORS } from '../core/treatments/types.ts'
 import type { HandProfile } from '../core/treatments/profile.ts'
 import { SKIN, type SkinTone } from './palette.ts'
-import { blob, blurred, canvas, fbm, hex, mixRGB, rgba, shade, smoothPath, tintedByNoise, type Ctx } from './paint.ts'
+import { blob, blurred, canvas, dots, fbm, hex, mixRGB, packHeight, rgba, shade, smoothPath, tintedByNoise, type Ctx } from './paint.ts'
 import type { Crop } from './face.ts'
 
 /**
@@ -248,10 +248,22 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
   }
   blurred(hctx, 1.5, () => { hctx.globalAlpha = 0.5; hctx.drawImage(nails, 0, 0) })
   hctx.globalAlpha = 1
-  for (let i = 0; i < 9000; i++) {
-    hctx.fillStyle = `rgba(0,0,0,${r.range(0.1, 0.3)})`
-    hctx.beginPath(); hctx.arc(r.range(180, 780), r.range(220, 1024), r.range(0.7, 1.5), 0, Math.PI * 2); hctx.fill()
+  dots(hctx, [0, 0, 0], 9000, () => ({ a: r.range(0.1, 0.3), x: r.range(180, 780), y: r.range(220, 1024), r: r.range(0.7, 1.5) }))
+  // Gloss (green channel): a soft sheen over the back of the hand, stronger on the knuckles and finger tops,
+  // and the natural nails shine most.
+  const [gl, glctx] = canvas(S)
+  glctx.fillStyle = '#000'
+  glctx.fillRect(0, 0, S, S)
+  glctx.globalAlpha = 0.22
+  glctx.drawImage(sil, 0, 0)
+  glctx.globalAlpha = 1
+  for (const f of HAND.fingers) {
+    blob(glctx, f.base.x, f.base.y + 18, 30, 22, [255, 255, 255], 0.55)
+    const d = fingerDir(f)
+    for (const t of [0.42, 0.72]) blob(glctx, f.base.x + (f.tip.x - f.base.x) * t - d.y * 8, f.base.y + (f.tip.y - f.base.y) * t + d.x * 8, f.r0 * 0.6, f.r0 * 0.6, [255, 255, 255], 0.4)
   }
+  glctx.drawImage(nails, 0, 0)
+  const packed = packHeight(height, gl)
 
   // ---------------------------------------------------------------- layers
   // Layers on the hand stop at the sleeve cuff.
@@ -369,6 +381,6 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
     tctx.fillStyle = 'rgba(255,255,255,0.8)'; tctx.fillRect(-nl.halfWidth * 0.5, -len * 0.8, 4, len * 0.6)
     return { canvas: c, x: 0, y: 0 }
   })
-  return { base, height, layers, tips, skin }
+  return { base, height: packed, layers, tips, skin }
 }
 

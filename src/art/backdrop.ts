@@ -125,17 +125,6 @@ export function paintBackdrop(kind: 'facial' | 'nails', look: Look): HTMLCanvasE
       ctx.strokeStyle = 'rgba(190,150,166,0.55)'; ctx.lineWidth = 3; cushion(26); ctx.stroke()
       ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2; ctx.translate(-1.5, -2); cushion(26); ctx.stroke()
     })
-    // A folded towel under the neck, in the customer's colour.
-    const towel = shade(hex(OUTFIT[(look.outfit + 3) % OUTFIT.length]), 0.3)
-    ctx.save()
-    ctx.beginPath(); ctx.roundRect(o + 60, o + 860, 904, 240, 70)
-    const tg = ctx.createLinearGradient(0, o + 860, 0, o + 1100)
-    tg.addColorStop(0, rgba(shade(towel, 0.3))); tg.addColorStop(1, rgba(shade(towel, -0.05)))
-    ctx.fillStyle = tg
-    ctx.fill()
-    ctx.clip()
-    terry(ctx, o + 60, o + 860, 904, 240, towel, 91, 0.014)
-    ctx.restore()
   } else {
     // The far end of the room, out of focus: a pastel wall with a shelf of polish bottles and warm light.
     const [room, rctx] = canvas(BACKDROP)

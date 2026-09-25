@@ -364,7 +364,7 @@ export class SalonGame {
     // A guest's copy of the salon has not heard back yet: take the lead we just asked for.
     const stations = s.stations.map(st => (st.id === h.stationId && st.lead === null ? { ...st, lead: this.me } : st))
     return openTreatment({
-      app: this.app, overlay: this.ui, state: { stations, customers: s.customers as SalonState['customers'], players: s.players, owned: s.owned },
+      app: this.app, overlay: this.ui, state: { stations, customers: s.customers as SalonState['customers'], players: s.players, owned: s.owned, stats: s.stats, ext: s.ext },
       stationId: h.stationId, me: this.me,
       net: { sendOps: (_st, ops) => h.sendOps(ops), requestSync: () => h.requestSync() },
       onProgress: h.progress, onFinish: h.finish, onLeave: h.leave,

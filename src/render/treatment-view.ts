@@ -46,7 +46,7 @@ export type TreatmentViewOptions = {
 type TargetView = { t: Target; root: Container; parts: Sprite[]; flash: number; gone: boolean }
 
 const LOOP_FOR: Record<string, LoopName> = { foam: 'foam', water: 'water', steam: 'steam', fan: 'fan', uv: 'hum', rasp: 'rasp', push: 'scrape', loop: 'scrape', brush: 'brushWet' }
-const EXPRESSIONS = { neutral: ['open', 'relaxed', 'neutral'], content: ['closed', 'relaxed', 'smile'], flinch: ['squeeze', 'worried', 'wince'], tickle: ['happy', 'happy', 'o'], beam: ['open', 'happy', 'beam'], worry: ['wide', 'worried', 'neutral'], giggle: ['happy', 'happy', 'smile'] } as const
+const EXPRESSIONS = { neutral: ['open', 'relaxed', 'neutral'], uneasy: ['open', 'worried', 'pout'], uneasyWide: ['wide', 'worried', 'pout'], uneasyCalm: ['open', 'worried', 'neutral'], content: ['closed', 'relaxed', 'smile'], flinch: ['squeeze', 'worried', 'wince'], tickle: ['happy', 'happy', 'o'], beam: ['open', 'happy', 'beam'], worry: ['wide', 'worried', 'neutral'], giggle: ['happy', 'happy', 'smile'] } as const
 type Expr = keyof typeof EXPRESSIONS
 
 export class TreatmentView {
@@ -79,6 +79,10 @@ export class TreatmentView {
   private expr: Expr = 'neutral'
   private exprBase: Expr = 'neutral'
   private exprTimer = 0
+  // idle life: blinks, a slow head sway, and small head moves on reactions (a spring on tilt and bob)
+  private blinkIn = 2 + Math.random() * 2
+  private blinkT = -1
+  private tilt = { a: 0, v: 0, goal: 0, bob: 0, bobT: 0 }
   // camera
   private cam = { x: 512, y: 540, zoom: 1, punch: 0, shakeX: 0, shakeY: 0, shake: 0 }
   private camGoal = { x: 512, y: 540, zoom: 1 }
@@ -126,8 +130,11 @@ export class TreatmentView {
     this.session = new TreatmentSession({ treatment, seed: customer.seed, disaster: customer.disaster, tier: opts.tier, wish: treatment === 'nails' ? customer.wish : undefined, startStep: opts.startStep })
     const order = this.session.def.layers.map(l => l.id)
     const t0 = performance.now()
-    this.assets = assetsFor(treatment, customer.look, customer.seed, order, this.session.profile)
+    // Paint now only the layers that start with something on them; the rest follow in the next frames.
+    const eager = new Set(Object.entries(this.session.layers).filter(([, g]) => g.some(v => v > 0)).map(([id]) => id))
+    this.assets = assetsFor(treatment, customer.look, customer.seed, order, this.session.profile, eager)
     this.buildMs = Math.round(performance.now() - t0)
+    this.builtAt = t0
     this.surface = new Surface(app.renderer, this.assets.surface, 0)
     this.foam = new FoamField(this.fx, (x, y) => this.coverage('foam', x, y))
 
@@ -139,6 +146,12 @@ export class TreatmentView {
     this.artRoot.pivot.set(512, 540)
     this.artRoot.position.set(512, 540)
     this.artRoot.addChild(this.surface.root, this.foam.root, this.featuresLayer)
+    if (this.assets.robe) {
+      // The robe sits over the skin and its layers (it covers the neck's lower edge), under the foam.
+      const robe = new Sprite(this.assets.robe.texture)
+      robe.position.set(this.assets.robe.x, this.assets.robe.y)
+      this.artRoot.addChildAt(robe, this.artRoot.getChildIndex(this.surface.root) + 1)
+    }
     // Facial targets (pimples) sit under the foam, cream and clay; nail targets (gems) sit on top of the polish.
     if (treatment === 'facial') this.surface.insertBelow('cream', this.targetsLayer)
     else this.artRoot.addChildAt(this.targetsLayer, this.artRoot.getChildIndex(this.surface.root) + 1)
@@ -323,7 +336,11 @@ export class TreatmentView {
     const loopName = LOOP_FOR[step.sound] ?? (step.id === 'soak' ? 'soak' : undefined)
     if (loopName) this.loop = sfx.loop(step.id === 'soak' ? 'soak' : loopName)
     if (!first) { sfx.toolUp(step.tool); sfx.whoosh() }
-    this.exprBase = step.reaction === 'flinch' ? 'neutral' : step.reaction === 'tickle' ? 'content' : step.reaction
+    // While the face is still dirty the customer watches, a little worried; once clean they relax.
+    const pop = this.session.def.steps.findIndex(st => st.id === 'pop')
+    const dirty = this.opts.treatment === 'facial' && pop > this.session.step
+    const uneasy = this.personality === 'sensitive' ? 'uneasyWide' : this.personality === 'calm' ? 'uneasyCalm' : 'uneasy'
+    this.exprBase = dirty ? uneasy : step.reaction === 'flinch' ? 'neutral' : step.reaction === 'tickle' ? 'content' : step.reaction
     if (this.exprTimer <= 0) this.setExpr(this.exprBase)
     // Step props.
     if (step.id === 'steam' && !this.towel && this.assets.towel) {
@@ -939,7 +956,47 @@ export class TreatmentView {
     if (this.revealT >= 0) return
     this.setExpr(e)
     this.exprTimer = seconds
-    if (e === 'flinch') { this.artRoot.scale.set(1, 0.994); this.animate(0.2, t => this.artRoot.scale.set(1, 0.994 + 0.006 * t)) }
+    if (e === 'flinch') { this.artRoot.scale.set(1, 0.994); this.animate(0.2, t => this.artRoot.scale.set(1, 0.994 + 0.006 * t)); this.tilt.v += (Math.random() < 0.5 ? -1 : 1) * 0.06 }
+    if (e === 'giggle' || e === 'tickle') { this.tilt.bobT = Math.max(this.tilt.bobT, e === 'giggle' ? 0.7 : 0.45); this.tilt.v += 0.03 }
+    if (e === 'worry') this.tilt.v -= 0.02
+  }
+
+  /**
+   * Idle life: a blink every few seconds (open, half, closed, half, open: about a fifth of a second, now and
+   * then a double blink), a slow sway of the head, a small tilt toward a smile, a jolt on a wince and a
+   * little bob on a giggle. Settles to still for the before/after photos.
+   */
+  private idleLife(dt: number) {
+    const eyes = this.features.eyes
+    const want = EXPRESSIONS[this.expr][0]
+    const canBlink = (want === 'open' || want === 'wide') && !!eyes.half
+    if (this.blinkT < 0) {
+      this.blinkIn -= dt
+      if (this.blinkIn <= 0 && canBlink && this.captureIn === 0) { this.blinkT = 0; this.blinkIn = Math.random() < 0.15 ? 0.3 : 2.4 + Math.random() * 3.8 }
+    } else {
+      this.blinkT += dt
+      const t = this.blinkT
+      const phase = t < 0.045 ? 'half' : t < 0.11 ? 'closed' : t < 0.17 ? 'half' : null
+      if (!phase || !canBlink) {
+        this.blinkT = -1
+        for (const [k, sp] of Object.entries(eyes)) sp.alpha = k === want ? 1 : 0
+      } else for (const [k, sp] of Object.entries(eyes)) sp.alpha = k === phase ? 1 : 0
+    }
+    const tl = this.tilt
+    const still = this.revealT >= 0
+    tl.goal = still ? 0 : this.expr === 'beam' || this.expr === 'content' ? 0.008 : this.expr === 'flinch' ? -0.006 : 0
+    const sway = still ? 0 : Math.sin(this.time * 0.37) * 0.004 + Math.sin(this.time * 0.23 + 1.3) * 0.003
+    // A soft spring toward the goal.
+    tl.v += ((tl.goal - tl.a) * 40 - tl.v * 9) * dt
+    tl.a += tl.v * dt
+    if (still) { tl.a *= Math.exp(-dt * 8); tl.v *= Math.exp(-dt * 8) }
+    tl.bobT = Math.max(0, tl.bobT - dt)
+    tl.bob = tl.bobT > 0 ? Math.sin(this.time * 24) * 3 * Math.min(1, tl.bobT * 3) : tl.bob * Math.exp(-dt * 12)
+    this.artRoot.rotation = tl.a + sway
+    this.artRoot.position.set(512, 540 + tl.bob)
+    // The key light sways a hair with the breath, so the highlights on the skin drift with it.
+    const breath = Math.sin(this.time * 1.4)
+    this.surface.setLight(-0.32 + breath * 0.035, -0.5 + breath * 0.045, 0.8)
   }
 
   private updateExpr(dt: number) {
@@ -959,6 +1016,8 @@ export class TreatmentView {
 
   update(dt: number) {
     if (this.destroyed) return
+    // The second update comes after the first frame drew (and uploaded every painted canvas).
+    if (++this.frames === 2) this.firstFrameMs = Math.round(performance.now() - this.builtAt)
     this.time += dt
     this.handleInput(dt)
     // Everyone keeps the clock, so a helper who takes over reports the real time.
@@ -977,6 +1036,7 @@ export class TreatmentView {
     this.updateTargets(dt)
     this.updateTool(dt)
     this.updateExpr(dt)
+    this.idleLife(dt)
     this.updateReveal(dt)
     for (let i = this.animations.length - 1; i >= 0; i--) { const a = this.animations[i]; a.t += dt; a.fn(Math.min(1, a.t / a.dur)); if (a.t >= a.dur) this.animations.splice(i, 1) }
     for (let i = this.flying.length - 1; i >= 0; i--) {
@@ -989,6 +1049,8 @@ export class TreatmentView {
     this.foam.update(dt, this.time)
     this.fx.update(dt)
     this.surface.update(dt)
+    // Paint one waiting layer sheet per frame once the close-up is up.
+    if (this.frames > 3) this.surface.warmOne()
     this.placeCamera(dt)
     if (this.captureIn > 0 && --this.captureIn === 0) this.beforeRT = this.capture()
   }
@@ -1120,6 +1182,7 @@ export class TreatmentView {
     this.camGoal = this.opts.treatment === 'facial' ? { x: 512, y: 540, zoom: 0.9 } : { x: 480, y: 560, zoom: 0.92 }
     this.setExpr('beam')
     this.exprTimer = 0
+    this.blinkT = -1
     // The finished look glows: a dewier skin and a soft bloom (seen on the After side of the wipe).
     this.surface.skin.uniforms.uniforms.uSkin[3] = 1
     const bloom = new Sprite(bits.glow())
@@ -1179,6 +1242,10 @@ export class TreatmentView {
   private cardShown = false
   /** How long painting this customer's art took (ms), for performance checks. */
   buildMs = 0
+  /** From the start of painting to the first frame drawn, uploads included (ms): the real wait. */
+  firstFrameMs = 0
+  private builtAt = 0
+  private frames = 0
 
   private savePhoto() {
     sfx.shutter()

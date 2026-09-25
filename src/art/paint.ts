@@ -149,16 +149,13 @@ export function terry(ctx: Ctx, x: number, y: number, w: number, h: number, base
   const r = makeRng(seed)
   const [pile, pctx] = canvas(Math.max(1, Math.ceil(w)), Math.max(1, Math.ceil(h)))
   const count = Math.floor(w * h * Math.min(density, 0.02))
-  for (let i = 0; i < count; i++) {
-    pctx.fillStyle = rgba(shade(base, r.range(-0.05, 0.06)), r.range(0.25, 0.5))
-    pctx.beginPath()
-    pctx.arc(r() * w, r() * h, r.range(1.2, 2.6), 0, Math.PI * 2)
-    pctx.fill()
-  }
+  // Four shades, one batched fill each (a fill per dot cost tens of milliseconds on a big robe).
+  for (const k of [-0.05, -0.015, 0.02, 0.06]) dots(pctx, shade(base, k), Math.round(count / 4), () => ({ x: r() * w, y: r() * h, r: r.range(1.2, 2.6), a: r.range(0.25, 0.5) }), 1)
   ctx.save()
   ctx.filter = 'blur(0.9px)'
   ctx.drawImage(pile, x, y)
   ctx.restore()
+  terryLoops(ctx, x, y, w, h, 0.5)
   // Broad folds: soft light and shadow bands.
   ctx.save()
   ctx.filter = `blur(${Math.max(6, Math.min(w, h) * 0.08)}px)`
@@ -168,5 +165,138 @@ export function terry(ctx: Ctx, x: number, y: number, w: number, h: number, base
     ctx.lineWidth = Math.max(6, Math.min(w, h) * 0.06)
     ctx.beginPath(); ctx.moveTo(fx - w * 0.2, fy); ctx.quadraticCurveTo(fx, fy + r.range(-30, 30), fx + w * 0.25, fy + r.range(-20, 20)); ctx.stroke()
   }
+  ctx.restore()
+}
+
+/** Lighten toward a warm cream instead of white, so light rims keep their colour (white reads as ash on deep tones). */
+export function warm(c: RGB, k: number): RGB { return mixRGB(c, [Math.min(255, c[0] * 1.5 + 40), Math.min(255, c[1] * 1.4 + 30), Math.min(255, c[2] * 1.25 + 20)], k) }
+
+let loopTile: HTMLCanvasElement | null = null
+/**
+ * A seamless tile of terry-cloth loops on mid grey: each loop a tiny ring lit on top and shaded underneath.
+ * Laid over any colour with 'overlay', it turns a flat fill into looped towelling. Made once and shared.
+ */
+export function terryTile(): HTMLCanvasElement {
+  if (loopTile) return loopTile
+  const T = 128
+  const [c, ctx] = canvas(T)
+  ctx.fillStyle = 'rgb(128,128,128)'
+  ctx.fillRect(0, 0, T, T)
+  const r = makeRng(4242)
+  ctx.lineCap = 'round'
+  for (let i = 0; i < 1500; i++) {
+    const x = r() * T, y = r() * T, rr = r.range(1.3, 2.4), tilt = r.range(-0.5, 0.5)
+    for (const dx of [-T, 0, T]) for (const dy of [-T, 0, T]) {
+      const px = x + dx, py = y + dy
+      if (px < -4 || px > T + 4 || py < -4 || py > T + 4) continue
+      ctx.strokeStyle = `rgba(70,70,70,${r.range(0.35, 0.6)})`
+      ctx.lineWidth = 1.1
+      ctx.beginPath(); ctx.arc(px + 0.4, py + 0.6, rr, tilt, tilt + Math.PI); ctx.stroke()
+      ctx.strokeStyle = `rgba(215,215,215,${r.range(0.45, 0.8)})`
+      ctx.beginPath(); ctx.arc(px, py, rr, tilt + Math.PI * 1.05, tilt + Math.PI * 1.95); ctx.stroke()
+    }
+  }
+  loopTile = c
+  return c
+}
+
+/** Terry loops over whatever is under the current clip (overlay: keeps the colour, adds the pile). */
+export function terryLoops(ctx: Ctx, x: number, y: number, w: number, h: number, alpha = 0.55, scale = 1) {
+  ctx.save()
+  ctx.globalCompositeOperation = 'overlay'
+  ctx.globalAlpha = alpha
+  const p = ctx.createPattern(terryTile(), 'repeat')!
+  if (scale !== 1) p.setTransform(new DOMMatrix().scale(scale))
+  ctx.fillStyle = p
+  ctx.fillRect(x, y, w, h)
+  ctx.restore()
+}
+
+/**
+ * Pack a greyscale height map and a greyscale gloss map into one texture: height in red, gloss (where the
+ * skin shines: the T-zone, cheekbones, knuckles) in green. The skin shader reads both.
+ */
+export function packHeight(height: HTMLCanvasElement, gloss: HTMLCanvasElement): HTMLCanvasElement {
+  const [c, ctx] = canvas(height.width, height.height)
+  ctx.drawImage(height, 0, 0)
+  ctx.globalCompositeOperation = 'multiply'
+  ctx.fillStyle = 'rgb(255,0,0)'
+  ctx.fillRect(0, 0, c.width, c.height)
+  const [g, gctx] = canvas(height.width, height.height)
+  gctx.drawImage(gloss, 0, 0)
+  gctx.globalCompositeOperation = 'multiply'
+  gctx.fillStyle = 'rgb(0,255,0)'
+  gctx.fillRect(0, 0, c.width, c.height)
+  ctx.globalCompositeOperation = 'lighter'
+  ctx.drawImage(g, 0, 0)
+  ctx.globalCompositeOperation = 'source-over'
+  return c
+}
+
+/** A soft elliptical dab, rotated: the painterly brush mark for skin variation and hair light. */
+export function dab(ctx: Ctx, x: number, y: number, rx: number, ry: number, rot: number, color: RGB, alpha: number) {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(rot)
+  ctx.scale(1, ry / rx)
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx)
+  g.addColorStop(0, rgba(color, alpha))
+  g.addColorStop(1, rgba(color, 0))
+  ctx.fillStyle = g
+  ctx.fillRect(-rx, -rx, rx * 2, rx * 2)
+  ctx.restore()
+}
+
+/**
+ * Many small dots in a few fills: dots are bucketed by alpha and each bucket is one path, so tens of
+ * thousands of pores cost a handful of draw calls instead of one each (single fills under a clip cost
+ * seconds).
+ */
+export function dots(ctx: Ctx, color: RGB, count: number, at: (i: number) => { x: number; y: number; r: number; a: number }, buckets = 4) {
+  const paths: Path2D[] = []
+  const alphas: number[] = []
+  for (let b = 0; b < buckets; b++) { paths.push(new Path2D()); alphas.push(0) }
+  const counts = new Array(buckets).fill(0)
+  let aMin = Infinity, aMax = -Infinity
+  const all: { x: number; y: number; r: number; a: number }[] = []
+  for (let i = 0; i < count; i++) { const d = at(i); all.push(d); aMin = Math.min(aMin, d.a); aMax = Math.max(aMax, d.a) }
+  for (const d of all) {
+    const b = aMax > aMin ? Math.min(buckets - 1, Math.floor(((d.a - aMin) / (aMax - aMin)) * buckets)) : 0
+    paths[b].moveTo(d.x + d.r, d.y)
+    paths[b].arc(d.x, d.y, d.r, 0, Math.PI * 2)
+    alphas[b] += d.a
+    counts[b]++
+  }
+  for (let b = 0; b < buckets; b++) {
+    if (!counts[b]) continue
+    ctx.fillStyle = rgba(color, alphas[b] / counts[b])
+    ctx.fill(paths[b])
+  }
+}
+
+let scratch: HTMLCanvasElement | null = null
+/**
+ * Many soft shapes for the price of one blur: canvas filters blur every draw call on its own, so a loop of
+ * blurred strokes costs a blur pass each. Paint them sharp on a shared scratch canvas (same transform as
+ * ctx), then composite that once, blurred, through ctx's clip.
+ */
+export function softBatch(ctx: Ctx, blur: number, draw: (c: Ctx) => void, composite: GlobalCompositeOperation = 'source-over', alpha = 1) {
+  const W = ctx.canvas.width, H = ctx.canvas.height
+  if (!scratch || scratch.width < W || scratch.height < H) { scratch = document.createElement('canvas'); scratch.width = Math.max(W, scratch?.width ?? 0); scratch.height = Math.max(H, scratch?.height ?? 0) }
+  const sctx = scratch.getContext('2d')!
+  sctx.setTransform(1, 0, 0, 1, 0, 0)
+  sctx.clearRect(0, 0, W, H)
+  sctx.save()
+  sctx.setTransform(ctx.getTransform())
+  sctx.lineCap = 'round'
+  sctx.lineJoin = 'round'
+  draw(sctx)
+  sctx.restore()
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.globalCompositeOperation = composite
+  ctx.globalAlpha = alpha
+  if (blur > 0) ctx.filter = `blur(${blur}px)`
+  ctx.drawImage(scratch, 0, 0, W, H, 0, 0, W, H)
   ctx.restore()
 }

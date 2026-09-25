@@ -75,7 +75,12 @@ void main() {
   // the sharp wet highlight stays white.
   float lum = dot(base, vec3(0.3, 0.5, 0.2));
   vec3 sheenCol = mix(base * 1.8 + 0.06, vec3(1.0, 0.985, 0.97), smoothstep(0.35, 0.85, lum));
-  col += sheenCol * (drySheen + dewy) + vec3(1.0, 0.985, 0.97) * wetSpec;
+  // Natural shine where the gloss map says the skin is oilier (T-zone, cheekbones, chin, knuckles): a broad
+  // soft highlight on the form plus a fine sparkle from the pores inside it. It follows the light, which
+  // sways a little with the customer's breathing.
+  float gloss = texture(uHeight, vUV).g;
+  float shine = (pow(ndhSoft, 70.0) * 0.34 + pow(ndh, 140.0) * 0.16) * gloss;
+  col += sheenCol * (drySheen + dewy + shine) + vec3(1.0, 0.985, 0.97) * wetSpec;
   col += vec3(glint) * 0.0;
   float a = alb.a * uColor.a;
   finalColor = vec4(col * a, a);

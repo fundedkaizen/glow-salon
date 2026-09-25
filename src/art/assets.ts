@@ -7,7 +7,9 @@ import type { LayerStyle, SurfaceArt } from '../render/surface.ts'
 import { paintFace, type Crop } from './face.ts'
 import { paintHand } from './hand.ts'
 import { paintBackdrop } from './backdrop.ts'
-import { paintSteamTowel } from './props.ts'
+import { ROBE, paintRobe, paintSteamTowel } from './props.ts'
+import { OUTFIT } from './palette.ts'
+import { hex } from './paint.ts'
 import { paintPimples } from './pimples.ts'
 
 /**
@@ -28,6 +30,8 @@ export type PartAssets = {
   features?: { eyes: Record<string, CropTex>; brows: Record<string, CropTex>; mouth: Record<string, CropTex> }
   /** Hand only: the overgrown free edge of each nail, clipped off one by one. */
   tips?: CropTex[]
+  /** Facial only: the robe over the shoulders, in art space (it reaches past the sheet). */
+  robe?: CropTex
   /** Facial only: the warm towel draped over the face during the steam step (art space). */
   towel?: Texture
   /** Facial only: pimple parts painted for this skin. */
@@ -39,8 +43,9 @@ const FACE_STYLES: Record<string, LayerStyle> = {
   redness: { gloss: 0, relief: 0 },
   marks: { gloss: 0.15, relief: 0.4 },
   oil: { gloss: 0.95, relief: 0.3 },
-  grime: { gloss: 0.12, relief: 1.2 },
-  grime2: { gloss: 0.15, relief: 1.6 },
+  // Dirt is matte: a little relief for volume, almost no gloss (a glossy relief reads as glassy droplets).
+  grime: { gloss: 0.02, relief: 0.7 },
+  grime2: { gloss: 0.03, relief: 0.9 },
   flakes: { gloss: 0.05, relief: 1.4 },
   serum: { gloss: 1, relief: 0.8 },
   // Flat, so a strong gloss would add one even white sheen that greys deeper skin.
@@ -77,20 +82,27 @@ function backdropTex(c: HTMLCanvasElement) {
 const cropTex = (c: Crop): CropTex => ({ texture: tex(c.canvas), x: c.x, y: c.y })
 const toTex = <K extends string>(r: Record<K, Crop>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, cropTex(v as Crop)])) as Record<K, CropTex>
 
-export function assetsFor(treatment: TreatmentId, look: Look, seed: number, order: string[], profile: Profile): PartAssets {
+/**
+ * `eager`: the layers that start with something on them (painted now); the others are painted when first
+ * needed (the surface does it in the frames after opening), so a close-up opens fast.
+ */
+export function assetsFor(treatment: TreatmentId, look: Look, seed: number, order: string[], profile: Profile, eager?: Set<string>): PartAssets {
   if (treatment === 'facial' && profile.kind === 'face') {
     const art = paintFace(look, seed, profile)
     const layers: SurfaceArt['layers'] = {}
     for (const id of order) {
-      const canvas = art.layers[id]
-      if (!canvas) continue
-      layers[id] = { art: tex(canvas), art2: id === 'mask' ? tex(art.maskDry) : undefined, style: FACE_STYLES[id] ?? { gloss: 0.2, relief: 0.5 } }
+      const paint = art.layers[id]
+      if (!paint) continue
+      const make = () => ({ art: tex(paint()), art2: id === 'mask' ? tex(art.maskDry()) : undefined })
+      const style = FACE_STYLES[id] ?? { gloss: 0.2, relief: 0.5 }
+      layers[id] = !eager || eager.has(id) ? { ...make(), style } : { lazy: make, style }
     }
     return {
       surface: { base: tex(art.base), height: tex(art.height), bump: 2.4, sss: [0.95, 0.32, 0.26], layers, order },
       backdrop: backdropTex(paintBackdrop('facial', look)),
       features: { eyes: toTex(art.eyes), brows: toTex(art.brows), mouth: toTex(art.mouth) },
       towel: tex(paintSteamTowel(seed)),
+      robe: { texture: tex(paintRobe(hex(OUTFIT[look.outfit % OUTFIT.length]), art.skin, seed)), x: ROBE.x, y: ROBE.y },
       pimples: Object.fromEntries(Object.entries(paintPimples(art.skin)).map(([k, c]) => [k, tex(c)])) as PartAssets['pimples'],
       skinRGB: art.skin.base,
     }
@@ -114,10 +126,11 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
 /** Free every texture made for one customer (called when the close-up closes; shared bits and tools stay). */
 export function destroyAssets(a: PartAssets) {
   const all: Texture[] = [a.surface.base, a.surface.height, a.backdrop]
-  for (const l of Object.values(a.surface.layers)) { all.push(l.art); if (l.art2) all.push(l.art2) }
+  for (const l of Object.values(a.surface.layers)) { if (l.art) all.push(l.art); if (l.art2) all.push(l.art2) }
   if (a.features) for (const part of Object.values(a.features)) for (const c of Object.values(part)) all.push(c.texture)
   for (const c of a.tips ?? []) all.push(c.texture)
   if (a.towel) all.push(a.towel)
+  if (a.robe) all.push(a.robe.texture)
   if (a.pimples) all.push(...Object.values(a.pimples))
   for (const t of new Set(all)) t.destroy(true)
 }
