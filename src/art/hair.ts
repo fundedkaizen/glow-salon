@@ -355,10 +355,11 @@ function paintPony(ctx: Ctx, pal: HairPal, r: Rng, side: number, sheen: Sheen) {
       width: r.range(44, 66), wave: 0.25, phase: t * 5, side, end: 0.78,
     })
   }
+  // One even shadow for the whole tail on the pillow (drawn opaque, laid down at a third).
   softBatch(ctx, 16, c => {
-    c.fillStyle = 'rgba(96,52,70,0.3)'
-    for (const L of locks) { c.beginPath(); for (let k = 0; k <= 12; k++) { const p = lockAt(L, k / 12); if (k === 0) c.moveTo(p.x + 12, p.y + 20); else c.lineTo(p.x + 12, p.y + 20) } c.lineWidth = L.width; c.strokeStyle = 'rgba(96,52,70,0.3)'; c.stroke() }
-  })
+    c.strokeStyle = 'rgb(96,52,70)'; c.lineCap = 'round'
+    for (const L of locks) { c.beginPath(); for (let k = 0; k <= 10; k++) { const p = lockAt(L, k / 12); if (k === 0) c.moveTo(p.x + 12, p.y + 20); else c.lineTo(p.x + 12, p.y + 20) } c.lineWidth = L.width * 0.6; c.stroke() }
+  }, 'source-over', 0.3)
   paintLocks(ctx, locks, pal, sheenFn([{ cx: 512 + side * 300, cy: 260, r: 170, w: 40 }]), r, 12)
   void sheen
   // A soft scrunchie around the tie.
@@ -450,12 +451,13 @@ export function paintHairSides(ctx: Ctx, hair: HairPal, styleIndex: number, seed
     paintLocks(ctx, locks, pal, sheen, r, 12)
     return
   }
-  // Sleek styles: a short sideburn in front of each ear.
+  // Sleek styles: the ears stay clear; a man's crop keeps a short sideburn in front of each ear.
+  if (!(style === 'crop' && figure.masc)) return
   const locks: Lock[] = []
   for (const side of [-1, 1]) {
     for (let k = 0; k < 2; k++) {
       const x = 512 + side * (286 - k * 10)
-      locks.push({ c: [{ x: 512 + side * (296 - k * 8), y: 440 }, { x: x + side * 4, y: 462 }, { x: x - side * 4, y: 490 }, { x: x - side * 10, y: style === 'crop' && figure.masc ? 548 : 510 }], width: 22 - k * 6, wave: 0, phase: 0, side, end: 0.5 })
+      locks.push({ c: [{ x: 512 + side * (290 - k * 8), y: 450 }, { x: x + side * 2, y: 470 }, { x: x - side * 4, y: 496 }, { x: x - side * 8, y: 536 }], width: 16 - k * 5, wave: 0, phase: 0, side, end: 0.5 })
     }
   }
   paintLocks(ctx, locks, pal, sheen, r, 6)

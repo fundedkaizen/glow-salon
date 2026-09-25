@@ -45,6 +45,8 @@ export type TreatmentViewOptions = {
 
 type TargetView = { t: Target; root: Container; parts: Sprite[]; flash: number; gone: boolean }
 
+/** The magnifier lens: radius in art units, magnification, texture size. */
+const LENS_R = 136, LENS_ZOOM = 1.8, LENS_PX = 384
 const LOOP_FOR: Record<string, LoopName> = { foam: 'foam', water: 'water', steam: 'steam', fan: 'fan', uv: 'hum', rasp: 'rasp', push: 'scrape', loop: 'scrape', brush: 'brushWet' }
 const EXPRESSIONS = { neutral: ['open', 'relaxed', 'neutral'], uneasy: ['open', 'worried', 'pout'], uneasyWide: ['wide', 'worried', 'pout'], uneasyCalm: ['open', 'worried', 'neutral'], content: ['closed', 'relaxed', 'smile'], flinch: ['squeeze', 'worried', 'wince'], tickle: ['happy', 'happy', 'o'], beam: ['open', 'happy', 'beam'], worry: ['wide', 'worried', 'neutral'], giggle: ['happy', 'happy', 'smile'] } as const
 type Expr = keyof typeof EXPRESSIONS
@@ -275,14 +277,38 @@ export class TreatmentView {
     this.targets.set(t.id, { t, root, parts, flash: 0, gone: t.done && t.kind !== 'gem' && t.kind !== 'patch' })
   }
 
+  /**
+   * The magnifier lamp: a real 1.8x view of the face through a round lens (the photo layer rendered again,
+   * magnified, into a texture each frame it shows), warm light spilling around it, a pastel rim with a
+   * bright inner edge, and a curved glint across the glass.
+   */
   private buildLamp() {
     const glow = new Sprite(bits.glow())
-    glow.anchor.set(0.5); glow.scale.set(5.2); glow.tint = 0xfff1c8; glow.alpha = 0.55; glow.blendMode = 'add'
-    const ring = new Graphics().circle(0, 0, 150).stroke({ width: 18, color: 0xf7c6d4 }).circle(0, 0, 138).stroke({ width: 4, color: 0xffffff, alpha: 0.9 })
-    const glint = new Graphics().ellipse(-60, -70, 40, 16).fill({ color: 0xffffff, alpha: 0.35 })
-    glint.rotation = -0.6
-    this.lampSprite.addChild(glow, ring, glint)
+    glow.anchor.set(0.5); glow.scale.set(5.2); glow.tint = 0xfff1c8; glow.alpha = 0.45; glow.blendMode = 'add'
+    this.lensRT = RenderTexture.create({ width: LENS_PX, height: LENS_PX })
+    const view = new Sprite(this.lensRT)
+    view.anchor.set(0.5)
+    view.scale.set((LENS_R * 2 + 8) / LENS_PX)
+    const mask = new Graphics().circle(0, 0, LENS_R).fill(0xffffff)
+    view.mask = mask
+    const shade = new Graphics().circle(0, 0, LENS_R).stroke({ width: 22, color: 0x6a3a4a, alpha: 0.18 })
+    const ring = new Graphics().circle(0, 0, 150).stroke({ width: 18, color: 0xf7c6d4 }).circle(0, 0, 141).stroke({ width: 3, color: 0xffffff, alpha: 0.95 }).circle(0, 0, 159).stroke({ width: 2, color: 0xb8859a, alpha: 0.6 })
+    const glint = new Graphics().arc(0, 0, 118, Math.PI * 1.08, Math.PI * 1.42).stroke({ width: 10, color: 0xffffff, alpha: 0.5, cap: 'round' }).circle(-44, -96, 6).fill({ color: 0xffffff, alpha: 0.7 })
+    this.lampSprite.addChild(glow, view, mask, shade, ring, glint)
     this.lampSprite.visible = false
+  }
+  private lensRT: RenderTexture | null = null
+
+  /** Render the magnified face into the lens (only while the lamp shows). */
+  private drawLens() {
+    if (!this.lampSprite.visible || !this.lensRT) return
+    const lx = this.lampSprite.x, ly = this.lampSprite.y
+    const k = LENS_PX / (LENS_R * 2 + 8) * LENS_ZOOM
+    const parent = this.photoRoot.parent
+    const index = parent ? parent.getChildIndex(this.photoRoot) : 0
+    this.photoRoot.removeFromParent()
+    this.opts.app.renderer.render({ container: this.photoRoot, target: this.lensRT, clear: true, transform: new Matrix().translate(-lx, -ly).scale(k, k).translate(LENS_PX / 2, LENS_PX / 2) })
+    parent?.addChildAt(this.photoRoot, index)
   }
 
   // ------------------------------------------------------------------ layout & camera
@@ -1088,6 +1114,7 @@ export class TreatmentView {
     // Paint one waiting layer sheet per frame once the close-up is up.
     if (this.frames > 3 && !this.surface.warmOne() && this.towel && this.assets.towel && !this.assets.towel.made) this.towel.texture = this.assets.towel.get()
     this.placeCamera(dt)
+    this.drawLens()
     if (this.captureIn > 0 && --this.captureIn === 0) this.beforeRT = this.capture()
   }
 
@@ -1337,6 +1364,7 @@ export class TreatmentView {
     this.hud.destroy()
     this.surface.destroy()
     this.beforeRT?.destroy(true)
+    this.lensRT?.destroy(true)
     this.afterRT?.destroy(true)
     this.root.destroy({ children: true })
     destroyAssets(this.assets)
