@@ -729,10 +729,10 @@ export class TreatmentView {
     for (const p of parts) p.visible = false
     const s = new Sprite(bits.patch())
     s.anchor.set(0.5)
-    s.scale.set(instant ? 0.62 : 0.01)
+    s.scale.set(instant ? 0.42 : 0.01)
     s.rotation = (Math.random() - 0.5) * 0.6
     root.addChild(s)
-    if (!instant) this.animate(0.35, t => s.scale.set(0.62 * easeOutBack(t)))
+    if (!instant) this.animate(0.35, t => s.scale.set(0.42 * easeOutBack(t)))
   }
 
   private placeGem(root: Container, t: Target, instant: boolean) {

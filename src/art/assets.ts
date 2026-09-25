@@ -43,7 +43,8 @@ const FACE_STYLES: Record<string, LayerStyle> = {
   grime2: { gloss: 0.15, relief: 1.6 },
   flakes: { gloss: 0.05, relief: 1.4 },
   serum: { gloss: 1, relief: 0.8 },
-  glow: { gloss: 0.8, relief: 0 },
+  // Flat, so a strong gloss would add one even white sheen that greys deeper skin.
+  glow: { gloss: 0.12, relief: 0 },
   cream: { gloss: 0.55, relief: 2.2, brush: 'paint' },
   mask: { gloss: 0.8, relief: 3.8, brush: 'paint' },
   foam: { gloss: 0.3, relief: 2.6 },

@@ -1,7 +1,7 @@
 import type { Look } from '../core/customers.ts'
 import { makeRng } from '../core/rng.ts'
 import { OUTFIT } from './palette.ts'
-import { blob, blurred, canvas, hex, rgba, shade, smoothPath, terry, type Ctx } from './paint.ts'
+import { blob, blurred, canvas, hex, rgba, shade, terry, type Ctx } from './paint.ts'
 
 /**
  * What surrounds the body part in a close-up, 1600 x 1600 centred on the 1024 art sheet (so it still fills
@@ -72,25 +72,59 @@ export function paintBackdrop(kind: 'facial' | 'nails', look: Look): HTMLCanvasE
     bctx.fillStyle = bg
     bctx.beginPath(); bctx.roundRect(o - 330, o - 250, 1024 + 660, 1024 + 600, 220); bctx.fill()
     ctx.save(); ctx.filter = 'blur(5px)'; ctx.drawImage(bed, 0, 0); ctx.restore()
-    // The pillow under the head: plump cotton with soft folds.
-    const pillow = [o + 70, o + 120, o + 250, o - 40, o + 512, o - 90, o + 774, o - 40, o + 954, o + 120, o + 1010, o + 520, o + 954, o + 920, o + 512, o + 1010, o + 70, o + 920, o + 14, o + 520]
-    blurred(ctx, 26, () => { ctx.fillStyle = 'rgba(140,70,100,0.35)'; ctx.beginPath(); smoothPath(ctx, pillow.map((v, i) => v + (i % 2 ? 24 : 14))); ctx.fill() })
+    // The pillow under the head: a wide, puffy cotton cushion with pinched corners and a piped seam.
+    // It sits behind the head, so the hair covers most of it; only its shoulders show around the hair.
+    const L = o - 190, R = o + 1214, T = o - 30, B = o + 860
+    const cushion = (inset: number) => {
+      const l = L + inset, rr = R - inset, t = T + inset, b = B - inset, dip = 34 - inset * 0.3
+      ctx.beginPath()
+      ctx.moveTo(l + 40, t + 10)
+      ctx.bezierCurveTo((l + rr) / 2 - 300, t + dip, (l + rr) / 2 + 300, t + dip, rr - 40, t + 10)
+      ctx.quadraticCurveTo(rr + 6, t - 4, rr - 8, t + 44)
+      ctx.bezierCurveTo(rr - dip * 0.8, (t + b) / 2 - 200, rr - dip * 0.8, (t + b) / 2 + 200, rr - 8, b - 44)
+      ctx.quadraticCurveTo(rr + 6, b + 4, rr - 40, b - 10)
+      ctx.bezierCurveTo((l + rr) / 2 + 300, b - dip, (l + rr) / 2 - 300, b - dip, l + 40, b - 10)
+      ctx.quadraticCurveTo(l - 6, b + 4, l + 8, b - 44)
+      ctx.bezierCurveTo(l + dip * 0.8, (t + b) / 2 + 200, l + dip * 0.8, (t + b) / 2 - 200, l + 8, t + 44)
+      ctx.quadraticCurveTo(l - 6, t - 4, l + 40, t + 10)
+      ctx.closePath()
+    }
+    // Its soft shadow on the bed.
+    blurred(ctx, 30, () => { ctx.fillStyle = 'rgba(140,70,100,0.3)'; ctx.translate(18, 30); cushion(0); ctx.fill() })
     ctx.save()
-    ctx.beginPath(); smoothPath(ctx, pillow)
-    const pg = ctx.createRadialGradient(o + 420, o + 300, 80, o + 512, o + 460, 700)
-    pg.addColorStop(0, '#ffffff'); pg.addColorStop(0.7, '#f9f1f3'); pg.addColorStop(1, '#e9dbe0')
+    cushion(0)
+    const pg = ctx.createRadialGradient(o + 330, o + 180, 60, o + 512, o + 420, 900)
+    pg.addColorStop(0, '#fffdfb'); pg.addColorStop(0.55, '#f8eeee'); pg.addColorStop(1, '#e8d6dc')
     ctx.fillStyle = pg
     ctx.fill()
     ctx.clip()
-    blurred(ctx, 16, () => {
-      for (let i = 0; i < 8; i++) {
-        const x = o + r.range(80, 940), y = o + r.range(-40, 960)
-        ctx.strokeStyle = r() < 0.5 ? 'rgba(255,255,255,0.9)' : 'rgba(210,190,198,0.5)'
-        ctx.lineWidth = r.range(14, 30)
-        ctx.beginPath(); ctx.moveTo(x - 120, y - 40); ctx.quadraticCurveTo(x, y + r.range(-40, 40), x + 140, y + 30); ctx.stroke()
+    // Puffed up in the middle: the edges roll away from the light and darken.
+    blurred(ctx, 40, () => { ctx.strokeStyle = 'rgba(176,130,150,0.38)'; ctx.lineWidth = 120; cushion(0); ctx.stroke() })
+    blurred(ctx, 30, () => { ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 40; ctx.beginPath(); ctx.moveTo(L + 120, T + 120); ctx.quadraticCurveTo(o + 300, T + 60, o + 700, T + 90); ctx.stroke() })
+    // The head presses a soft hollow into it.
+    blob(ctx, o + 512, o + 470, 560, 520, [170, 120, 140], 0.28)
+    // Creases running in from the pinched corners.
+    blurred(ctx, 6, () => {
+      for (const [cx, cy, dx, dy] of [[L, T, 1, 1], [R, T, -1, 1], [L, B, 1, -1], [R, B, -1, -1]] as const) {
+        for (let k = 0; k < 3; k++) {
+          const len = r.range(90, 170), bend = r.range(-30, 30)
+          ctx.strokeStyle = k % 2 ? 'rgba(255,255,255,0.8)' : 'rgba(190,150,165,0.45)'
+          ctx.lineWidth = r.range(4, 8)
+          const sx = cx + dx * (30 + k * 16), sy = cy + dy * (40 - k * 8)
+          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx + dx * len * 0.5 + bend, sy + dy * len * 0.3, sx + dx * len, sy + dy * len * 0.55); ctx.stroke()
+        }
       }
     })
+    // Cotton weave, barely there.
+    ctx.globalAlpha = 0.05
+    for (let i = 0; i < 900; i++) { ctx.fillStyle = r() < 0.5 ? '#ffffff' : '#c9a9b6'; ctx.fillRect(L + r() * (R - L), T + r() * (B - T), r.range(1, 3), 1) }
+    ctx.globalAlpha = 1
     ctx.restore()
+    // The piped seam just inside the edge: a light roll and the shadow line under it.
+    blurred(ctx, 1.5, () => {
+      ctx.strokeStyle = 'rgba(190,150,166,0.55)'; ctx.lineWidth = 3; cushion(26); ctx.stroke()
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2; ctx.translate(-1.5, -2); cushion(26); ctx.stroke()
+    })
     // A folded towel under the neck, in the customer's colour.
     const towel = shade(hex(OUTFIT[(look.outfit + 3) % OUTFIT.length]), 0.3)
     ctx.save()

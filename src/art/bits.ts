@@ -166,16 +166,21 @@ export const bits = {
     blob(ctx, 64, 64, 18, 18, [255, 230, 170], 0.6)
   }),
   patch: () => make('patch', 128, 128, ctx => {
-    // Hydrocolloid patch: a clear, slightly milky star.
-    ctx.beginPath()
-    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 30 : 58; ctx.lineTo(64 + Math.cos(a) * r, 66 + Math.sin(a) * r) }
-    ctx.closePath()
+    // Hydrocolloid patch: a small, soft, milky pink star with rounded points.
+    const star = () => {
+      ctx.beginPath()
+      for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 32 : 52; ctx.lineTo(64 + Math.cos(a) * r, 66 + Math.sin(a) * r) }
+      ctx.closePath()
+    }
     ctx.lineJoin = 'round'
-    ctx.fillStyle = 'rgba(255,238,246,0.72)'
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(240,160,196,0.9)'; ctx.lineWidth = 4; ctx.stroke()
+    ctx.filter = 'blur(1.5px)'
+    star()
+    ctx.strokeStyle = 'rgba(246,190,214,0.55)'; ctx.lineWidth = 12; ctx.stroke()
+    ctx.fillStyle = 'rgba(255,232,242,0.6)'; ctx.fill()
+    ctx.filter = 'none'
+    star()
     ctx.save(); ctx.clip()
-    blob(ctx, 48, 44, 26, 14, [255, 255, 255], 0.75)
+    blob(ctx, 50, 48, 24, 12, [255, 255, 255], 0.55)
     ctx.restore()
   }),
   gem: () => make('gem', 64, 64, ctx => {

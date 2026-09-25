@@ -223,10 +223,11 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   ctx.globalAlpha = 1
   ctx.globalCompositeOperation = 'source-over'
   // Temples and the sides of the forehead turn away, a little cooler; the cheeks warmer.
-  blob(ctx, 270, 440, 90, 120, [196, 170, 200], 0.14)
-  blob(ctx, 754, 440, 90, 120, [196, 170, 200], 0.14)
-  blob(ctx, 380, 680, 150, 110, [255, 160, 130], 0.1)
-  blob(ctx, 644, 680, 150, 110, [255, 160, 130], 0.1)
+  const cool = mixRGB(skin.shadow, [150, 130, 175], 0.3), warm = mixRGB(skin.blush, skin.light, 0.4)
+  blob(ctx, 270, 440, 90, 120, cool, 0.14)
+  blob(ctx, 754, 440, 90, 120, cool, 0.14)
+  blob(ctx, 380, 680, 150, 110, warm, 0.12)
+  blob(ctx, 644, 680, 150, 110, warm, 0.12)
   blob(ctx, 262, 430, 80, 140, skin.shadow, 0.3)
   blob(ctx, 766, 430, 90, 150, skin.shadow, 0.45)
   // Eye sockets (deeper on the far side), the brow bone catching the light, lids.
@@ -517,10 +518,11 @@ function paintHair(ctx: Ctx, hair: typeof HAIR[number], style: number, seed: num
   ctx.beginPath()
   smoothPath(ctx, mass.map(scaleX))
   ctx.clip()
-  blurred(ctx, 10, () => {
+  // Soft and wide, so it reads as light on the hair, never as a painted outline.
+  blurred(ctx, 22, () => {
     ctx.globalCompositeOperation = 'screen'
     for (let k = 0; k < 3; k++) {
-      ctx.strokeStyle = rgba(hair.light, 0.28 - k * 0.07)
+      ctx.strokeStyle = rgba(hair.light, 0.2 - k * 0.05)
       ctx.lineWidth = 34 - k * 10
       ctx.beginPath()
       ctx.ellipse(512, 360, Math.min(350 * volume, 400) - k * 6, 250 - k * 4, 0, Math.PI * 1.08, Math.PI * 1.92)
@@ -753,22 +755,25 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + s, y - 1); ctx.lineTo(x + s * 0.6, y + s); ctx.closePath(); ctx.fill()
     }
   })
+  // Tints follow the tone: on deeper skin a fixed pale colour turns into a grey film.
+  const fair = Math.min(1, (skin.base[0] + skin.base[1] + skin.base[2]) / 3 / 215)
   layers.oil = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, [250, 228, 170], fbm(512, 32, 3, seed + 41), 0.04, 0.22), 0, 0)
+    ctx.drawImage(tintedByNoise(512, mixRGB(skin.light, [250, 228, 170], 0.25 + 0.35 * fair), fbm(512, 32, 3, seed + 41), 0.04, 0.22), 0, 0)
   })
   layers.redness = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, mixRGB(skin.blush, [232, 96, 104], 0.5), fbm(512, 40, 3, seed + 51), 0.1, 0.36), 0, 0)
-    for (let i = 0; i < 90; i++) { ctx.fillStyle = rgba([220, 80, 96], r.range(0.15, 0.4)); ctx.beginPath(); ctx.arc(r.range(100, 412), r.range(150, 470), r.range(1, 2.5), 0, Math.PI * 2); ctx.fill() }
+    ctx.drawImage(tintedByNoise(512, mixRGB(skin.blush, [232, 96, 104], 0.5 * fair), fbm(512, 40, 3, seed + 51), 0.1, 0.36), 0, 0)
+    for (let i = 0; i < 90; i++) { ctx.fillStyle = rgba(mixRGB(skin.blush, [220, 80, 96], 0.6 * fair), r.range(0.15, 0.4)); ctx.beginPath(); ctx.arc(r.range(100, 412), r.range(150, 470), r.range(1, 2.5), 0, Math.PI * 2); ctx.fill() }
   })
   layers.marks = clipped(512, (ctx) => {
     ctx.drawImage(tintedByNoise(512, [222, 92, 104], fbm(512, 12, 2, seed + 61), 0.32, 0.6), 0, 0)
   })
   layers.serum = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, [255, 238, 196], fbm(512, 40, 2, seed + 71), 0.14, 0.26), 0, 0)
+    ctx.drawImage(tintedByNoise(512, mixRGB(shade(skin.light, 0.1), [255, 238, 196], 0.2 + 0.3 * fair), fbm(512, 40, 2, seed + 71), 0.12, 0.22), 0, 0)
   })
   layers.glow = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, [255, 236, 236], fbm(512, 60, 2, seed + 81), 0.12, 0.26), 0, 0)
-  })
+    // A warm lift of the customer's own tone, even across the face (no mottling).
+    ctx.drawImage(tintedByNoise(512, mixRGB(mixRGB(skin.light, skin.blush, 0.15), [255, 232, 226], 0.4 * fair), fbm(512, 90, 2, seed + 81), 0.13, 0.18), 0, 0)
+  }, faceBelowBand)
   layers.cream = clipped(S, (ctx) => {
     // Rich white cream: smooth, with soft swirls where it was scooped and spread.
     ctx.fillStyle = '#fffaf4'
@@ -1070,44 +1075,63 @@ function mouthCrop(state: MouthState, skin: SkinTone, feat: Feat): Crop {
 
 function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: SkinTone, feat: Feat) {
   const full = 1.05 + feat.lips * 0.3
-  const lip = mixRGB(skin.lip, [236, 118, 140], 0.5), lipDark = shade(lip, -0.18), lipLight = shade(lip, 0.35)
-  const inside: RGB = [120, 40, 52]
+  // Lips follow the tone: a touch of rose on fair skin, the customer's own deeper lip colour otherwise.
+  const fair = Math.min(1, (skin.base[0] + skin.base[1] + skin.base[2]) / 3 / 215)
+  const lip = mixRGB(skin.lip, [236, 118, 140], 0.15 + 0.25 * fair), lipDark = shade(lip, -0.2), lipLight = mixRGB(lip, skin.light, 0.45)
+  const inside = mixRGB(shade(skin.lip, -0.55), [70, 20, 30], 0.5)
   if (state === 'beam' || state === 'o') {
-    const w = state === 'beam' ? 80 : 26, top = state === 'beam' ? my - 14 : my - 12, bottom = state === 'beam' ? my + 40 : my + 22
-    // Lips around an open mouth.
+    const beam = state === 'beam'
+    // A small, soft smile: corners lifted and tucked into the cheeks, only the upper teeth showing.
+    const w = beam ? 48 : 17, cy = my - (beam ? 5 : -4)
+    const top = beam ? my - 7 : my - 8, bottom = beam ? my + 20 : my + 20
+    const opening = () => {
+      ctx.beginPath()
+      if (!beam) { ctx.ellipse(mx, my + 6, w, 15, 0, 0, Math.PI * 2); return }
+      ctx.moveTo(mx - w, cy)
+      ctx.bezierCurveTo(mx - w * 0.55, top - 1, mx + w * 0.55, top - 1, mx + w, cy)
+      ctx.bezierCurveTo(mx + w * 0.72, bottom, mx - w * 0.72, bottom, mx - w, cy)
+      ctx.closePath()
+    }
+    // Lips around the opening: a thin upper lip with a soft bow, a fuller lower lip.
     ctx.beginPath()
-    ctx.moveTo(mx - w - 8, my - 8)
-    ctx.bezierCurveTo(mx - w * 0.6, top - 16, mx - 10, top - 18, mx, top - 10)
-    ctx.bezierCurveTo(mx + 10, top - 18, mx + w * 0.6, top - 16, mx + w + 8, my - 8)
-    ctx.bezierCurveTo(mx + w * 0.7, bottom + 20, mx - w * 0.7, bottom + 20, mx - w - 8, my - 8)
+    if (beam) {
+      ctx.moveTo(mx - w - 7, cy + 1)
+      ctx.bezierCurveTo(mx - w * 0.6, top - 11 * full, mx - 12, top - 13 * full, mx, top - 8 * full)
+      ctx.bezierCurveTo(mx + 12, top - 13 * full, mx + w * 0.6, top - 11 * full, mx + w + 7, cy + 1)
+      ctx.bezierCurveTo(mx + w * 0.8, bottom + 15 * full, mx - w * 0.8, bottom + 15 * full, mx - w - 7, cy + 1)
+    } else ctx.ellipse(mx, my + 6, w + 13, 15 + 12 * full, 0, 0, Math.PI * 2)
     ctx.closePath()
-    const g = ctx.createLinearGradient(0, top - 20, 0, bottom + 20)
-    g.addColorStop(0, rgba(lipDark)); g.addColorStop(0.5, rgba(lip)); g.addColorStop(1, rgba(lipLight))
+    const g = ctx.createLinearGradient(0, top - 14, 0, bottom + 16)
+    g.addColorStop(0, rgba(lipDark)); g.addColorStop(0.45, rgba(lip)); g.addColorStop(1, rgba(shade(lip, 0.06)))
     ctx.fillStyle = g
     ctx.fill()
-    ctx.beginPath()
-    ctx.moveTo(mx - w, my - 6)
-    ctx.bezierCurveTo(mx - w * 0.5, top - 2, mx + w * 0.5, top - 2, mx + w, my - 6)
-    ctx.bezierCurveTo(mx + w * 0.6, bottom, mx - w * 0.6, bottom, mx - w, my - 6)
-    ctx.closePath()
+    opening()
     ctx.fillStyle = rgba(inside)
     ctx.fill()
     ctx.save()
+    opening()
     ctx.clip()
-    if (state === 'beam') {
-      ctx.fillStyle = '#fffaf6'
-      ctx.beginPath(); ctx.ellipse(mx, top + 2, w * 0.86, 14, 0, 0, Math.PI * 2); ctx.fill()
-      ctx.strokeStyle = 'rgba(200,180,180,0.5)'; ctx.lineWidth = 1.2
-      for (const k of [-2, -1, 0, 1, 2]) { ctx.beginPath(); ctx.moveTo(mx + k * 22, top - 8); ctx.lineTo(mx + k * 22, top + 12); ctx.stroke() }
+    if (beam) {
+      // Upper teeth: one soft white band, barely separated, shaded under the lip.
+      ctx.fillStyle = '#f8f2ee'
+      ctx.beginPath(); ctx.ellipse(mx, top + 2, w * 0.82, 10, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = 'rgba(190,168,168,0.28)'; ctx.lineWidth = 1
+      for (const k of [-1, 0, 1]) { ctx.beginPath(); ctx.moveTo(mx + k * 15, top - 4); ctx.lineTo(mx + k * 15, top + 8 - Math.abs(k) * 2); ctx.stroke() }
+      const sh = ctx.createLinearGradient(0, top - 6, 0, top + 4)
+      sh.addColorStop(0, rgba(inside, 0.5)); sh.addColorStop(1, rgba(inside, 0))
+      ctx.fillStyle = sh
+      ctx.fillRect(mx - w, top - 8, w * 2, 12)
     }
-    blob(ctx, mx, bottom + 6, w * 0.6, 18, [236, 120, 130], 0.9)
+    blob(ctx, mx, bottom + 2, w * 0.55, 9, mixRGB(skin.lip, [222, 108, 118], 0.45), 0.85)
     ctx.restore()
-    blob(ctx, mx + 6, bottom + 8, w * 0.35, 5, lipLight, 0.6)
-    if (state === 'beam') for (const s of [-1, 1]) blob(ctx, mx + s * (w + 16), my - 10, 12, 16, skin.shadow, 0.35)
+    // A soft gloss on the lower lip, and the cheeks lifting at the corners.
+    blob(ctx, mx + 5, bottom + 8 * full, w * 0.34, 3.5, lipLight, 0.55)
+    blob(ctx, mx - 4, bottom + 7 * full, w * 0.14, 2, [255, 255, 255], 0.45)
+    if (beam) for (const sd of [-1, 1]) blob(ctx, mx + sd * (w + 16), cy - 5, 9, 12, skin.shadow, 0.16)
     return
   }
   const corner = state === 'smile' ? -10 : state === 'wince' ? 8 : 2
-  const cw = state === 'smile' ? 78 : state === 'wince' ? 60 : 70
+  const cw = state === 'smile' ? 66 : state === 'wince' ? 60 : 64
   const upperH = (state === 'wince' ? 8 : 16) * full, lowerH = (state === 'wince' ? 12 : state === 'smile' ? 22 : 28) * full
   const lineSag = state === 'smile' ? 12 : state === 'wince' ? -2 : 4
   const L = { x: mx - cw, y: my + corner }, R = { x: mx + cw, y: my + corner }
@@ -1141,6 +1165,6 @@ function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: Sk
   blob(ctx, mx - 6, my + lineSag + lowerH * 0.5, cw * 0.2, 3.5, [255, 255, 255], 0.85)
   blob(ctx, mx + 22, my + lineSag + lowerH * 0.62, cw * 0.08, 2, [255, 255, 255], 0.7)
   blob(ctx, mx - 16, my - upperH + 6, 12, 3, lipLight, 0.5)
-  for (const s of [-1, 1]) blob(ctx, mx + s * (cw + 4), my + corner, 8, 8, skin.deep, state === 'smile' ? 0.45 : 0.3)
+  for (const s of [-1, 1]) blob(ctx, mx + s * (cw + 4), my + corner, 8, 8, skin.shadow, state === 'smile' ? 0.35 : 0.25)
   if (state === 'wince') { ctx.strokeStyle = rgba(skin.deep, 0.3); ctx.lineWidth = 1.5; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(mx + s * (cw + 6), my + 6); ctx.quadraticCurveTo(mx + s * (cw + 14), my + 16, mx + s * (cw + 10), my + 26); ctx.stroke() } }
 }

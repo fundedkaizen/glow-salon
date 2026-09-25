@@ -1,6 +1,6 @@
 import './ui/style.css'
 import { Application } from 'pixi.js'
-import { randomLook } from './core/customers.ts'
+import { randomLook, type Look } from './core/customers.ts'
 import { makeRng } from './core/rng.ts'
 import type { Op, SessionSnapshot } from './core/treatments/session.ts'
 import { TreatmentView } from './render/treatment-view.ts'
@@ -27,6 +27,12 @@ async function boot() {
   document.getElementById('boot')?.classList.add('done')
 }
 
+/** `&skin=N&hair=N&style=N` pin parts of the look (for side-by-side checks of every tone). */
+function debugLook(look: Look, params: URLSearchParams): Look {
+  const pin = (k: string) => (params.has(k) ? Number(params.get(k)) : undefined)
+  return { ...look, skin: pin('skin') ?? look.skin, hair: pin('hair') ?? look.hair, hairStyle: pin('style') ?? look.hairStyle }
+}
+
 type DebugMsg = { t: 'ops'; ops: Op[]; from?: number } | { t: 'syncReq'; from?: number } | { t: 'sync'; snap: SessionSnapshot; from?: number }
 
 function closeUp(app: Application, ui: HTMLElement, view: 'facial' | 'nails', params: URLSearchParams) {
@@ -36,7 +42,7 @@ function closeUp(app: Application, ui: HTMLElement, view: 'facial' | 'nails', pa
   const helper = !!coop && coop !== 'host'
   let link: CoopLink<DebugMsg> | null = null
   const tv = new TreatmentView({
-    app, overlay: ui, treatment: view, customer: { name: 'Mira', look: randomLook(r), seed, disaster: params.has('disaster'), wish: 2 },
+    app, overlay: ui, treatment: view, customer: { name: 'Mira', look: debugLook(randomLook(r), params), seed, disaster: params.has('disaster'), wish: 2 },
     tier: Number(params.get('tier') ?? 1), startStep: Number(params.get('step') ?? 0), role: helper ? 'helper' : 'lead', leadName: 'Host', playerId: helper ? 1 : 0, mood: 1, ambience: 2,
     onOps: ops => link?.send({ t: 'ops', ops }), onProgress: () => {}, onFinish: () => location.reload(), onLeave: () => location.reload(),
   })
