@@ -1,6 +1,7 @@
 import { check } from './harness.ts'
 import { TreatmentSession, type Op } from '../src/core/treatments/session.ts'
 import { planTreatment } from '../src/core/treatments/plan.ts'
+import { COMING_SOON, COMING_SOON_TEASER } from '../src/core/treatments/registry.ts'
 import { handProfile } from '../src/core/treatments/profile.ts'
 import { regionMask } from '../src/core/treatments/session.ts'
 import { GRID, CELL } from '../src/core/treatments/grid.ts'
@@ -229,6 +230,10 @@ export function run() {
     check('a claim runs out', !playerHolds(other, 's0'))
     check('a claim for a station that does not exist is refused', !reduce(other, 0, { a: 'claim', station: 's9' }))
   }
+
+  // ---------------------------------------------------------------- the shop's coming treatments are real cards (C2-18)
+  check('every coming treatment says what it is', COMING_SOON.every(n => (COMING_SOON_TEASER[n] ?? '').length > 20) && new Set(Object.values(COMING_SOON_TEASER)).size === COMING_SOON.length)
+  check('pedicures are no longer "coming": the foot spa is in the shop', !COMING_SOON.some(n => /pedicure|feet|foot/i.test(n)) && ITEM_BY_ID['treat-feet']?.tab === 'treatments')
 
   // ---------------------------------------------------------------- purchases feel weighty
   check('ambience goal is 15 points', AMBIENCE_GOAL === 15 && ambienceStars([]) === 1)

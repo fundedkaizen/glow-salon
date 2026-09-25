@@ -159,7 +159,10 @@
 .gs-card.owned { background: linear-gradient(160deg, #f4fcf8, #fff); }
 .gs-card.owned .gs-price { color: var(--gs-mint-deep); }
 .gs-card.locked { opacity: 0.72; }
-.gs-card.soon { opacity: 0.6; }
+.gs-card.soon { opacity: 0.85; }
+.gs-card.soon .gs-card-art { background: linear-gradient(160deg, #f6f1fd, #fdeff4); }
+.gs-soon-more { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px 14px; border-radius: 16px; background: var(--gs-lilac-2); font: 700 13px/1.4 var(--gs-font); color: var(--gs-lilac-deep); }
+.gs-soon-more svg { width: 28px; height: 28px; flex: 0 0 auto; }
 .gs-tagline { font: 800 11px var(--gs-font); padding: 3px 8px; border-radius: 99px; background: var(--gs-lilac-2); color: var(--gs-lilac-deep); align-self: flex-start; }
 .gs-card.just { animation: gs-bought 0.8s var(--gs-ease); }
 @keyframes gs-bought { 20% { transform: scale(1.06) rotate(-1deg); box-shadow: 0 0 0 4px var(--gs-mint), 0 12px 26px rgba(69, 184, 144, 0.3); } }

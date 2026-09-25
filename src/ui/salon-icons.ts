@@ -44,6 +44,21 @@ export const ICON = {
   billboard: svg(`<rect x="3" y="5" width="26" height="14" rx="3" fill="#fbe18f" ${line}/><path d="M9 19v9M23 19v9" ${line}/><path d="M8 12h16" stroke="#f48fb1" stroke-width="3" stroke-linecap="round"/>`),
 }
 
+/** The coming treatments, each with its own little picture for the shop's teaser cards. */
+export const COMING_ICON: Record<string, string> = {
+  'Nose strip': svg(`<path d="M5 12c4-3 8 1 11 1s7-4 11-1c1 4-1 8-4 8-3 0-4-3-7-3s-4 3-7 3c-3 0-5-4-4-8z" fill="#fde6ee" ${line}/><circle cx="12" cy="15" r="1.2" fill="#4a3a52"/><circle cx="16" cy="16" r="1" fill="#4a3a52"/><circle cx="20" cy="15" r="1.2" fill="#4a3a52"/><circle cx="14" cy="18" r=".9" fill="#4a3a52"/>`),
+  'Body scrub and wax': svg(`<rect x="7" y="11" width="18" height="16" rx="5" fill="#f7b7cc" ${line}/><rect x="9" y="6" width="14" height="6" rx="2" fill="#cdbdf2" ${line}/><circle cx="13" cy="18" r="1.3" fill="#fff"/><circle cx="18" cy="21" r="1.3" fill="#fff"/><circle cx="19" cy="16" r="1" fill="#fff"/><circle cx="12" cy="23" r="1" fill="#fff"/>`),
+  'Brows': svg(`<path d="M5 15c4-5 9-6 13-3" fill="none" stroke="#6b4a3a" stroke-width="3.2" stroke-linecap="round"/><path d="M18 26l8-16M21 27l7-14" stroke="#b7a6c9" stroke-width="2" stroke-linecap="round"/><path d="M5 22c3 1 6 1 9 0" fill="none" ${line}/>`),
+  'Lashes': svg(`<path d="M5 17c6-7 16-7 22 0-6 6-16 6-22 0z" fill="#fff" ${line}/><circle cx="16" cy="17" r="3.5" fill="#8f78d6"/><path d="M8 13l-2-3M12 11l-1-3M16 10V7M20 11l1-3M24 13l2-3" stroke="#4a3a52" stroke-width="1.6" stroke-linecap="round"/>`),
+  'Makeup': svg(`<rect x="11" y="16" width="10" height="12" rx="2" fill="#cdbdf2" ${line}/><path d="M12 16V9c0-2 4-5 8-5v12z" fill="#e9577f" ${line}/>`),
+  'Ear care': svg(`<path d="M20 6c-6 0-10 4-10 10 0 3 2 4 2 6 0 3 2 5 5 5s4-2 4-4c0-2 3-3 4-6 1-6-2-11-5-11z" fill="#fbd9c4" ${line}/><path d="M17 12c3 0 4 2 3 4-1 1-3 1-3 3" fill="none" ${line}/>`),
+  'Teeth whitening': svg(`<path d="M9 7c3-2 5 0 7 0s4-2 7 0c3 3 1 8 0 11-1 4-1 9-3 9s-2-6-4-6-2 6-4 6-2-5-3-9C8 15 6 10 9 7z" fill="#fff" ${line}/><path d="M24 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z" fill="#fbd46a"/>`),
+  'Hair wash': svg(`<rect x="10" y="10" width="12" height="18" rx="4" fill="#a9e3cf" ${line}/><rect x="13" y="5" width="6" height="5" rx="1.5" fill="#f7b7cc" ${line}/><circle cx="24" cy="8" r="2.5" fill="#fff" ${line}/><circle cx="27" cy="13" r="1.6" fill="#fff" ${line}/>`),
+  'Beard and shave': svg(`<rect x="6" y="6" width="14" height="7" rx="2" fill="#dfe8f2" ${line}/><path d="M13 13l2 14" stroke="#8f78d6" stroke-width="3.4" stroke-linecap="round"/><path d="M20 20c2-1 5 0 6 2-2 2-5 2-6-2z" fill="#fff" ${line}/>`),
+  'Massage': svg(`<path d="M16 4c4 6 7 9 7 13a7 7 0 0 1-14 0c0-4 3-7 7-13z" fill="#fbe18f" ${line}/><path d="M13 17c0 2 1 3 3 3" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`),
+  'Scalp care': svg(`<rect x="5" y="9" width="22" height="6" rx="3" fill="#cdbdf2" ${line}/><path d="M8 15v9M12 15v10M16 15v10M20 15v10M24 15v9" stroke="#8f78d6" stroke-width="2" stroke-linecap="round"/>`),
+}
+
 /** The shop thumbnail for an item or a campaign that has no painted art. */
 export const SHOP_ICON: Record<string, keyof typeof ICON> = {
   flyers: 'flyer', social: 'phone', radio: 'radio', magazine: 'magazine', loyalty: 'card', influencer: 'camera', billboard: 'billboard',
