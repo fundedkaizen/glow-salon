@@ -75,7 +75,11 @@ export class TreatmentHud {
     this.finishBtn.addEventListener('click', () => opts.actions.finish())
     this.tray.innerHTML = def.steps.map((s, i) => `<div class="tool" data-i="${i}" title="${esc(s.label)}"><svg class="tool-ring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" /></svg><img alt="" src="${toolArt(s.tool).icon}"><span class="tool-check">&#10003;</span><span class="tool-name">${esc(s.label)}</span>${s.optional ? '<span class="tool-opt">extra</span>' : ''}</div>`).join('')
     this.choice.innerHTML = `<span>Pick a colour</span>` + POLISH_COLORS.map((c, i) => `<button class="swatch${opts.wish === i ? ' wish' : ''}" data-i="${i}" style="--c:#${c.hex.toString(16).padStart(6, '0')}" aria-label="${c.name}"></button>`).join('')
-    this.choice.querySelectorAll<HTMLButtonElement>('.swatch').forEach(b => b.addEventListener('click', () => opts.actions.choose(Number(b.dataset.i))))
+    this.choice.querySelectorAll<HTMLButtonElement>('.swatch').forEach(b => b.addEventListener('click', () => {
+      // Tapping the tucked-away colour opens the palette again; any other swatch picks it.
+      if (this.choice.classList.contains('tucked') && b.classList.contains('picked')) { this.choice.classList.remove('tucked'); return }
+      opts.actions.choose(Number(b.dataset.i))
+    }))
   }
 
   setStep(step: number, status: StepStatus[], helperCanChoose = false) {
@@ -118,7 +122,7 @@ export class TreatmentHud {
 
   chosen(i: number | undefined) {
     this.choice.querySelectorAll<HTMLElement>('.swatch').forEach((b, k) => b.classList.toggle('picked', k === i))
-    if (i !== undefined) this.choice.classList.add('has-pick')
+    if (i !== undefined) { this.choice.classList.add('has-pick'); setTimeout(() => this.choice.classList.add('tucked'), 350) }
   }
 
   /** The step reached its goal: a little celebration on the tray. */

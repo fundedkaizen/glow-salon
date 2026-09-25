@@ -72,6 +72,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .swatch.wish::after { content: 'wish'; position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%); font: 800 10px var(--font); color: var(--rose); }
 .swatch.picked { transform: scale(1.18); outline: 4px solid #fff; box-shadow: 0 0 0 7px var(--blush-deep), 0 6px 14px rgba(0, 0, 0, 0.2); }
 .thud-choice.has-pick { opacity: 0.94; transform: scale(0.9); }
+/* Once a colour is picked the palette tucks away to that one swatch (tap it to change colour), so the nails stay in view. */
+.thud-choice.has-pick.tucked > span, .thud-choice.has-pick.tucked .swatch:not(.picked) { display: none; }
 .thud-bottom { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 0 calc(12px + var(--safe-b)); }
 .thud-actions { display: flex; gap: 10px; }
 .thud-actions .pill { min-height: 40px; font-size: 15px; padding: 0 18px; }

@@ -84,14 +84,14 @@ export class Lobby {
 
   private press() { sfx.unlock(); music.start(); sfx.click() }
 
-  private panel(title: string, body: string): { veil: HTMLElement; panel: HTMLElement } {
+  private panel(title: string, body: string, tapOutsideCloses = true): { veil: HTMLElement; panel: HTMLElement } {
     const veil = h('div', 'gs-veil')
     const panel = h('div', 'gs-panel', `<h2>${title}</h2>${body}`)
     const x = h('button', 'gs-os-close', '&times;')
     x.onclick = () => { sfx.click(); veil.remove(); this.onCoopCancel() }
     panel.querySelector('h2')!.append(x)
     veil.append(panel)
-    veil.addEventListener('pointerdown', e => { if (e.target === veil) { veil.remove() } })
+    if (tapOutsideCloses) veil.addEventListener('pointerdown', e => { if (e.target === veil) { veil.remove() } })
     this.el.append(veil)
     return { veil, panel }
   }
@@ -152,7 +152,8 @@ export class Lobby {
   /** The room: invite link and who is here. Updated as people come and go. */
   showCoop(v: CoopView) {
     if (!this.coopPanel || !this.coopPanel.isConnected) {
-      const { panel } = this.panel(v.role === 'host' ? 'Room ready' : 'Joining', '')
+      // The room window stays until its X: a stray tap (or coming back from sharing the link) never closes it.
+      const { panel } = this.panel(v.role === 'host' ? 'Room ready' : 'Joining', '', false)
       this.coopPanel = panel
     }
     const panel = this.coopPanel
@@ -168,6 +169,13 @@ export class Lobby {
       copy.onclick = async () => { try { await navigator.clipboard.writeText(v.link); msg.textContent = 'Link copied.'; msg.className = 'gs-msg ok' } catch { input.select(); msg.textContent = 'Select the link and copy it.'; msg.className = 'gs-msg' } sfx.click() }
       row.append(input, copy)
       panel.append(row, msg)
+      // On a phone: the share sheet (WhatsApp, Messages...) straight from the game.
+      if (typeof navigator.share === 'function') {
+        const share = h('button', 'gs-btn pink big', 'Share the link')
+        share.style.width = '100%'
+        share.onclick = async () => { sfx.click(); try { await navigator.share({ title: 'Glow Salon', text: 'Come run my salon with me!', url: v.link }) } catch { /* closed the sheet */ } }
+        panel.append(share)
+      }
       panel.insertAdjacentHTML('beforeend', `<div class="gs-section">Room ${esc(v.code)}</div>`)
     }
     const list = h('div', 'gs-players')
@@ -235,7 +243,7 @@ function nameField(): HTMLElement {
 }
 
 /** The settings panel, from the title or the floor. */
-export function openSettings(host: HTMLElement, extra?: { onQuit?: () => void; onRename?: (name: string) => void }) {
+export function openSettings(host: HTMLElement, extra?: { onQuit?: () => void; onRename?: (name: string) => void; onInvite?: () => void }) {
   const veil = h('div', 'gs gs-veil')
   const panel = h('div', 'gs-panel', `<h2>Settings</h2>`)
   const x = h('button', 'gs-os-close', '&times;')
@@ -271,6 +279,7 @@ export function openSettings(host: HTMLElement, extra?: { onQuit?: () => void; o
   panel.append(nf)
   panel.insertAdjacentHTML('beforeend', `<p style="font:700 13px/1.4 Nunito;color:var(--gs-ink-soft);margin:10px 0 0">${settings.control === 'touch' ? 'Tap the floor to walk, tap a station or the computer to use it.' : 'WASD or arrows to walk, F to use what is in front of you. Clicking works too.'}</p>`)
   const actions = h('div', 'gs-actions')
+  if (extra?.onInvite) { const inv = h('button', 'gs-btn lilac', 'Invite a friend'); inv.onclick = () => { close(); extra.onInvite!() }; actions.append(inv) }
   if (extra?.onQuit) { const q = h('button', 'gs-btn', 'Save and go to title'); q.onclick = () => { close(); extra.onQuit!() }; actions.append(q) }
   const done = h('button', 'gs-btn pink', 'Done')
   done.onclick = close
