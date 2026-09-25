@@ -48,6 +48,12 @@ export class CoopLink<Out extends { t: string }, In extends { t: string } = Out 
   readonly peers = new Set<number>()
   private socket: WebSocket | null = null
   private closed = false
+  /** The relay's key for this seat: coming back with it takes the same room and number (server/coop-relay.mjs). */
+  private key = ''
+  /** When the socket dropped (0 while connected), and the next try to come back. */
+  private droppedAt = 0
+  private retry: ReturnType<typeof setTimeout> | null = null
+  private watching = false
   private onMessage: (message: In) => void
   private onStatus: (status: CoopStatus) => void
   private onPeer: (id: number, joined: boolean) => void
@@ -65,11 +71,42 @@ export class CoopLink<Out extends { t: string }, In extends { t: string } = Out 
   open(code?: string) {
     this.close()
     this.closed = false
-    const socket = new WebSocket(`${relayUrl()}${code ? `?room=${encodeURIComponent(code)}` : ''}`)
+    this.key = ''
+    this.watchVisibility()
+    this.connect(code ?? '', '')
+  }
+
+  /** A phone that comes back to the page reconnects at once, instead of waiting for the next try. */
+  private watchVisibility() {
+    if (this.watching || typeof document === 'undefined') return
+    this.watching = true
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && this.droppedAt && !this.closed) this.resume()
+    })
+  }
+
+  /** Take this seat back after a drop (the relay holds it for about 90 s). */
+  private resume() {
+    if (this.retry) { clearTimeout(this.retry); this.retry = null }
+    if (Date.now() - this.droppedAt > 85000) {
+      this.droppedAt = 0
+      this.close()
+      this.onStatus({ kind: 'error', reason: 'The connection dropped.' })
+      return
+    }
+    this.connect(this.code, this.key)
+  }
+
+  private connect(code: string, key: string) {
+    const query = code ? `?room=${encodeURIComponent(code)}${key ? `&key=${encodeURIComponent(key)}` : ''}` : ''
+    const socket = new WebSocket(`${relayUrl()}${query}`)
     this.socket = socket
-    this.onStatus({ kind: 'connecting' })
+    const resuming = !!key
+    let answered = false
+    if (!resuming) this.onStatus({ kind: 'connecting' })
     const timeout = setTimeout(() => {
-      if (this.socket !== socket || this.role) return
+      if (this.socket !== socket || answered) return
+      if (resuming) { try { socket.close() } catch { /* gone */ } return }
       this.close()
       this.onStatus({ kind: 'error', reason: 'Could not reach the co-op server. Check the connection and try again.' })
     }, 6000)
@@ -78,6 +115,10 @@ export class CoopLink<Out extends { t: string }, In extends { t: string } = Out 
       try { message = JSON.parse(String(event.data)) } catch { return }
       if (message.t === 'room') {
         clearTimeout(timeout)
+        answered = true
+        this.droppedAt = 0
+        if (typeof message.key === 'string') this.key = message.key
+        if (message.resumed) { this.onStatus(this.paired ? { kind: 'paired', code: this.code, link: this.link, role: this.role! } : this.role === 'host' ? { kind: 'waiting', code: this.code, link: this.link } : { kind: 'alone', code: this.code, link: this.link, role: 'guest' }); return }
         this.role = message.you as CoopRole
         this.id = Number(message.id ?? 0)
         this.code = String(message.code)
@@ -98,10 +139,17 @@ export class CoopLink<Out extends { t: string }, In extends { t: string } = Out 
     }
     socket.onclose = () => {
       if (this.closed || this.socket !== socket) return
-      for (const id of [...this.peers]) { this.peers.delete(id); this.onPeer(id, false) }
-      this.onStatus({ kind: 'error', reason: 'The connection dropped.' })
+      // Before the room existed: nothing to come back to.
+      if (!this.key || !this.code) {
+        for (const id of [...this.peers]) { this.peers.delete(id); this.onPeer(id, false) }
+        this.onStatus({ kind: 'error', reason: 'The connection dropped.' })
+        return
+      }
+      // A drop (a phone leaving the page, a hiccup): keep the room and the players, and come back to the same seat.
+      if (!this.droppedAt) this.droppedAt = Date.now()
+      this.retry = setTimeout(() => this.resume(), 2000)
     }
-    socket.onerror = () => { if (this.socket === socket && !this.role) this.onStatus({ kind: 'error', reason: 'Could not reach the co-op server.' }) }
+    socket.onerror = () => { if (this.socket === socket && !this.role && !resuming) this.onStatus({ kind: 'error', reason: 'Could not reach the co-op server.' }) }
   }
 
   /** Send to the host (from a guest), or from the host to the guests `route` names (all of them by default). */
@@ -115,6 +163,8 @@ export class CoopLink<Out extends { t: string }, In extends { t: string } = Out 
 
   close() {
     this.closed = true
+    if (this.retry) { clearTimeout(this.retry); this.retry = null }
+    this.droppedAt = 0
     for (const id of [...this.peers]) { this.peers.delete(id); this.onPeer(id, false) }
     this.role = null
     this.id = 0

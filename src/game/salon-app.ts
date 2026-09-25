@@ -230,13 +230,7 @@ export class SalonGame {
   private onHostStatus(status: CoopStatus) {
     if (status.kind === 'waiting') this.showRoom('Waiting for friends to join.')
     else if (status.kind === 'paired' && (this.lobby.roomOpen || this.host?.phase === 'prep')) this.showRoom('')
-    else if (status.kind === 'error') {
-      // A phone that leaves the page to share the link can drop the socket: open a fresh room instead of giving up,
-      // and keep the room window (with its new link) on screen.
-      if (this.lobby.roomOpen) this.lobby.showCoop({ code: '', link: '', players: [], role: 'guest', me: 0, status: 'Reconnecting...', canStart: false })
-      this.hud?.toast('Reconnecting the co-op room...', '#f59ab7', 3000)
-      setTimeout(() => { if (this.hostLink && this.mode !== 'title') this.hostLink.open() }, 1500)
-    }
+    else if (status.kind === 'error') { this.hud?.toast(`${status.reason} You are playing solo.`, '#f59ab7', 5000); this.lobby.hide() }
   }
 
   private showRoom(status: string) {
