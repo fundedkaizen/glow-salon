@@ -34,7 +34,7 @@ function playAll(s: TreatmentSession): Op[] {
         const t = s.stepTargets().find(x => !x.done)
         if (!t) break
         if (step.gesture === 'sweep') push({ k: 'stroke', s: i, x0: t.x - 20, y0: t.y, x1: t.x + 20, y1: t.y })
-        else if (t.kind === 'whitehead' || t.kind === 'hangnail') { push({ k: 'tap', s: i, x: t.x, y: t.y }); for (let h = 0; h < 30 && !t.done && !(t.stage === 1 && !t.gripped); h++) push({ k: 'hold', s: i, x: t.x, y: t.y, dt: 0.1 }) }
+        else if (t.kind === 'whitehead' || t.kind === 'hangnail' || t.kind === 'corn' || t.kind === 'ingrown' || t.kind === 'splinter') { push({ k: 'tap', s: i, x: t.x, y: t.y }); for (let h = 0; h < 30 && !t.done && !(t.stage === 1 && !t.gripped); h++) push({ k: 'hold', s: i, x: t.x, y: t.y, dt: 0.1 }) }
         else push({ k: 'tap', s: i, x: t.x, y: t.y })
         if (step.optional) break
       } else {
@@ -230,6 +230,24 @@ export function run() {
     check('a claim runs out', !playerHolds(other, 's0'))
     check('a claim for a station that does not exist is refused', !reduce(other, 0, { a: 'claim', station: 's9' }))
   }
+
+  // ---------------------------------------------------------------- the step counter is planned up front (C2-21)
+  const drops: string[] = []
+  let plays = 0
+  for (const treatment of ['facial', 'nails', 'feet'] as const) {
+    for (let seed = 200; seed < 216; seed++) {
+      const s = new TreatmentSession({ treatment, seed, disaster: seed % 5 === 0 })
+      const planned = s.status.map((st, i) => (st === 'na' ? -1 : i)).filter(i => i >= 0)
+      playAll(s)
+      plays++
+      const dropped = planned.filter(i => s.status[i] === 'na')
+      if (dropped.length) drops.push(`${treatment}:${seed}:${dropped.map(i => s.def.steps[i].id).join('+')}`)
+    }
+  }
+  check('step counter: played in full, the planned steps are the steps played (the total never changes)', drops.length === 0 && plays === 48, drops)
+  const skipper = new TreatmentSession({ treatment: 'facial', seed: 4 })
+  const plannedCount = skipper.status.filter(st => st !== 'na').length
+  check('step counter: steps a customer will never need are out from the start', plannedCount < skipper.def.steps.length || skipper.def.steps.every(st => !st.need), { plannedCount, all: skipper.def.steps.length })
 
   // ---------------------------------------------------------------- the shop's coming treatments are real cards (C2-18)
   check('every coming treatment says what it is', COMING_SOON.every(n => (COMING_SOON_TEASER[n] ?? '').length > 20) && new Set(Object.values(COMING_SOON_TEASER)).size === COMING_SOON.length)

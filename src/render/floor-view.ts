@@ -944,7 +944,10 @@ export class FloorView {
       if (working) {
         const cx = p.x + 10, cy = p.y - 118
         info.ring.circle(cx, cy, 13).fill({ color: 0xffffff, alpha: 0.95 }).stroke({ width: 1.2, color: 0xe9c2d0 })
-        info.ring.moveTo(cx, cy - 13).arc(cx, cy, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.02, st.progress)).stroke({ width: 4, color: st.lead !== null && st.lead >= STAFF_ID_BASE ? 0x4fbf98 : PLAYER_COLORS[(st.lead ?? 0) % 4], cap: 'round' })
+        // How far along the whole treatment is (a player reports the step and that step's progress; staff the whole).
+        const staffLed = st.lead !== null && st.lead >= STAFF_ID_BASE
+        const done = staffLed ? st.progress : Math.min(1, (st.step + st.progress) / Math.max(1, st.steps))
+        info.ring.moveTo(cx, cy - 13).arc(cx, cy, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.02, done)).stroke({ width: 4, color: st.lead !== null && st.lead >= STAFF_ID_BASE ? 0x4fbf98 : PLAYER_COLORS[(st.lead ?? 0) % 4], cap: 'round' })
         info.ring.circle(cx, cy, 4).fill({ color: 0xf5b83d })
       }
       // A label: who is on it, or a staff member about to step in.
