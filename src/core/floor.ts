@@ -138,9 +138,9 @@ function openCellNear(grid: Uint8Array, p: Pt) {
   if (!grid[cy * COLS + cx]) return { cx, cy }
   for (let r = 1; r < 8; r++) {
     let best: { cx: number; cy: number } | null = null, bestD = Infinity
-    for (let y = cy - r - 1; y <= cy + r + 1; y++) for (let x = cx - r; x <= cx + r; x++) {
+    for (let y = cy - r; y <= cy + r + 2; y++) for (let x = cx - r; x <= cx + r; x++) {
       if (x < 0 || y < 0 || x >= COLS || y >= ROWS || grid[y * COLS + x]) continue
-      const d = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) - (y > cy ? 0.6 : 0)
+      const d = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) - (y > cy ? 1.6 : 0)
       if (d < bestD) { bestD = d; best = { cx: x, cy: y } }
     }
     if (best) return best
@@ -262,6 +262,20 @@ export function findPath(grid: Uint8Array, from: Pt, to: Pt): Pt[] {
   if (end.cx !== goal.cx || end.cy !== goal.cy) pts.push({ x: goal.cx * CELL + CELL / 2, y: goal.cy * CELL + CELL / 2 })
   pts.push(to)
   return pts
+}
+
+/** Whether a point is on open floor (not in a wall or furniture). */
+export function isOpen(grid: Uint8Array, p: Pt): boolean { const { cx, cy } = cellOf(p); return !grid[cy * COLS + cx] }
+
+/**
+ * Where a player's tap on furniture takes them: straight down the screen to the furniture's front edge (the first
+ * open cell below the tapped point), so a tap on a sofa walks up to the sofa, not round behind it. Open points stay.
+ */
+export function frontOf(grid: Uint8Array, p: Pt): Pt {
+  if (isOpen(grid, p)) return p
+  const { cx, cy } = cellOf(p)
+  for (let y = cy + 1; y < Math.min(ROWS, cy + 8); y++) if (!grid[y * COLS + cx]) return { x: cx * CELL + CELL / 2, y: y * CELL + CELL / 2 }
+  return p
 }
 
 /** Move a point along a path by `step` pixels; returns the remaining path. */

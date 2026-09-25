@@ -89,7 +89,7 @@ export function furnish(b: Build, iso: Build, spec: FurnishSpec): Furnished {
   const rugZ0 = sofaZ - 0.45, rugZ1 = wa.z + lenZ(wc.h) / 2 + 0.35
   floorDecal(b, rugTexture('round', '#bfeee4', '#7fd4c2', '#ffffff'), lc.x, (rugZ0 + rugZ1) / 2, lenX(SOFA.w) + 0.5, rugZ1 - rugZ0, 0.004)
   piece('armchairs', () => armchairsModel(b, wa.x, wa.z, lenX(wc.w), 0) || waitingCorner(b, wa.x, wa.z, lenX(wc.w), lenZ(wc.h)))
-  piece('welcome', () => welcomeSign(b, WELCOME.x, WELCOME.z, 1.1))
+  piece('welcome', () => placeModel(b, 'a-frame-sign', WELCOME.x, WELCOME.z, 0.87 - Math.PI, { style: 0 }) || welcomeSign(b, WELCOME.x, WELCOME.z, 1.1))
   piece('frontLamp', () => placeModel(b, 'floor-lamp', FRONT_LAMP.x, FRONT_LAMP.z, 0, { style: 2 }) || floorLamp(b, FRONT_LAMP.x, FRONT_LAMP.z, 0xfbe0e8))
   lampGlow(FRONT_LAMP.x, 1.5, FRONT_LAMP.z, 0.6)
   // The little fountain planter in the front right corner (the fountain garden upgrade grows there).

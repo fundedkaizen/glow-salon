@@ -10,7 +10,7 @@ import { canBuy, ITEM_BY_ID, ITEMS, STATION_NAME, type Item } from '../core/econ
 import { ghostPicks, levelProgress, salonLevel, STYLE_COUNT, tierOf } from '../core/unlocks.ts'
 import { confetti } from '../ui/confetti.ts'
 import { TREATMENTS } from '../core/treatments/registry.ts'
-import { blockedGrid, CELL, COLS, COMPUTER_SPOT, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA_SEATS, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
+import { frontOf, isOpen, blockedGrid, CELL, COLS, COMPUTER_SPOT, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA_SEATS, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
 import { personaFor, storyBeat } from '../core/persona.ts'
 import { withFigure } from '../core/figure.ts'
 import type { Action } from '../core/salon.ts'
@@ -32,7 +32,7 @@ import { lenX, lenZ, ROOM3, toSim, toWorld, turnTo, yawFor } from './mapping.ts'
 import { moodBubble, nameTag, speech, toolBubble, waitDots } from './overlay.ts'
 import { Person3D, type Tool3 } from './person3d.ts'
 import { ModelPerson, modelPerson } from './model-person.ts'
-import { loadPeople } from './people-models.ts'
+import { loadCat, loadPeople } from './people-models.ts'
 import { buildRoom, type RoomParts } from './room.ts'
 import { furnish, newBuild } from './furnish.ts'
 import { furnitureFiles, hasModel, loadModelFiles } from './models.ts'
@@ -276,6 +276,7 @@ export class FloorView3D {
     this.cat = new Cat3D(() => this.grid)
     this.cat.onZ = text => { const p = this.catWorld(); this.float(text, _v.set(p.x - 0.1, p.y + 0.45, p.z), 0x9c86d9, 16) }
     this.scene.add(this.cat.root)
+    loadCat().then(f => { if (f && !this.destroyed) this.cat.useModel(f.scene, f.clips) })
     // ---- overlays
     this.root.addChild(this.fxLayer, this.uiLayer)
     this.fxLayer.addChild(this.fx.root)
@@ -883,6 +884,12 @@ export class FloorView3D {
       const t = -ray.origin.y / ray.direction.y
       if (t > 0) { const p = ray.at(t, _v2); floor = toSim(p.x, p.z) }
     }
+    // A tap on furniture (a sofa with someone on it, say) means the furniture, not the floor hidden behind it: the
+    // walk then ends at its front edge (walkTo), never behind it or through it.
+    if (this.furniture) {
+      const hit = this.raycaster.intersectObject(this.furniture, true).find(h => h.object instanceof Mesh && h.point.y > 0.05)
+      if (hit) floor = toSim(hit.point.x, hit.point.z)
+    }
     let slot = -1
     if (floor) for (const g of this.ghosts) { const at = SLOTS[g.slot]; if (Math.abs(floor.x - at.x) < 80 && Math.abs(floor.y - at.y) < 60) slot = g.slot }
     // The grey ghosts, and (while decorating) the pieces that can change their look: the nearest hit.
@@ -901,7 +908,12 @@ export class FloorView3D {
     if (hit.slot >= 0 && unplaced && this.ghosts.some(g => g.slot === hit.slot)) { sfx.click(); this.hooks.onAction({ a: 'place', station: unplaced.id, slot: hit.slot }); return }
     // A tap on a waiting customer calls them to a free station; a tap on a free station calls the next in line.
     const who = this.customerAt(e.global.x, e.global.y)
-    if (who !== null) { sfx.pop(1); this.hooks.onAction({ a: 'call', customer: who } as Action); return }
+    if (who !== null) {
+      const c = this.state.customers.find(x => x.id === who)!
+      if (this.callable(this.state, c)) { sfx.pop(1); this.hooks.onAction({ a: 'call', customer: who } as Action) }
+      else { sfx.miss(); softPop(0.7); this.progress?.toast(this.state.stations.some(s => s.lead === this.playerId) ? 'Finish your current customer first' : 'All chairs are busy') }
+      return
+    }
     if (hit.target?.kind === 'station') {
       const st = this.state.stations.find(s => s.id === (hit.target as { id: string }).id)
       if (st && st.customer === null && this.state.customers.some(c => this.callable(this.state!, c) && TREATMENTS[c.plan.treatment]?.station === st.kind)) { sfx.pop(1); this.hooks.onAction({ a: 'call', station: st.id } as Action) }
@@ -913,14 +925,14 @@ export class FloorView3D {
     this.walkTo(hit.floor)
   }
 
-  /** The waiting customer under a screen point who can be called, if any (their body or their bubble). */
+  /** The waiting customer under a screen point, if any (their body or their bubble). */
   private customerAt(sx: number, sy: number): number | null {
     const st = this.state
     if (!st) return null
     let best: number | null = null, bd = 46 * this.ui
     for (const c of st.customers) {
       const v = this.customers.get(c.id)
-      if (!v || !this.callable(st, c)) continue
+      if (!v || this.demo || (c.state !== 'waiting' && c.state !== 'entering')) continue
       for (const y of [0.6, 1.1, v.head.y + 0.3]) {
         const p = this.project(_v.set(v.person.root.position.x, y, v.person.root.position.z))
         if (!p) continue
@@ -947,9 +959,13 @@ export class FloorView3D {
 
   private walkTo(p: Pt) {
     const x = Math.max(24, Math.min(FLOOR_W - 24, p.x)), y = Math.max(186, Math.min(FLOOR_H - 22, p.y))
-    this.path = findPath(this.grid, this.me, { x, y })
+    this.path = findPath(this.grid, this.me, frontOf(this.grid, { x, y }))
+    // A tap on furniture (a sofa with someone on it, a chair) walks to its front edge, never into it.
+    const last = this.path[this.path.length - 1]
+    if (last && this.path.length > 1 && !isOpen(this.grid, last)) this.path.pop()
     this.markerT = 1
-    const m = toWorld(x, y)
+    const end = this.path[this.path.length - 1] ?? { x, y }
+    const m = toWorld(end.x, end.y)
     this.marker.position.set(m.x, 0.02, m.z)
   }
 

@@ -27,5 +27,15 @@ export function loadPeople(read?: (file: string) => Promise<ArrayBuffer>): Promi
   return loading
 }
 
+let catLoading: Promise<PeopleFile | null> | null = null
+/** Helper B's rigged cat (life/cat.glb), loaded once. */
+export function loadCat(): Promise<PeopleFile | null> {
+  if (catLoading) return catLoading
+  const loader = new GLTFLoader()
+  loader.setMeshoptDecoder(MeshoptDecoder)
+  catLoading = loader.loadAsync(`${import.meta.env?.BASE_URL ?? '/'}models/life/cat.glb`).then(g => ({ scene: g.scene, clips: g.animations })).catch(error => { console.warn('3D cat unavailable, using the stand-in', error); return null })
+  return catLoading
+}
+
 /** The people, if they have loaded. */
 export function people(): PeopleFiles | null { return loaded }

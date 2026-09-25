@@ -1,4 +1,5 @@
-import { Bone, BufferAttribute, BufferGeometry, Color, Group, Matrix4, Skeleton, SkinnedMesh } from 'three'
+import { AnimationMixer, Bone, BufferAttribute, BufferGeometry, Color, Group, Matrix4, Skeleton, SkinnedMesh, type AnimationAction, type AnimationClip, type Object3D } from 'three'
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { findPath, type Pt } from '../core/floor.ts'
 import { G, tf } from './kit.ts'
@@ -43,6 +44,20 @@ export class Cat3D {
   private hopFrom = 0
   private hopTo = 0
   onZ: (text: string) => void = () => {}
+  /** Helper B's cat, once loaded: its clips play by state (walk, sleep, idle) and the stand-in hides. */
+  private model: { root: Object3D; mixer: AnimationMixer; actions: Map<string, AnimationAction>; current: AnimationAction | null } | null = null
+
+  /** Swap the stand-in for the modelled cat (life/cat.glb). */
+  useModel(scene: Object3D, clips: AnimationClip[]) {
+    if (this.model) return
+    const root = cloneSkinned(scene)
+    root.traverse(o => { if ((o as SkinnedMesh).isMesh) { o.castShadow = true; o.frustumCulled = false } })
+    const mixer = new AnimationMixer(root)
+    const actions = new Map(clips.map(c => [c.name, mixer.clipAction(c)] as const))
+    this.model = { root, mixer, actions, current: null }
+    this.mesh.visible = false
+    this.root.add(root)
+  }
   private grid: () => Uint8Array
 
   constructor(grid: () => Uint8Array) {
@@ -114,6 +129,7 @@ export class Cat3D {
 
   update(dt: number) {
     this.t += dt
+    this.animateModel(dt)
     if (this.hopT >= 0) {
       this.hopT = Math.min(1, this.hopT + dt * 2.6)
       this.up = this.hopFrom + (this.hopTo - this.hopFrom) * this.hopT + Math.sin(this.hopT * Math.PI) * 0.25
@@ -162,6 +178,22 @@ export class Cat3D {
     const swish = sleep ? Math.sin(this.t * 0.8) * 0.08 : Math.sin(this.t * (this.state === 'happy' ? 7 : 2.2)) * 0.35
     b[CB.tail1].rotation.set(sleep ? 1.4 : sit ? 1.2 : -0.6, 0, swish + (sleep ? 1.2 : 0))
     b[CB.tail2].rotation.set(sleep ? 0.6 : this.state === 'happy' ? -0.2 : 0.5, 0, swish * 0.8)
+  }
+
+  /** The modelled cat's clip for its state: walking, asleep (curled up), or idle (sitting, petted). */
+  private animateModel(dt: number) {
+    const m = this.model
+    if (!m) return
+    const name = this.state === 'walk' && this.path.length ? 'walk' : this.state === 'sleep' ? 'sleep' : 'idle'
+    const next = m.actions.get(name) ?? m.actions.get('idle')
+    if (next && next !== m.current) {
+      next.reset().play()
+      if (m.current) next.crossFadeFrom(m.current, 0.3, false)
+      m.current = next
+    }
+    const walk = m.actions.get('walk')
+    if (walk) walk.timeScale = 62 / 100 / 0.45
+    m.mixer.update(dt)
   }
 
   destroy() {

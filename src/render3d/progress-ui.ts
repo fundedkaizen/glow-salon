@@ -48,6 +48,7 @@ const CSS = `
 @keyframes g3-pop{40%{transform:translateY(-10px) scale(1.14)}}
 @keyframes g3-drop{from{transform:translate(-50%,-80px)}}
 @keyframes g3-rise{from{opacity:0;transform:translate(-50%,40px)}}
+.g3-toast{position:absolute;left:50%;top:calc(120px + env(safe-area-inset-top));transform:translateX(-50%);padding:9px 16px;border-radius:999px;background:#fff;color:#5a3a52;font:800 15px Nunito,sans-serif;box-shadow:0 8px 20px rgba(90,58,82,.18);border:2px solid #f2b8c9;white-space:nowrap;animation:g3-toast-in .22s ease-out;transition:opacity .4s}.g3-toast.out{opacity:0}@keyframes g3-toast-in{from{transform:translate(-50%,-8px);opacity:0}}
 @media (max-width:520px){.g3-deco{left:auto;right:8px;bottom:auto;top:calc(64px + env(safe-area-inset-top));min-height:36px;padding:0 12px 0 9px;font-size:13px}.g3-card{width:92px}.g3-card img{width:80px;height:60px}.g3-ribbon{font-size:24px;padding:6px 26px 8px}.g3-bar-main{min-width:118px}}
 `
 
@@ -98,6 +99,16 @@ export class ProgressUi {
   place(top: number, left: number) { this.bar.style.top = `${Math.round(top)}px`; this.bar.style.left = `${Math.round(left)}px` }
 
   set visible(on: boolean) { this.root.style.display = on ? '' : 'none' }
+
+  /** A short message at the top of the floor (a tap that cannot happen yet, and why). */
+  toast(text: string) {
+    const t = document.createElement('div')
+    t.className = 'g3-toast'
+    t.textContent = text
+    this.root.append(t)
+    setTimeout(() => t.classList.add('out'), 1800)
+    setTimeout(() => t.remove(), 2300)
+  }
 
   /** The Decorate button shows in the morning; `on` while decorating. */
   setDecorate(available: boolean, on: boolean) {

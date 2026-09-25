@@ -11,7 +11,8 @@ import { sfx } from '../audio/sfx.ts'
 import { randomLook, type Look } from '../core/customers.ts'
 import { DECOR_ITEM_BY_ID, DECOR_SLOTS, GIFT_BY_ID, GIFT_SLOTS, placeDecor } from '../core/decor.ts'
 import { canBuy, ITEM_BY_ID, ITEMS, STATION_NAME } from '../core/economy.ts'
-import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA_SEATS, stationRect, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
+import { TREATMENTS } from '../core/treatments/registry.ts'
+import { frontOf, isOpen, blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA_SEATS, stationRect, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
 import { personaFor, storyBeat } from '../core/persona.ts'
 import { withFigure } from '../core/figure.ts'
 import { hashString, makeRng } from '../core/rng.ts'
@@ -624,7 +625,12 @@ export class FloorView {
     for (const c of this.state.customers) {
       if (c.state !== 'waiting' && c.state !== 'entering') continue
       const v = this.customers.get(c.id)
-      if (v && Math.abs(p.x - v.x) < 30 && p.y < v.y + 10 && p.y > v.y - 150) { sfx.click(); this.hooks.onAction({ a: 'call', customer: c.id }); return }
+      if (v && Math.abs(p.x - v.x) < 30 && p.y < v.y + 10 && p.y > v.y - 150) {
+        const kind = TREATMENTS[c.plan.treatment]?.station
+        if (this.state.stations.some(s => s.customer === null && s.slot >= 0 && s.kind === kind)) { sfx.click(); this.hooks.onAction({ a: 'call', customer: c.id }) }
+        else { sfx.miss(); this.float(this.state.stations.some(s => s.lead === this.playerId) ? 'Finish your current customer first' : 'All chairs are busy', v.x, v.y - 150, 0xe2729a, 18) }
+        return
+      }
     }
     const catPos = this.cat.pos
     if (Math.hypot(p.x - catPos.x, p.y - (catPos.y - 16)) < 34) { this.goTo({ kind: 'cat', x: this.cat.x, y: this.cat.y }); return }
@@ -653,7 +659,10 @@ export class FloorView {
 
   private walkTo(p: Pt) {
     const x = Math.max(24, Math.min(FLOOR_W - 24, p.x)), y = Math.max(186, Math.min(FLOOR_H - 22, p.y))
-    this.path = findPath(this.grid, this.me, { x, y })
+    this.path = findPath(this.grid, this.me, frontOf(this.grid, { x, y }))
+    // A tap on furniture walks to its front edge, never into it.
+    const last = this.path[this.path.length - 1]
+    if (last && this.path.length > 1 && !isOpen(this.grid, last)) this.path.pop()
     this.markerT = 1
     this.moveMarker.position.set(x, y)
   }

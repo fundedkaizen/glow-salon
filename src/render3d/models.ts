@@ -1,4 +1,4 @@
-import { BufferAttribute, BufferGeometry, Color, type Group, type Mesh, type MeshStandardMaterial } from 'three'
+import { BufferAttribute, BufferGeometry, Color, Mesh, type Group, type MeshStandardMaterial } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { MODEL_BY_ID, MODELS, type ModelEntry, type NodeInfo } from '../art3d/catalog.ts'
@@ -11,7 +11,8 @@ import { tf, type Kit, type Tier } from './kit.ts'
  * occlusion becomes the vertex colour, and its material's role picks the finish (gold trim is metal, glass is glass,
  * lamps glow). A whole salon of models stays a handful of draw calls, and the mesh layout check sees every mesh.
  */
-type Baked = { geo: BufferGeometry; tier: Tier; material: string; color: Color }
+/** A mesh ready to bake; `textured`: it has a picture (a chalkboard, say), so it stays its own mesh with its material. */
+type Baked = { geo: BufferGeometry; tier: Tier; material: string; color: Color; textured?: MeshStandardMaterial }
 const baked = new Map<string, Baked[]>()
 const pending = new Map<string, Promise<void>>()
 
@@ -38,6 +39,8 @@ function bake(scene: Group): Baked[] {
     const copy = (name: string, size: number) => { const a = src.getAttribute(name); const arr = new Float32Array(n * size); if (a) for (let i = 0; i < n; i++) for (let k = 0; k < size; k++) arr[i * size + k] = a.getComponent(i, k); return arr }
     g.setAttribute('position', new BufferAttribute(copy('position', 3), 3))
     g.setAttribute('normal', new BufferAttribute(copy('normal', 3), 3))
+    const mat0 = m.material as MeshStandardMaterial
+    if (mat0.map && src.getAttribute('uv')) g.setAttribute('uv', new BufferAttribute(copy('uv', 2), 2))
     const ao = src.getAttribute('color')
     const col = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) { col[i * 3] = ao ? ao.getX(i) : 1; col[i * 3 + 1] = ao ? ao.getY(i) : 1; col[i * 3 + 2] = ao ? ao.getZ(i) : 1 }
@@ -46,7 +49,7 @@ function bake(scene: Group): Baked[] {
     const ng = g.index ? g.toNonIndexed() : g
     ng.applyMatrix4(m.matrixWorld)
     const mat = m.material as MeshStandardMaterial
-    out.push({ geo: ng, tier: tierFor(mat.name), material: mat.name, color: mat.color.clone() })
+    out.push({ geo: ng, tier: tierFor(mat.name), material: mat.name, color: mat.color.clone(), textured: mat.map ? mat : undefined })
   })
   return out
 }
@@ -91,12 +94,18 @@ export function styleOf(m: ModelEntry, style = 0): { file: string; overrides: Re
  * Bake a model into the kit at (x, z), turned `ry`, scaled `k` (or [kx, ky, kz]). `tint`: colours by material name
  * over the model's own. Returns false when the model has not loaded (the caller builds its stand-in).
  */
-export function bakeModel(kit: Kit, file: string, x: number, z: number, ry = 0, k: number | [number, number, number] = 1, tint: Record<string, number> = {}, y = 0): boolean {
+export function bakeModel(kit: Kit, file: string, x: number, z: number, ry = 0, k: number | [number, number, number] = 1, tint: Record<string, number> = {}, y = 0, extra?: Group): boolean {
   const parts = baked.get(file)
   if (!parts) return false
   const [sx, sy, sz] = typeof k === 'number' ? [k, k, k] : k
   const frame = tf(x, y, z, 0, ry, 0, sx, sy, sz)
   for (const p of parts) {
+    if (p.textured && extra) {
+      const m = new Mesh(p.geo.clone().applyMatrix4(frame), p.textured)
+      m.castShadow = m.receiveShadow = true
+      extra.add(m)
+      continue
+    }
     const c = tint[p.material] !== undefined ? new Color(tint[p.material]) : p.color
     kit.addColoured(p.geo, c, p.tier, frame)
   }

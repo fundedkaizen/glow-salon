@@ -13,6 +13,7 @@ import { loungeModel, stationModel } from '../src/render3d/model-pieces.ts'
 import { modelPerson, type ModelPerson } from '../src/render3d/model-person.ts'
 import { furnitureFiles, loadModelFiles } from '../src/render3d/models.ts'
 import { loadPeople } from '../src/render3d/people-models.ts'
+import { withoutImages } from './glb.ts'
 
 /**
  * Seated people, posed by the real clips on the real models: a customer sits in every seat (the facial recliner,
@@ -24,24 +25,6 @@ import { loadPeople } from '../src/render3d/people-models.ts'
  * are checked against everything, though an arm may lie on a surface that faces up (an armrest, a reclined back).
  */
 const SLACK = 0.03
-
-/** The GLB with its images dropped (Node has no image decoder; the check needs the rig and the clips, not the textures). */
-function withoutImages(buf: Buffer): ArrayBuffer {
-  const jsonLen = buf.readUInt32LE(12)
-  const json = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'))
-  delete json.images; delete json.textures; delete json.samplers
-  const strip = (o: Record<string, unknown>) => { for (const k of Object.keys(o)) { if (/Texture$/.test(k)) delete o[k]; else if (o[k] && typeof o[k] === 'object') strip(o[k] as Record<string, unknown>) } }
-  for (const m of json.materials ?? []) strip(m)
-  let text = JSON.stringify(json)
-  while (text.length % 4) text += ' '
-  const jsonBytes = Buffer.from(text, 'utf8')
-  const rest = buf.subarray(20 + jsonLen)
-  const out = Buffer.alloc(12 + 8 + jsonBytes.length + rest.length)
-  out.writeUInt32LE(0x46546c67, 0); out.writeUInt32LE(2, 4); out.writeUInt32LE(out.length, 8)
-  out.writeUInt32LE(jsonBytes.length, 12); out.writeUInt32LE(0x4e4f534a, 16)
-  jsonBytes.copy(out, 20); rest.copy(out, 20 + jsonBytes.length)
-  return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer
-}
 
 /** The body as capsules between joints (radius a little under the modelled body's). */
 const CAPSULES: [string, string, number][] = [
@@ -131,6 +114,19 @@ export async function run() {
   PARTS.on = false
   if (sofa) sofa.forEach((node, i) => seats.push({ name: `sofa seat ${i}`, kind: 'sofa', node, parts: PARTS.list }))
   check('seated: every seat builds from its model', seats.length === 18 + 4, seats.length)
+  // Nobody glides: a person who starts walking mid-gesture (a wave, a word) walks at once.
+  {
+    const p = modelPerson(randomLook(makeRng(4)), 'player')!
+    p.pose = 'stand'
+    for (let i = 0; i < 5; i++) p.update(1 / 30)
+    p.greet()
+    for (let i = 0; i < 3; i++) p.update(1 / 30)
+    p.pose = 'walk'; p.speed = 3
+    for (let i = 0; i < 9; i++) p.update(1 / 30)
+    const walk = (p as unknown as { actions: Map<string, { getEffectiveWeight(): number; isRunning(): boolean }> }).actions.get('walk')!
+    check('walking: a wave never keeps a walker gliding (the walk clip takes over within 0.3 s)', walk.isRunning() && walk.getEffectiveWeight() > 0.9, walk.getEffectiveWeight())
+    p.destroy()
+  }
   const gaps: string[] = [], sinks: string[] = []
   for (const s of seats) for (const masc of [false, true]) {
     const p = seatAndPose(s.node, s.kind, masc, 7)

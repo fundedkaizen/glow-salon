@@ -184,7 +184,7 @@ export class ModelPerson {
 
   private once(name: string) {
     const a = this.actions.get(name)
-    if (!a || this.pose === 'sit') return
+    if (!a || this.pose !== 'stand') return
     this.blendTo(a, 0.15)
     this.oneShot = { action: a, left: (PEOPLE.clipSeconds as Record<string, number>)[name] ?? 1 }
   }
@@ -213,11 +213,13 @@ export class ModelPerson {
     if (!sit && this.pose === 'stand' && this.speed < 0.05 && !this.oneShot) { this.idleT -= dt; if (this.idleT <= 0) { this.idleT = 5 + Math.random() * 7; this.once('talk') } }
     else this.idleT = 3 + Math.random() * 5
     const clip = sit ? (this.expr === 'sleepy' && this.seat !== 'chair' ? 'sleepy' : this.seat === 'chair' ? 'sit_chair' : this.seat === 'pedicure' ? 'sit_pedicure' : this.seat === 'stool' ? 'sit_stool' : 'sit_sofa') : this.pose === 'walk' ? 'walk' : this.pose === 'work' ? 'work' : 'idle'
-    if (this.oneShot && !sit) {
+    // A one-shot (a wave, a word) plays only while standing: walking or sitting cuts it short at once, so nobody
+    // ever glides across the floor mid-gesture.
+    if (this.oneShot && this.pose === 'stand') {
       this.oneShot.left -= dt
       if (this.oneShot.left <= 0) { const a = this.oneShot.action; this.oneShot = null; this.current = a; this.play(clip, 0.2) }
     } else {
-      // Sitting down cuts a one-shot short: back to the right clip, whatever was playing.
+      // Walking or sitting cuts a one-shot short: back to the right clip, whatever was playing.
       if (this.oneShot) { const a = this.oneShot.action; this.oneShot = null; this.current = a }
       this.play(clip)
     }
