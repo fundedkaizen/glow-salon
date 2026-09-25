@@ -51,7 +51,7 @@ export function run() {
   handleGuestMessage(state, 1, { t: 'act', a: { a: 'work', station: 's0' } })
   check('guest helps at s0', state.stations[0].lead === 0 && state.stations[0].helpers.includes(1) && state.stations[1].lead === null)
   check('crew', stationCrew(state, 's0').join() === '0,1')
-  const op = { k: 'lamp' as const, x: 500, y: 600, on: true }
+  const op = { k: 'tap' as const, s: 0, x: 500, y: 600 }
   const fromGuest = handleGuestMessage(state, 1, { t: 'ops', st: 's0', ops: [op] })
   check('guest op goes to the host (lead)', fromGuest.length === 1 && fromGuest[0].to === 0 && fromGuest[0].msg.t === 'ops')
   const fromHost = routeOps(state, 's0', 0, [op])

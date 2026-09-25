@@ -10,7 +10,7 @@ import { personaFor } from '../core/persona.ts'
  * The thin glue between the salon and a treatment close-up. The floor code calls openTreatment() when a
  * player starts (or joins) work at a station; it then forwards co-op traffic to the returned view:
  *
- *   ops from a partner at this station   -> view.applyRemote(ops, by)
+ *   ops from a partner at this station   -> view.applyRemote(ops, by)   (`by`: the sender's player number)
  *   a partner asks for a snapshot        -> send view.snapshot() to them (only the lead is asked)
  *   a snapshot arrives (late joiner)     -> view.applySnapshot(snap)
  *
@@ -57,6 +57,8 @@ export function openTreatment(o: OpenTreatment): TreatmentView | null {
     role,
     leadName,
     playerId: o.me,
+    // Four hands: every press carries its player (see Op), and pops are credited by name.
+    names: Object.fromEntries(o.state.players.map(p => [p.id, p.name])),
     mood: customer.mood,
     ambience: ambienceStars(o.state.owned),
     onOps: ops => o.net.sendOps(o.stationId, ops),

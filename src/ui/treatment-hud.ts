@@ -28,6 +28,8 @@ export class TreatmentHud {
   private skipBtn: HTMLButtonElement
   private card: HTMLElement
   private chip: HTMLElement
+  private scores: HTMLElement
+  private four: HTMLElement
   private lastStep = -1
   /** The steps counted in "3 / 12", fixed when the treatment starts: a step that drops out later never changes the total. */
   private planned: number[] | null = null
@@ -44,6 +46,7 @@ export class TreatmentHud {
         <div class="thud-head">
           <div class="thud-title"></div>
           <div class="thud-hint"></div>
+          <div class="thud-scores" hidden style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;font:700 13px var(--font)"></div>
         </div>
         <div class="thud-side">
           <div class="thud-chip"></div>
@@ -57,7 +60,8 @@ export class TreatmentHud {
         </div>
         <div class="thud-tray"></div>
       </div>
-      <div class="thud-card" hidden></div>`
+      <div class="thud-card" hidden></div>
+      <div class="thud-four" aria-live="polite" style="position:absolute;left:50%;top:132px;transform:translate(-50%,-8px) scale(0.9);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;background:linear-gradient(90deg,#e7799c,#9f86e0);color:#fff;font:800 16px var(--font);padding:7px 16px;border-radius:999px;box-shadow:0 4px 14px rgba(120,60,90,.28);white-space:nowrap">Four hands!</div>`
     parent.append(this.el)
     this.tray = this.el.querySelector('.thud-tray')!
     this.title = this.el.querySelector('.thud-title')!
@@ -67,6 +71,8 @@ export class TreatmentHud {
     this.skipBtn = this.el.querySelector('.thud-skip')!
     this.card = this.el.querySelector('.thud-card')!
     this.chip = this.el.querySelector('.thud-chip')!
+    this.scores = this.el.querySelector('.thud-scores')!
+    this.four = this.el.querySelector('.thud-four')!
     const helper = opts.role === 'helper'
     this.chip.innerHTML = helper ? `Helping <b>${esc(opts.leadName)}</b>` : `<b>${esc(opts.customer)}</b>${opts.wish !== null ? ` wants <span class="swatch-dot" style="--c:#${POLISH_COLORS[opts.wish].hex.toString(16).padStart(6, '0')}"></span>${POLISH_COLORS[opts.wish].name}` : ''}`
     this.skipBtn.hidden = helper
@@ -89,7 +95,9 @@ export class TreatmentHud {
     this.planned ??= [...this.tray.querySelectorAll<HTMLElement>('.tool:not(.gone)')].map(el => Number(el.dataset.i))
     const total = this.planned.length || this.def.steps.length
     this.title.dataset.count = `${Math.min(total, Math.max(1, this.planned.filter(i => i <= step).length))} / ${total}`
-    this.hint.textContent = this.opts.role === 'helper' && s.lamp ? 'Hold the magnifier lamp over the spot your partner is working on, or help with the tool' : s.hint
+    this.hint.textContent = s.hint
+    // Each player's count shows on the steps with spots to do.
+    this.scores.hidden = !s.targets || !this.scores.childElementCount
     this.finishBtn.hidden = !s.optional || this.opts.role === 'helper'
     this.skipBtn.hidden = this.opts.role === 'helper' || !!s.optional
     this.choice.hidden = !s.choice || (this.opts.role === 'helper' && !helperCanChoose)
@@ -111,6 +119,21 @@ export class TreatmentHud {
     }
     this.lastStep = step
     this.setProgress(0)
+  }
+
+  /** The step card's line under the title (the helper's gets what they can do: "Help: pop the ones near the chin"). */
+  setHint(text: string) { if (text && this.hint.textContent !== text) this.hint.textContent = text }
+
+  /** Co-op: how many spots each player has done, in their colours. */
+  setScores(list: { name: string; color: number; n: number }[]) {
+    this.scores.innerHTML = list.map(p => `<span style="color:#${p.color.toString(16).padStart(6, '0')}">${esc(p.name)} ${p.n}</span>`).join('')
+    this.scores.hidden = !list.length || !this.def.steps[this.lastStep]?.targets
+  }
+
+  /** The "Four hands!" badge while both players work at once. */
+  fourHands(on: boolean) {
+    this.four.style.opacity = on ? '1' : '0'
+    this.four.style.transform = `translate(-50%, ${on ? 0 : -8}px) scale(${on ? 1 : 0.9})`
   }
 
   setProgress(p: number) {
