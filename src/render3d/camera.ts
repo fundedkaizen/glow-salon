@@ -1,4 +1,5 @@
 import { OrthographicCamera, Vector3 } from 'three'
+import { entranceSet } from './layout.ts'
 import { ROOM3 } from './mapping.ts'
 
 /**
@@ -34,6 +35,9 @@ export class CameraRig {
   private focusAt: { p: Vector3; t: number; dur: number } | null = null
   /** The points that must show: the floor's corners and the tall walls' tops. */
   private points: Vector3[]
+  /** The entrance set: kept on screen while the player is near enough (keepEntrance). */
+  private keep: Vector3[] = entranceSet().map(p => new Vector3(p.x, p.y, p.z))
+  private demo = false
   private right = new Vector3()
   /** Towards the back corner on the ground (panning this way moves the room down the screen). */
   private back = new Vector3()
@@ -43,6 +47,8 @@ export class CameraRig {
     this.points = [
       new Vector3(-W / 2 - 0.4, 0, 0), new Vector3(W / 2 + 0.3, 0, 0), new Vector3(-W / 2 - 0.4, 0, D + 0.4), new Vector3(W / 2 + 0.3, 0, D + 0.4),
       new Vector3(-W / 2, H + 0.1, 0), new Vector3(W / 2 + 0.3, H + 0.1, -0.3), new Vector3(W / 2, H + 0.1, D),
+      // The entrance set outside the door: the gate, the sign and the mailbox beside it, the pots by the door.
+      ...entranceSet().map(p => new Vector3(p.x, p.y, p.z)),
     ]
     this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
     this.back.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
@@ -84,6 +90,7 @@ export class CameraRig {
   /** New screen size: fit the room again. `demo`: the title backdrop (fill the screen, no player to follow). */
   frame(view: Frame, demo: boolean) {
     this.view = view
+    this.demo = demo
     this.aspect = view.w / Math.max(1, view.h)
     const a = this.area()
     const t = new Vector3(0, 0.4, ROOM3.d / 2)
@@ -106,7 +113,7 @@ export class CameraRig {
     // with the player; a landscape screen sees the whole room, like Serenity's.
     const portrait = view.h > view.w * 1.2
     // Serenity's view fills the frame (the walls cut by its edges): zoom in and follow the player.
-    this.useD = demo ? Math.min(this.fitD, fitAt('cover')) * 0.86 : portrait ? this.fitD * 0.52 : this.fitD * 0.8
+    this.useD = demo ? Math.min(this.fitD, fitAt('cover')) * 0.86 : portrait ? this.fitD * 0.6 : this.fitD * 0.9
     this.panR = this.panRange(this.right, a, 'x')
     this.panF = this.panRange(this.back, a, 'y')
   }
@@ -155,6 +162,12 @@ export class CameraRig {
     }
     pr = Math.max(this.panR[0], Math.min(this.panR[1], pr))
     pf = Math.max(this.panF[0], Math.min(this.panF[1], pf))
+    // The entrance may pull the view a little past the room's own pan range (a strip of lawn shows instead).
+    if (follow && !this.demo) {
+      const [kr, kf] = this.keepEntrance(pr, pf, follow)
+      pr = Math.max(this.panR[0] - 1.5, Math.min(this.panR[1] + 1.5, kr))
+      pf = Math.max(this.panF[0] - 1.5, Math.min(this.panF[1] + 1.5, kf))
+    }
     const k = Math.min(1, dt * 4)
     this.pan.r += (pr - this.pan.r) * k
     this.pan.f += (pf - this.pan.f) * k
@@ -170,6 +183,30 @@ export class CameraRig {
     }
     this.dist = d
     this.place(this.target, this.dist)
+  }
+
+  /**
+   * Slide the view so the entrance set outside the door stays whole on screen, as far as that keeps the player
+   * well inside the frame (never nearer the edge than 30% of the half width, 40% of the half height).
+   */
+  private keepEntrance(pr: number, pf: number, follow: { x: number; z: number }): [number, number] {
+    const d = this.useD, full = this.area()
+    // A little breathing room round the set, so nothing of it touches the frame's edge.
+    const a = { x0: full.x0 + 0.1, x1: full.x1 - 0.1, y0: full.y0 + (this.aspect < 0.8 ? 0.2 : 0.06), y1: full.y1 - 0.06 }
+    const at = new Vector3().copy(this.fitT).addScaledVector(this.right, pr).addScaledVector(this.back, pf)
+    this.place(at, d)
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+    for (const p of this.keep) { _v.copy(p).project(this.camera); x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y) }
+    const me = _v.set(follow.x, 1, follow.z).project(this.camera)
+    const mx = me.x, my = me.y
+    // Shift in NDC the view needs (points move the other way), limited by where the player would end up.
+    let sx = x0 < a.x0 ? x0 - a.x0 : x1 > a.x1 ? x1 - a.x1 : 0
+    let sy = y0 < a.y0 ? y0 - a.y0 : y1 > a.y1 ? y1 - a.y1 : 0
+    const lim = (s: number, m: number, edge: number) => (s < 0 ? Math.max(s, m - edge) : Math.min(s, m + edge))
+    sx = lim(sx, mx, 0.7)
+    sy = lim(sy, my, 0.6)
+    const halfH = SPAN * d, halfW = halfH * this.aspect
+    return [pr + sx * halfW, pf + (sy * halfH) / Math.sin(this.pitch)]
   }
 
   /** Metres per CSS pixel on screen (for sizing what floats over the scene). */

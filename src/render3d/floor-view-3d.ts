@@ -2,11 +2,10 @@ import { Container, Graphics, Sprite as PixiSprite, Text, type Application, type
 import { AdditiveBlending, Box3, Color, DirectionalLight, Fog, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PlaneGeometry, Points, PointsMaterial, BufferGeometry, Float32BufferAttribute, Quaternion, Raycaster, Scene, Sprite, SpriteMaterial, Vector2, Vector3 } from 'three'
 import { bits } from '../art/bits.ts'
 import { treatmentIcon, icons } from '../art/salon/icons.ts'
-import   {} from '../art/salon/furniture.ts'
 import { PLAYER_COLORS } from '../art/palette.ts'
 import { purr, softPop } from '../audio/salon-sfx.ts'
 import { sfx } from '../audio/sfx.ts'
-import  { GIFT_BY_ID, GIFT_SLOTS, placeDecor } from '../core/decor.ts'
+import { GIFT_BY_ID, GIFT_SLOTS, placeDecor } from '../core/decor.ts'
 import { canBuy, ITEM_BY_ID, ITEMS, STATION_NAME, type Item } from '../core/economy.ts'
 import { ghostPicks, levelProgress, salonLevel, STYLE_COUNT, tierOf } from '../core/unlocks.ts'
 import { confetti } from '../ui/confetti.ts'
@@ -20,13 +19,13 @@ import { playerLook, type FloorHooks, type FloorState } from '../render/floor-vi
 import { Particles, easeOutBack } from '../render/particles.ts'
 import { CameraRig } from './camera.ts'
 import { Cat3D } from './cat3d.ts'
-import                      { type Build, type Node3, type StationNodes } from './furniture.ts'
+import { type Build, type Node3, type StationNodes } from './furniture.ts'
 import { buildAt, buildThumb, ghostable, spotFor, stationOf, stylable, type SpotCtx } from './pieces.ts'
 import { randomLook } from '../core/customers.ts'
 import { makeRng } from '../core/rng.ts'
-import     { STREET } from './layout.ts'
+import { STREET } from './layout.ts'
 import { ProgressUi } from './progress-ui.ts'
-import   { styleName } from './styles.ts'
+import { styleName } from './styles.ts'
 import { disposeGroup, Kit } from './kit.ts'
 import { lenX, lenZ, ROOM3, toSim, toWorld, turnTo, yawFor } from './mapping.ts'
 import { moodBubble, nameTag, speech, toolBubble, waitDots } from './overlay.ts'
@@ -34,7 +33,7 @@ import { Person3D, type Tool3 } from './person3d.ts'
 import { ModelPerson, modelPerson } from './model-person.ts'
 import { loadPeople } from './people-models.ts'
 import { buildRoom, type RoomParts } from './room.ts'
-import  { furnish, newBuild } from './furnish.ts'
+import { furnish, newBuild } from './furnish.ts'
 import { stageFor, type Stage } from './stage.ts'
 import { blobTexture, glowTexture, padTexture, ringTexture } from './textures.ts'
 
@@ -57,7 +56,9 @@ type BuyGhost = { item: Item; slot: number; box: Box3; anchor: Vector3; badge: C
 type StylePiece = { key: string; box: Box3; at: Vector3 }
 
 /** The grey the ghosts are made of: soft, light and a little see-through, as in Serenity's. */
-const GHOST_MAT = new MeshStandardMaterial({ color: 0xe6e2ea, roughness: 0.85, metalness: 0, transparent: true, opacity: 0.55, emissive: 0xffffff, emissiveIntensity: 0.1 })
+const GHOST_MAT = new MeshStandardMaterial({ color: 0xe9e6ee, roughness: 0.8, metalness: 0, transparent: true, opacity: 0.86, emissive: 0xffffff, emissiveIntensity: 0.08 })
+/** Draws a ghost's depth first, so only its front surface shows: a solid grey piece, not a tangle of see-through parts. */
+const GHOST_DEPTH = new MeshBasicMaterial({ colorWrite: false, transparent: true, depthWrite: true })
 
 const { d: RD } = ROOM3
 
@@ -517,7 +518,7 @@ export class FloorView3D {
     // A station bought from its ghost this morning goes straight into the ghost's slot.
     const waiting = state.stations.find(s => s.slot < 0)
     if (this.placeInto && waiting && !state.stations.some(s => s.slot === this.placeInto!.slot)) { this.hooks.onAction({ a: 'place', station: waiting.id, slot: this.placeInto.slot }); this.placeInto = null }
-    const picks = ghostPicks(ITEMS, state.money ?? 0, id => this.buyCheck(state, id), ghostable, this.view.h > this.view.w * 1.2 ? 3 : 4)
+    const picks = ghostPicks(ITEMS, state.money ?? 0, id => this.buyCheck(state, id), ghostable, 3)
     const ctx = this.spotCtx(state)
     const placed: { item: Item; spot: NonNullable<ReturnType<typeof spotFor>> }[] = []
     let nth = 0
@@ -527,6 +528,8 @@ export class FloorView3D {
       const spot = spotFor(item, ctx, stationOf(item) ? nth : 0)
       if (!spot) continue
       if (spot.kind === 'station') nth++
+      // Two pieces of decor never share a slot.
+      if (spot.kind === 'decor') ctx.takenDecor.add(`${spot.place}:${spot.slot}`)
       placed.push({ item, spot })
     }
     const key = placed.map(p => `${p.item.id}@${JSON.stringify(p.spot)}`).join('|') + `|${state.owned.length}`
@@ -542,8 +545,12 @@ export class FloorView3D {
       this.buyGhosts.push({ item, slot: spot.kind === 'station' ? spot.slot : -1, box: inPlace ? new Box3() : r.box, anchor: r.anchor, badge, ph: Math.random() * 6 })
     }
     const group = new Group()
-    if (!b.kit.empty) group.add(b.kit.build(false, GHOST_MAT))
-    b.extra.traverse(o => { if (o instanceof Mesh) { const m = o.material as MeshStandardMaterial; m.transparent = true; m.opacity = 0.55; if ('color' in m) m.color.setRGB(0.92, 0.9, 0.95) } })
+    if (!b.kit.empty) {
+      const built = b.kit.build(false, GHOST_MAT)
+      for (const m of [...built.children]) if (m instanceof Mesh) { const pre = new Mesh(m.geometry, GHOST_DEPTH); pre.renderOrder = 4; m.renderOrder = 5; built.add(pre) }
+      group.add(built)
+    }
+    b.extra.traverse(o => { if (o instanceof Mesh) { const m = o.material as MeshStandardMaterial; m.transparent = true; m.opacity = 0.86; if ('color' in m) m.color.setRGB(0.92, 0.9, 0.95) } })
     group.add(b.extra)
     this.ghostGroup = group
     this.scene.add(group)
@@ -723,8 +730,8 @@ export class FloorView3D {
       b.scale.set(this.ui * (ok ? 1 + Math.max(0, Math.sin(g.ph * 3)) * 0.04 : 0.92))
     }
     if (this.ghostGroup) this.ghostGroup.visible = !this.decorating
-    GHOST_MAT.emissiveIntensity = 0.1 + Math.sin(this.t * 2.2) * 0.06
-    GHOST_MAT.opacity = 0.52 + Math.sin(this.t * 2.2) * 0.07
+    GHOST_MAT.emissiveIntensity = 0.1 + Math.sin(this.t * 1.6) * 0.07
+    GHOST_MAT.opacity = 0.84 + Math.sin(this.t * 1.6) * 0.05
     // The squash and stretch of a piece that just changed its look.
     if (this.popAt && this.isoPivot) {
       this.popAt.t += dt
@@ -1418,7 +1425,7 @@ export class FloorView3D {
     this.view = { w, h }
     this.root.hitArea = { contains: () => true }
     const portrait = h > w * 1.2
-    this.rig.frame({ w, h, top: this.demo ? 0 : portrait ? Math.round(h * 0.13) : 62, bottom: this.demo ? 0 : portrait ? 70 : 12, side: this.demo ? 0 : 10 }, this.demo)
+    this.rig.frame({ w, h, top: this.demo ? 0 : portrait ? Math.round(h * 0.13) : 62, bottom: this.demo ? 0 : portrait ? 70 : 64, side: this.demo ? 0 : 10 }, this.demo)
     this.rig.update(1, this.demo ? null : toWorld(this.me.x, this.me.y))
     // Overlays keep the size they have on the 2D floor at its usual zoom.
     this.ui = Math.max(0.78, Math.min(1.05, Math.min(w, h) / 760))
