@@ -555,6 +555,12 @@ export class TreatmentView {
         case 'targetStage': this.onTargetStage(e.id); break
         case 'miss': sfx.miss(this.pan(e.x)); break
         case 'ready': this.onReady(); break
+        case 'zone':
+          // A nail or an area of the face is done: a little glint and a soft chime.
+          sfx.sparkle(this.pan(e.x))
+          this.burstSparkles(e.x, e.y, 6, 180)
+          this.fx.spawn({ texture: bits.glow(), x: e.x, y: e.y, life: 0.45, scale: 0.5, scaleEnd: 2.4, alpha: 0.5, alphaEnd: 0, blend: 'add', tint: 0xfff4f8 })
+          break
         case 'resolve':
           this.surface.resolve(e.layer, e.to)
           if (e.layer === 'foam' && e.to === 0) this.foam.washAll()

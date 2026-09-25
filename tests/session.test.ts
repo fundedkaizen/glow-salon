@@ -1,5 +1,5 @@
 import { check, near } from './harness.ts'
-import { TreatmentSession, regionMask, type Op, type SessionEvent } from '../src/core/treatments/session.ts'
+import { TreatmentSession, regionMask, zonesOf, type Op, type SessionEvent } from '../src/core/treatments/session.ts'
 import { TREATMENTS } from '../src/core/treatments/registry.ts'
 import { faceProfile, handProfile } from '../src/core/treatments/profile.ts'
 import { GRID, CELL, stamp, encodeGrid, decodeGrid } from '../src/core/treatments/grid.ts'
@@ -104,6 +104,9 @@ export function run() {
     if (t.kind === 'blackhead' && !inRegion(REGIONS.nose, t.x, t.y)) offSkin++
   }
   check('targets always on skin, never under the headband', offSkin === 0, offSkin)
+  // Regions split into zones that each finish with their own cue: five nails, several areas of a face.
+  check('each nail is a zone', zonesOf('nails').length === 5, zonesOf('nails').length)
+  check('the face splits into areas', zonesOf('skin').length >= 5 && zonesOf('skin').length <= 30, zonesOf('skin').length)
   const a = new TreatmentSession({ treatment: 'facial', seed: 101 }), b = new TreatmentSession({ treatment: 'facial', seed: 102 })
   check('two customers differ', JSON.stringify(a.targets.map(t => [t.kind, Math.round(t.x)])) !== JSON.stringify(b.targets.map(t => [t.kind, Math.round(t.x)])))
 
@@ -115,6 +118,7 @@ export function run() {
     check(`${label}: finished`, s.finished)
     check(`${label}: done event`, seen.has('done'))
     check(`${label}: stamps happened`, seen.has('stamp'))
+    check(`${label}: zones finished along the way`, seen.has('zone'))
     s.time(120)
     const r = s.result()
     check(`${label}: all required steps done`, r.done === r.required && r.skipped === 0, r)
