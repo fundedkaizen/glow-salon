@@ -95,6 +95,8 @@ export const TIER_RADIUS = [1, 1.16, 1.32]
 export const WET = '$wet'
 /** The peel line runs from the chin (progress 0) to the hairline (1). */
 export const PEEL_FROM = 915, PEEL_TO = 262
+/** The peel's front edge sags a little in the middle, like a real sheet being lifted. */
+export const peelCurve = (x: number) => 26 * (1 - Math.min(1, ((x - 512) / 290) ** 2))
 
 const regionCache = new Map<RegionId, Uint8Array>()
 export function regionMask(id: RegionId) {
@@ -547,8 +549,11 @@ export class TreatmentSession {
   private clearMaskBelow(lineY: number) {
     const mask = this.layers[this.current?.layer ?? 'mask']
     if (!mask) return
-    const row = Math.max(0, Math.min(GRID, Math.floor(lineY / (1024 / GRID))))
-    for (let gy = row; gy < GRID; gy++) mask.fill(0, gy * GRID, gy * GRID + GRID)
+    const cell = 1024 / GRID
+    for (let gx = 0; gx < GRID; gx++) {
+      const y = lineY + peelCurve((gx + 0.5) * cell)
+      for (let gy = Math.max(0, Math.floor(y / cell)); gy < GRID; gy++) mask[gy * GRID + gx] = 0
+    }
   }
 
   /** Finish the current step (or skip it) and move to the next. */

@@ -1,4 +1,4 @@
-import { Container, RenderTexture, Sprite, Texture, type Geometry, type Mesh, type Renderer, type Shader } from 'pixi.js'
+import { Container, Graphics, RenderTexture, Sprite, Texture, type Geometry, type Mesh, type Renderer, type Shader } from 'pixi.js'
 import { GRID } from '../core/treatments/grid.ts'
 import { canvas } from '../art/paint.ts'
 import { layerMesh, skinMesh } from './shaders.ts'
@@ -152,26 +152,42 @@ export class Surface {
   }
 
   /** Remove a layer below a line (the peel). */
-  clearBelow(id: string, y: number) {
+  clearBelow(id: string, y: number, curve: (x: number) => number = () => 0) {
     const layer = this.layers.get(id)
     if (!layer) return
-    const s = this.stampSprite
-    s.texture = Texture.WHITE
-    s.anchor.set(0)
-    s.position.set(0, y * K)
-    s.width = MASK_SIZE
-    s.height = Math.max(0, MASK_SIZE - y * K)
-    s.alpha = 1
-    s.blendMode = 'erase'
-    this.renderer.render({ container: s, target: layer.rt, clear: false })
-    s.blendMode = 'normal'
+    const g = this.eraser
+    g.clear()
+    g.moveTo(0, MASK_SIZE + 4)
+    for (let x = 0; x <= 1024; x += 8) g.lineTo(x * K, (y + curve(x)) * K)
+    g.lineTo(MASK_SIZE, MASK_SIZE + 4)
+    g.closePath()
+    g.fill({ color: 0xffffff })
+    g.blendMode = 'erase'
+    const holder = this.stampBatch
+    holder.removeChildren()
+    holder.addChild(g)
+    this.renderer.render({ container: holder, target: layer.rt, clear: false })
+    holder.removeChildren()
   }
+  private eraser = new Graphics()
 
   /** Put a container (the targets) between the layers, just under `id`. */
   insertBelow(id: string, child: Container) {
     const layer = this.layers.get(id)
     const index = layer ? this.root.getChildIndex(layer.mesh) : this.root.children.length
     this.root.addChildAt(child, index)
+  }
+
+  /**
+   * Render one sprite into a render texture. It goes inside a container because Pixi renders a root
+   * container without its own position, so a lone sprite would ignore where it was placed.
+   */
+  private renderOne(sprite: Sprite, target: RenderTexture) {
+    const holder = this.stampBatch
+    holder.removeChildren()
+    holder.addChild(sprite)
+    this.renderer.render({ container: holder, target, clear: false })
+    holder.removeChildren()
   }
 
   /** Dry the skin at once (before the reveal photo). */
@@ -223,7 +239,7 @@ export class Surface {
         s.width = s.height = MASK_SIZE
         s.alpha = Math.min(1, dt * 7)
         s.blendMode = res.to === 0 ? 'erase' : 'normal'
-        this.renderer.render({ container: s, target: layer.rt, clear: false })
+        this.renderOne(s, layer.rt)
         s.blendMode = 'normal'
         if (res.t > 0.7) {
           if (res.to === 0) { this.renderer.render({ container: new Container(), target: layer.rt, clear: true }); layer.hasPaint = false; layer.mesh.visible = false }
@@ -242,7 +258,7 @@ export class Surface {
       s.width = s.height = MASK_SIZE
       s.alpha = this.dryTimer * 0.045
       s.blendMode = 'erase'
-      this.renderer.render({ container: s, target: this.wet, clear: false })
+      this.renderOne(s, this.wet)
       s.blendMode = 'normal'
       this.dryTimer = 0
     }

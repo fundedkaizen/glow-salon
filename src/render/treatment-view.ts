@@ -2,7 +2,7 @@ import { Container, Graphics, Matrix, RenderTexture, Sprite, Text, type Applicat
 import type { Look } from '../core/customers.ts'
 import { FACE, HAND, fingerDir, nailOf } from '../core/treatments/anatomy.ts'
 import { GRID, CELL } from '../core/treatments/grid.ts'
-import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, regionMask, type Op, type SessionEvent, type SessionSnapshot, type Target, type TreatmentResult } from '../core/treatments/session.ts'
+import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, peelCurve, regionMask, type Op, type SessionEvent, type SessionSnapshot, type Target, type TreatmentResult } from '../core/treatments/session.ts'
 import { POLISH_COLORS, type StepDef, type TreatmentId } from '../core/treatments/types.ts'
 import { starsFor } from '../core/reviews.ts'
 import { assetsFor, type PartAssets } from '../art/assets.ts'
@@ -775,7 +775,7 @@ export class TreatmentView {
     const prev = this.peelShown
     this.peelShown += (target - this.peelShown) * Math.min(1, dt * 12)
     const lineY = PEEL_FROM + (PEEL_TO - PEEL_FROM) * this.peelShown
-    this.surface.clearBelow('mask', lineY + 4)
+    this.surface.clearBelow('mask', lineY + 4, peelCurve)
     const speed = (this.peelShown - prev) / Math.max(dt, 1e-3)
     const stuck = this.down && this.grabbing && !this.session.peel.unstuck
     sfx.peelCreep(speed, stuck && this.peelTension > 0.03, this.pan(512))
@@ -786,19 +786,33 @@ export class TreatmentView {
     if (hi - lo < 20) return
     const wob = stuck ? Math.sin(this.time * 38) * this.peelTension * 10 : 0
     const thick = 12 + this.peelShown * 30 + (stuck ? this.peelTension * 18 : 0)
-    const x0 = lo + 30, x1 = hi - 30
-    // The sheet being pulled: the underside, with little specks of gunk it lifted out.
-    const hang = 16 + (this.down ? 20 : 6)
-    g.moveTo(x0, lineY).lineTo(x1, lineY).lineTo(x1 - 10, lineY - hang - thick).lineTo(x0 + 10, lineY - hang - thick).closePath().fill({ color: 0xc2e4d5, alpha: 0.96 })
-    for (let i = 0; i < 26; i++) {
-      const fx = x0 + ((i * 97) % Math.max(1, Math.floor(x1 - x0))), fy = lineY - 6 - ((i * 53) % Math.max(1, Math.floor(hang)))
-      g.circle(fx, fy, 2 + (i % 3)).fill({ color: 0x6b5a48, alpha: 0.55 })
+    const x0 = lo + 26, x1 = hi - 26
+    const front = (x: number) => lineY + peelCurve(x)
+    // The sheet being lifted: its underside faces us, darker toward the fold, flecked with the gunk it pulled out.
+    const hang = 18 + (this.down ? 22 : 8)
+    const lip = (x: number) => front(x) - hang - thick * 0.5 + Math.sin(x * 0.05 + this.time * 2) * 2 + wob
+    const pts: number[] = []
+    for (let x = x0; x <= x1; x += 16) pts.push(x, front(x))
+    for (let x = x1; x >= x0; x -= 16) pts.push(x, lip(x))
+    g.poly(pts).fill({ color: 0xb9dfcf, alpha: 0.97 })
+    const inner: number[] = []
+    for (let x = x0 + 8; x <= x1 - 8; x += 16) inner.push(x, front(x) - hang * 0.35)
+    for (let x = x1 - 8; x >= x0 + 8; x -= 16) inner.push(x, lip(x) + 4)
+    g.poly(inner).fill({ color: 0x9ccbb7, alpha: 0.6 })
+    for (let i = 0; i < 34; i++) {
+      const fx = x0 + 10 + ((i * 97) % Math.max(1, Math.floor(x1 - x0 - 20)))
+      const fy = front(fx) - 6 - ((i * 53) % Math.max(1, Math.floor(hang)))
+      g.circle(fx, fy, 1.6 + (i % 3) * 0.8).fill({ color: 0x6b5a48, alpha: 0.5 })
     }
-    // The rolled edge: a tube, light on top, dark underneath.
-    const ty = lineY - hang - thick / 2 + wob
-    g.roundRect(x0 - 6, ty - thick / 2, x1 - x0 + 12, thick, thick / 2).fill({ color: 0xa9d9c4 })
-    g.roundRect(x0, ty - thick / 2 + 2, x1 - x0, thick * 0.4, thick * 0.2).fill({ color: 0xe6f7ef, alpha: 0.9 })
-    g.roundRect(x0, ty + thick * 0.12, x1 - x0, thick * 0.3, thick * 0.15).fill({ color: 0x7fb9a2, alpha: 0.8 })
+    // The rolled lip: a soft tube, light on top and shaded beneath, following the curve.
+    const tube = (dy: number, w: number, color: number, alpha: number) => {
+      g.moveTo(x0 - 4, lip(x0) + dy)
+      for (let x = x0; x <= x1; x += 12) g.lineTo(x, lip(x) + dy)
+      g.stroke({ width: w, color, alpha, cap: 'round' })
+    }
+    tube(0, thick, 0xa9d9c4, 1)
+    tube(-thick * 0.22, thick * 0.35, 0xe8f8f0, 0.9)
+    tube(thick * 0.25, thick * 0.25, 0x7fb9a2, 0.7)
     // Before it is lifted: a curled corner at the chin to grab.
     if (!this.session.peel.unstuck) {
       const cy = PEEL_FROM - 12
