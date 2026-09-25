@@ -254,7 +254,12 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
   }
 
   // ---------------------------------------------------------------- layers
-  const handMask = sil
+  // Layers on the hand stop at the sleeve cuff.
+  const [handMask, hmctx] = canvas(S)
+  hmctx.drawImage(sil, 0, 0)
+  hmctx.globalCompositeOperation = 'destination-out'
+  hmctx.beginPath(); hmctx.moveTo(300, 1030); hmctx.bezierCurveTo(310, 950, 360, 930, 520, 928); hmctx.bezierCurveTo(680, 930, 730, 950, 740, 1030); hmctx.closePath(); hmctx.fill()
+  hmctx.globalCompositeOperation = 'source-over'
   const cuticleMask = shapesCanvas(SHAPES.cuticleShapes)
   const tipsMask = shapesCanvas(SHAPES.tipShapes)
   const layer = (mask: HTMLCanvasElement, draw: (ctx: Ctx) => void) => { const [c, lctx] = canvas(S); draw(lctx); clipTo(lctx, mask); return c }
