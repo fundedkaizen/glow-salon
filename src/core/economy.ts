@@ -1,4 +1,5 @@
 import type { TreatmentId } from './treatments/types.ts'
+import { DECOR_SET_ITEMS, setBonus } from './decor.ts'
 
 /**
  * The shop on the salon computer, and every number that turns purchases into income. Linear and readable:
@@ -64,6 +65,8 @@ export const ITEMS: Item[] = [
   { id: 'gadget-steamer', tab: 'staff', name: 'Auto steamer', blurb: 'A gadget that does the steam towel step for you.', price: 300, effect: { kind: 'staff' }, soon: true },
   { id: 'gadget-uv', tab: 'staff', name: 'Smart UV lamp', blurb: 'Cures the polish by itself.', price: 260, effect: { kind: 'staff' }, soon: true },
   { id: 'stylist', tab: 'staff', name: 'Hire a stylist', blurb: 'Runs whole treatments at slightly lower quality.', price: 900, effect: { kind: 'staff' }, soon: true },
+  // Decor sets from the world content (decor.ts).
+  ...DECOR_SET_ITEMS,
 ]
 
 export const ITEM_BY_ID: Record<string, Item> = Object.fromEntries(ITEMS.map(item => [item.id, item]))
@@ -91,7 +94,7 @@ export function needsConfirm(id: string) { return (ITEM_BY_ID[id]?.price ?? 0) >
 export function ambiencePoints(owned: Owned) {
   let points = 0
   for (const id of owned) { const e = ITEM_BY_ID[id]?.effect; if (e?.kind === 'decor') points += e.ambience }
-  return points
+  return points + setBonus(owned)
 }
 
 /** Ambience stars, 1 to 5 in half steps, shown on the floor and the receipt. */
