@@ -246,6 +246,15 @@ export function footAnatomy(seed: number) {
 }
 export type FootAnatomy = ReturnType<typeof footAnatomy>
 
+/**
+ * Where to lift an ingrown nail (top view): on the swollen fold beside the big toenail, two thirds of the way
+ * to its free edge, on the side that digs in (-1 toward the second toe, 1 the outer side).
+ */
+export function ingrownSpot(a: FootAnatomy, side: -1 | 1): Point {
+  const n = a.nails[0], nx = -n.dir.y * side, ny = n.dir.x * side
+  return { x: n.base.x + (n.tip.x - n.base.x) * 0.68 + nx * n.halfWidth * 0.98, y: n.base.y + (n.tip.y - n.base.y) * 0.68 + ny * n.halfWidth * 0.98 }
+}
+
 // ---------------------------------------------------------------- the customer's problem
 
 export type Personality = 'calm' | 'ticklish' | 'sensitive'

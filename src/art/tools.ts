@@ -300,6 +300,51 @@ const PAINTERS: Record<string, { tip: [number, number]; draw: (ctx: Ctx) => void
     ctx.strokeStyle = 'rgba(214,222,234,0.9)'; ctx.lineWidth = 2
     glove(ctx, 170, 70, -0.9, 150, 42)
   } },
+  // Pedicure: a pink scrub brush with a wooden block and pale bristles, seen from above at an angle.
+  footBrush: { tip: [96, 168], draw: ctx => {
+    ctx.save(); ctx.translate(128, 128); ctx.rotate(-0.6)
+    // Bristles along the bottom edge.
+    for (let i = 0; i < 46; i++) { const x = -80 + i * 3.6; ctx.strokeStyle = i % 3 ? '#f1dcb8' : '#d9bf94'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(x, 18); ctx.lineTo(x + (i % 2 ? 1.5 : -1.5), 48); ctx.stroke() }
+    const g = ctx.createLinearGradient(0, -40, 0, 22); g.addColorStop(0, '#ffb8cf'); g.addColorStop(0.55, '#f27aa2'); g.addColorStop(1, '#c75580')
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-88, -40, 176, 62, 30); ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.beginPath(); ctx.roundRect(-70, -34, 120, 10, 5); ctx.fill()
+    ctx.restore()
+  } },
+  // A pumice rasp: a grey, porous stone on a wooden handle.
+  callusRasp: { tip: [84, 172], draw: ctx => {
+    handle(ctx, 120, 136, 232, 26, 26, [214, 176, 128])
+    ctx.save(); ctx.translate(84, 172); ctx.rotate(-0.78)
+    const g = ctx.createLinearGradient(0, -34, 0, 34); g.addColorStop(0, '#eceae6'); g.addColorStop(0.5, '#c9c5be'); g.addColorStop(1, '#9d978f')
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, 60, 36, 0, 0, Math.PI * 2); ctx.fill()
+    const r = makeRng(9)
+    for (let i = 0; i < 90; i++) { const a = r() * Math.PI * 2, d = Math.sqrt(r()); ctx.fillStyle = `rgba(110,104,96,${r.range(0.3, 0.6)})`; ctx.beginPath(); ctx.arc(Math.cos(a) * d * 54, Math.sin(a) * d * 30, r.range(1.2, 3.2), 0, Math.PI * 2); ctx.fill() }
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(-16, -16, 30, 9, -0.1, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
+  } },
+  // Antifungal cream: a blue and white tube with a white cream curl at the nozzle.
+  creamTube: { tip: [60, 196], draw: ctx => {
+    ctx.save(); ctx.translate(60, 196); ctx.rotate(-0.78)
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(-8, 0, 16, 11, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#f2f4f8'; ctx.beginPath(); ctx.roundRect(4, -12, 26, 24, 5); ctx.fill()
+    const g = ctx.createLinearGradient(0, -30, 0, 30); g.addColorStop(0, '#7fb2ff'); g.addColorStop(0.45, '#3e7fe6'); g.addColorStop(1, '#2455a8')
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(30, -26); ctx.lineTo(190, -34); ctx.lineTo(196, 34); ctx.lineTo(30, 26); ctx.closePath(); ctx.fill()
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(70, -12, 76, 24)
+    ctx.fillStyle = '#3e7fe6'; ctx.fillRect(100, -8, 6, 16); ctx.fillRect(95, -3, 16, 6)
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(34, -22, 150, 6)
+    ctx.restore()
+  } },
+  // Slanted tweezers, steel, a glint along one arm.
+  tweezers: { tip: [52, 204], draw: ctx => {
+    ctx.save(); ctx.translate(52, 204); ctx.rotate(-0.8)
+    for (const side of [-1, 1]) {
+      const g = ctx.createLinearGradient(0, side * 12, 0, side * 2); g.addColorStop(0, '#9aa2b2'); g.addColorStop(1, '#eef1f6')
+      ctx.fillStyle = g
+      ctx.beginPath(); ctx.moveTo(0, side * 1.5); ctx.lineTo(200, side * 14); ctx.lineTo(200, side * 4); ctx.lineTo(4, side * 0.5); ctx.closePath(); ctx.fill()
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(30, -3); ctx.lineTo(190, -11); ctx.stroke()
+    ctx.fillStyle = '#c9ced8'; ctx.beginPath(); ctx.roundRect(190, -16, 24, 32, 6); ctx.fill()
+    ctx.restore()
+  } },
   gems: { tip: [60, 196], draw: ctx => {
     handle(ctx, 70, 186, 220, 40, 14, metal)
     handle(ctx, 80, 196, 230, 56, 14, shade(metal, -0.1))
