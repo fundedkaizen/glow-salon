@@ -406,6 +406,10 @@ function finish(state: SalonState, by: number, stationId: string, result: Treatm
   let tipMult = setTipMult(state.owned, c.plan.archetype ?? '', !!mid && c.plan.arriveAt >= mid.arriveAt)
   // Staff take a share: the salon keeps less of a staff treatment than one the players do themselves.
   if (by >= STAFF_ID_BASE) { const share = staffShare(state, by, stars, c.plan.treatment); price = Math.round(price * share.revenue); tipMult *= share.tips }
+  // A player pays for what was done: skipped steps take the price down (to 40% with nothing done).
+  const completion = completionOf(result)
+  if (by < STAFF_ID_BASE) price = Math.round(price * (0.4 + 0.6 * completion))
+  const rushed = by < STAFF_ID_BASE && completion < RUSHED
   const tip = tipFor(price, stars, c.mood, state.owned, tipMult)
   state.money += price + tip - def.productCost
   state.stats.revenue += price
@@ -436,8 +440,17 @@ function finish(state: SalonState, by: number, stationId: string, result: Treatm
   c.path = pathOnFloor(state, c, DOOR_INSIDE).concat([DOOR])
   for (const pid of [s.lead, ...s.helpers]) { const p = state.players.find(pl => pl.id === pid); if (p) p.station = null }
   s.customer = null; s.lead = null; s.helpers = []; s.step = 0; s.progress = 0
-  event(state, { kind: 'paid', text: `${c.plan.name} paid $${price} + $${tip} tip`, x: c.x, y: c.y, amount: price + tip, player: by })
+  event(state, { kind: 'paid', text: `${c.plan.name} paid $${price} + $${tip} tip${rushed ? ' (rushed)' : ''}`, x: c.x, y: c.y, amount: price + tip, player: by })
   return true
+}
+
+/** Below this share of the steps done, a treatment counts as rushed. */
+export const RUSHED = 0.6
+
+/** The share of a treatment's required steps that were really done (0 to 1). */
+export function completionOf(result: Pick<TreatmentResult, 'done' | 'required'>) {
+  const done = Number.isFinite(result.done) ? result.done : 0
+  return Math.max(0, Math.min(1, done / Math.max(1, result.required)))
 }
 
 /** Advance the day by `dt` seconds (the host only). */

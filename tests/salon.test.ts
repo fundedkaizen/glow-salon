@@ -1,7 +1,7 @@
 import { check } from './harness.ts'
-import { newSave, startDay, reduce, tick, receipt, awards, toSave, type SalonState } from '../src/core/salon.ts'
+import { newSave, startDay, reduce, tick, receipt, awards, toSave, completionOf, type SalonState } from '../src/core/salon.ts'
 import { ITEMS, canBuy, customersPerDay, ambiencePoints, ambienceStars, wealth, toolTier, payFor, tipFor, nextUnlock, START_MONEY, CONFIRM_PRICE } from '../src/core/economy.ts'
-import { starsFor, speedScore, writeReview, average, addReview } from '../src/core/reviews.ts'
+import { starsFor, speedScore, writeReview, average, addReview, revealTitle } from '../src/core/reviews.ts'
 import { planDay } from '../src/core/customers.ts'
 import { blockedGrid, findPath, SLOTS, SOFA_SEATS, DOOR_INSIDE } from '../src/core/floor.ts'
 import type { TreatmentResult } from '../src/core/treatments/session.ts'
@@ -123,4 +123,25 @@ export function run() {
   const unplaced = state.stations.find(st => st.kind === 'nails')!
   check('an unplaced station takes a free slot when the salon opens', reduce(state, 0, { a: 'open' }) && unplaced.slot >= 0 && new Set(state.stations.map(st => st.slot)).size === state.stations.length)
   check('big purchases confirm threshold', CONFIRM_PRICE === 200)
+
+  // ---------------------------------------------------------------- skipped steps pay less (C2-02)
+  const paid = (result: TreatmentResult) => {
+    const st = startDay(newSave(88))
+    reduce(st, 0, { a: 'join', name: 'Kai' })
+    reduce(st, 0, { a: 'open' })
+    runUntil(st, () => st.stations[0].customer !== null && st.customers.some(c => c.state === 'seated'))
+    reduce(st, 0, { a: 'work', station: 's0' })
+    const c = st.customers.find(x => x.id === st.stations[0].customer)!
+    c.mood = 1
+    reduce(st, 0, { a: 'finish', station: 's0', result })
+    return { revenue: st.stats.revenue, text: st.events.filter(e => e.kind === 'paid').at(-1)?.text ?? '' }
+  }
+  const full = paid(goodResult())
+  const none = paid({ ...goodResult(), done: 0, skipped: 12, thoroughness: 0, seconds: 40, popped: 0, extracted: 0, optionalDone: 0 })
+  const most = paid({ ...goodResult(), done: 9, skipped: 3, thoroughness: 0.7 })
+  check('skip pay: every step done pays the full price', full.revenue === 38 && !full.text.includes('rushed'), full)
+  check('skip pay: nothing done pays 40%', none.revenue === Math.round(38 * 0.4) && none.text.includes('rushed'), none)
+  check('skip pay: most steps done pays most of it', most.revenue > none.revenue && most.revenue < full.revenue && !most.text.includes('rushed'), most)
+  check('skip pay: completion is clamped', completionOf({ done: 20, required: 10 }) === 1 && completionOf({ done: 0, required: 0 }) === 0)
+  check('reveal: a rushed job is never glowing', !revealTitle('Ella', 2).includes('glowing') && !revealTitle('Ella', 3).includes('glowing') && revealTitle('Ella', 4) === 'Ella is glowing!' && revealTitle('Ella', 5) === 'Ella is glowing!')
 }

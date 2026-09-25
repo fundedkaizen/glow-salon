@@ -33,6 +33,13 @@ export function starsFor(result: Pick<TreatmentResult, 'thoroughness' | 'seconds
   return clamp(Math.round(1 + score * 4.35), 1, 5)
 }
 
+/** The reveal's headline follows the stars: a rushed job is never "glowing". */
+export function revealTitle(name: string, stars: number) {
+  if (stars <= 2) return `A quick tidy-up for ${name}`
+  if (stars === 3) return `${name} looks fresher`
+  return `${name} is glowing!`
+}
+
 /** 1 when at or under par, falling off gently to 0 at three times par. */
 export function speedScore(seconds: number, par: number) {
   if (seconds <= par) return 1

@@ -1,5 +1,6 @@
 import { POLISH_COLORS, type TreatmentDef } from '../core/treatments/types.ts'
 import type { StepStatus } from '../core/treatments/session.ts'
+import { revealTitle } from '../core/reviews.ts'
 import { toolArt } from '../art/tools.ts'
 import { esc, h } from './dom.ts'
 
@@ -146,7 +147,7 @@ export class TreatmentHud {
   showReveal(o: { name: string; stars: number; lead: boolean }) {
     this.card.hidden = false
     this.card.innerHTML = `
-      <div class="reveal-name">${esc(o.name)} is glowing!</div>
+      <div class="reveal-name">${esc(revealTitle(o.name, o.stars))}</div>
       <div class="reveal-stars">${[1, 2, 3, 4, 5].map(i => `<span class="rstar${i <= o.stars ? ' on' : ''}" style="--d:${i * 0.12}s">&#9733;</span>`).join('')}</div>
       <div class="reveal-btns">
         <button class="pill reveal-photo">Save photo</button>

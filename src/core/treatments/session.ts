@@ -813,20 +813,29 @@ export class TreatmentSession {
     if (step.choice && this.choices[this.step] === undefined) this.choices[this.step] = this.wish ?? 0
     if (step.optional) this.status[this.step] = !skip && this.stepTargets().some(t => t.done) ? 'done' : 'todo'
     else this.status[this.step] = skip ? 'skipped' : 'done'
+    // A skipped step leaves the customer's own problem as it was (grime, old polish, calluses, pimples); only
+    // the salon's own products (foam, a mask, the bath water) still come off, so the treatment carries on.
+    const settles = (id: string) => !skip || this.isProduct(id)
     // The last few percent settle by themselves, so nobody hunts for pixels.
     if (step.layer && step.gesture !== 'targets') {
       const to = step.gesture === 'erase' || step.gesture === 'peel' || step.gesture === 'hold' ? 0 : 1
-      this.resolveLayer(step.layer, to, to === 0 ? 'everywhere' : step.region)
+      if (!skip || (to === 0 && this.isProduct(step.layer))) this.resolveLayer(step.layer, to, to === 0 ? 'everywhere' : step.region)
     }
     // Out of the foot bath (or from under the hot towel), the foot is wet all over.
     if (this.foot && step.gesture === 'hold' && step.wet) this.stampLayer(WET, 512, 540, 760, step.wet, 'everywhere')
-    for (const id of step.clears ?? []) this.resolveLayer(id, 0, 'everywhere')
-    if (step.targets && !step.optional) for (const t of this.stepTargets()) if (!t.done) { t.done = true; t.progress = 1 }
+    for (const id of step.clears ?? []) if (settles(id)) this.resolveLayer(id, 0, 'everywhere')
+    if (!skip && step.targets && !step.optional) for (const t of this.stepTargets()) if (!t.done) { t.done = true; t.progress = 1 }
     if (step.gesture === 'peel') { this.peel.progress = 1; this.peel.released = true }
     const from = this.step
     this.step++
     this.emit({ e: 'advance', from, to: this.step, skipped: skip, na: false })
     this.beginStep()
+  }
+
+  /** Something the salon put on (a paint, wet or glow layer), not one of the customer's own problems. */
+  private isProduct(id: string) {
+    const kind = this.def.layers.find(l => l.id === id)?.kind
+    return kind === 'paint' || kind === 'wet' || kind === 'glow'
   }
 
   private resolveLayer(id: string, to: 0 | 1, regionId: RegionId) {
