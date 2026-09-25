@@ -167,8 +167,8 @@ def m_awning():
 # ---------------------------------------------------------------------------------------------- the cat
 
 def m_cat():
-    """The salon cat: a round, cream-and-ginger cat on a small rig (body, head, tail, four legs), with idle (a slow
-    breath, a tail swish, an ear twitch) and walk clips."""
+    """The salon cat: a round, cream-and-ginger cat on a small rig (body, head, tail, four legs), with idle (sitting
+    upright, the tail swishing, looking about), sleep (a loaf, legs tucked under), stretch (a play-bow) and walk."""
     style()
     furn.material('Fur', color=0xf2b27a, rough=0.7)
     furn.material('Fur2', color=0xfff2e2, rough=0.7)
@@ -224,30 +224,67 @@ def m_cat():
     m.object = rig
     for pb in rig.pose.bones:
         pb.rotation_mode = 'QUATERNION'
-    def q(x=0, y=0, z=0):
-        from mathutils import Euler
-        return Euler((math.radians(x), math.radians(y), math.radians(z))).to_quaternion()
+    from mathutils import Euler, Quaternion as Q
+
+    def W(x=0, y=0, z=0):
+        return Euler((math.radians(x), math.radians(y), math.radians(z)), 'XYZ').to_quaternion()
+
+    def set_world(pose):
+        """pose: bone -> world rotation (degrees about the world axes, about the bone's head), 'lift': body offset."""
+        acc = {}
+        for b in rig.data.bones:
+            parent = acc.get(b.parent.name, Q()) if b.parent else Q()
+            wq = W(*pose.get(b.name, (0, 0, 0))) if b.name in pose else parent
+            rc = parent.inverted() @ wq
+            acc[b.name] = wq
+            r = b.matrix_local.to_quaternion()
+            pb = rig.pose.bones[b.name]
+            pb.rotation_quaternion = r.conjugated() @ rc @ r
+            pb.location = Vector()
+        off = Vector(pose.get('lift', (0, 0, 0)))
+        rb = rig.data.bones['body']
+        rig.pose.bones['body'].location = rb.matrix_local.to_3x3().inverted() @ off
+
     def key(name, frames):
         a = bpy.data.actions.new(name)
         rig.animation_data_create()
         rig.animation_data.action = a
         for f, pose in frames:
+            set_world(pose)
             for pb in rig.pose.bones:
-                pb.rotation_quaternion = pose.get(pb.name, Quaternion())
-                pb.location = Vector()
                 pb.keyframe_insert('rotation_quaternion', frame=f)
-            if 'lift' in pose:
-                pb = rig.pose.bones['body']
-                pb.location = Vector((0, 0, 0))
+                pb.keyframe_insert('location', frame=f)
         rig.animation_data.action = None
         return a
-    idle = key('idle', [(0, {'tail1': q(0, 0, 15), 'tail2': q(20, 0, 10)}), (30, {'tail1': q(0, 0, -15), 'tail2': q(20, 0, -15), 'head': q(0, 0, 6)}),
-                        (60, {'tail1': q(0, 0, 15), 'tail2': q(20, 0, 10)})])
-    walk = key('walk', [(f, {'leg_fl': q(25 * math.sin(p), 0, 0), 'leg_br': q(25 * math.sin(p), 0, 0), 'leg_fr': q(-25 * math.sin(p), 0, 0),
-                             'leg_bl': q(-25 * math.sin(p), 0, 0), 'tail1': q(10, 0, 8 * math.sin(p)), 'head': q(3 * math.sin(2 * p), 0, 0)})
+
+    # sitting upright (the idle): the chest up, the rear on the floor, the front legs straight, the hind legs folded
+    sit = {'body': (-24, 0, 0), 'lift': (0, 0.02, -0.035), 'leg_fl': (0, 0, 0), 'leg_fr': (0, 0, 0),
+           'leg_bl': (-80, 0, 0), 'leg_br': (-80, 0, 0), 'head': (-10, 0, 0), 'tail1': (70, 0, 40), 'tail2': (80, 0, 90)}
+    def sit_k(tail, head):
+        p = dict(sit)
+        p['tail2'] = (80, 0, 90 + tail)
+        p['head'] = (-10, 0, head)
+        return p
+    idle = key('idle', [(0, sit_k(0, 0)), (30, sit_k(-30, 12)), (60, sit_k(0, 0)), (90, sit_k(-25, -10)), (120, sit_k(0, 0))])
+    # asleep in a loaf: the body down on the floor, the legs tucked under it, the head resting, the tail curled round
+    # (front legs fold back under the chest, hind legs forward under the belly: both hidden under the body)
+    loaf = {'lift': (0, 0, -0.1), 'leg_fl': (88, 0, 0), 'leg_fr': (88, 0, 0), 'leg_bl': (-88, 0, 0), 'leg_br': (-88, 0, 0),
+            'head': (22, 0, 25), 'tail1': (-35, 0, -100), 'tail2': (-73, 0, -175)}
+    def breath(k):
+        p = dict(loaf)
+        p['lift'] = (0, 0, -0.1 + 0.004 * k)
+        return p
+    sleep = key('sleep', [(0, breath(0)), (45, breath(1)), (90, breath(0))])
+    # a play-bow stretch: the front legs reaching forward, chest low, rear and tail up
+    bow = {'body': (18, 0, 0), 'lift': (0, 0, -0.03), 'leg_fl': (-60, 0, 0), 'leg_fr': (-60, 0, 0), 'leg_bl': (0, 0, 0), 'leg_br': (0, 0, 0),
+           'head': (-15, 0, 0), 'tail1': (-40, 0, 0), 'tail2': (-60, 0, 0)}
+    stretch = key('stretch', [(0, sit), (20, bow), (50, bow), (70, sit)])
+    walk = key('walk', [(f, {'leg_fl': (25 * math.sin(p), 0, 0), 'leg_br': (25 * math.sin(p), 0, 0), 'leg_fr': (-25 * math.sin(p), 0, 0),
+                             'leg_bl': (-25 * math.sin(p), 0, 0), 'tail1': (-30, 0, 8 * math.sin(p)), 'tail2': (-30, 0, 8 * math.sin(p)),
+                             'head': (3 * math.sin(2 * p), 0, 0)})
                         for f, p in ((i * 5, i * 5 / 20 * 2 * math.pi) for i in range(5))])
     ad = rig.animation_data
-    for a in (idle, walk):
+    for a in (idle, sleep, stretch, walk):
         tr = ad.nla_tracks.new()
         tr.name = a.name
         tr.strips.new(a.name, 0, a)
@@ -262,7 +299,7 @@ def export_cat():
     thumb = furn.render_thumb(body, os.path.join(furn.THUMBS, 'cat.png'))
     entry = {'id': 'cat', 'name': 'Salon cat', 'kind': 'life', 'file': 'life/cat.glb', 'footprint': [0.25, 0.6], 'height': 0.4, 'nodes': {},
              'recolour': ['Fur', 'Fur2'], 'materials': sorted({m.name for m in body.data.materials}), 'tris': gs.tris(body),
-             'animations': ['idle', 'walk'], 'walkSpeed': 0.45}
+             'animations': ['idle', 'sleep', 'stretch', 'walk'], 'walkSpeed': 0.45}
     furn.write_manifest(entry)
     print('MODEL cat', entry['tris'])
 

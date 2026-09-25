@@ -211,6 +211,13 @@ def nodes_info(empties):
 def finish(meshes, ao=True, ao_distance=0.25, ao_strength=0.7, target=3200):
     """Join the parts, decimate to the triangle budget, bake soft occlusion (with a floor) into the vertex colours."""
     meshes = [m for m in meshes if m is not None]
+    # one UV layer by the same name on every part, so a textured part keeps its UVs through the join
+    if any(m.data.uv_layers for m in meshes):
+        for m in meshes:
+            if not m.data.uv_layers:
+                m.data.uv_layers.new(name='UVMap')
+            else:
+                m.data.uv_layers[0].name = 'UVMap'
     body = gs.join(meshes, 'body')
     if target:
         gs.decimate(body, target)
