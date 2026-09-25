@@ -130,6 +130,8 @@ export type ModelEntry = {
   sitClip?: string
   /** Animation clips inside the file (the cat). */
   animations?: string[]
+  /** A texture to tile with this model (the wood floor), relative to public/models/. */
+  texture?: string
   /** Ground speed (m/s) the in-place walk clip matches (the cat). */
   walkSpeed?: number
   /** For purchasable items: three styles (the first is the default). */
