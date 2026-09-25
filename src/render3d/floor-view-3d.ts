@@ -9,6 +9,7 @@ import { GIFT_BY_ID, GIFT_SLOTS, placeDecor } from '../core/decor.ts'
 import { canBuy, ITEM_BY_ID, ITEMS, STATION_NAME, type Item } from '../core/economy.ts'
 import { ghostPicks, levelProgress, salonLevel, STYLE_COUNT, tierOf } from '../core/unlocks.ts'
 import { confetti } from '../ui/confetti.ts'
+import { TREATMENTS } from '../core/treatments/registry.ts'
 import { blockedGrid, CELL, COLS, COMPUTER_SPOT, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA_SEATS, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
 import { personaFor, storyBeat } from '../core/persona.ts'
 import { withFigure } from '../core/figure.ts'
@@ -62,6 +63,18 @@ const GHOST_MAT = new MeshStandardMaterial({ color: 0xe9e6ee, roughness: 0.8, me
 const GHOST_DEPTH = new MeshBasicMaterial({ colorWrite: false, transparent: true, depthWrite: true })
 
 const { d: RD } = ROOM3
+
+/** The small "Tap to call" pill. */
+function callTagView(): Container {
+  const c = new Container()
+  const t = new Text({ text: 'Tap to call', style: { fontFamily: 'Nunito, system-ui, sans-serif', fontSize: 12, fontWeight: '800', fill: 0xffffff }, resolution: 3 })
+  t.anchor.set(0.5)
+  const bg = new Graphics().roundRect(-t.width / 2 - 9, -11, t.width + 18, 22, 11).fill({ color: 0xe2729a })
+  c.addChild(bg, t)
+  c.visible = false
+  c.eventMode = 'none'
+  return c
+}
 
 /** The light's colour through the day. */
 const TOD = { morning: new Color(0xffe0c4), noon: new Color(0xfff4ea), close: new Color(0xffc896) }
@@ -144,6 +157,8 @@ export class FloorView3D {
   private promptText = new Text({ text: '', style: { fontFamily: 'Nunito, system-ui, sans-serif', fontSize: 15, fontWeight: '800', fill: 0x5a3a52 }, resolution: 3 })
   private promptKey = new Text({ text: 'F', style: { fontFamily: 'Nunito, system-ui, sans-serif', fontSize: 13, fontWeight: '800', fill: 0xffffff }, resolution: 3 })
   private promptBg = new Graphics()
+  /** "Tap to call" over the first waiting customer who can be called. */
+  private callTag = callTagView()
   private target: Target | null = null
   private promptPop = 0
   private inputOn = true
@@ -272,7 +287,7 @@ export class FloorView3D {
     this.prompt.visible = false
     this.prompt.eventMode = 'static'
     this.prompt.on('pointertap', (e: FederatedPointerEvent) => { e.stopPropagation(); this.interact() })
-    this.uiLayer.addChild(this.prompt)
+    this.uiLayer.addChild(this.prompt, this.callTag)
     // Progression UI (not on the title screen).
     const host = document.getElementById('ui')
     if (!this.demo && host) this.progress = new ProgressUi(host, {
@@ -883,11 +898,36 @@ export class FloorView3D {
     if (hit.ghost && !hit.target) { this.openBuy(hit.ghost.item); return }
     const unplaced = this.state.stations.find(s => s.slot < 0)
     if (hit.slot >= 0 && unplaced && this.ghosts.some(g => g.slot === hit.slot)) { sfx.click(); this.hooks.onAction({ a: 'place', station: unplaced.id, slot: hit.slot }); return }
+    // A tap on a waiting customer calls them to a free station; a tap on a free station calls the next in line.
+    const who = this.customerAt(e.global.x, e.global.y)
+    if (who !== null) { sfx.pop(1); this.hooks.onAction({ a: 'call', customer: who } as Action); return }
+    if (hit.target?.kind === 'station') {
+      const st = this.state.stations.find(s => s.id === (hit.target as { id: string }).id)
+      if (st && st.customer === null && this.state.customers.some(c => this.callable(this.state!, c) && TREATMENTS[c.plan.treatment]?.station === st.kind)) { sfx.pop(1); this.hooks.onAction({ a: 'call', station: st.id } as Action) }
+    }
     if (hit.target) { this.goTo(hit.target); return }
     if (!hit.floor) return
     this.goal = null
     this.claim(null)
     this.walkTo(hit.floor)
+  }
+
+  /** The waiting customer under a screen point who can be called, if any (their body or their bubble). */
+  private customerAt(sx: number, sy: number): number | null {
+    const st = this.state
+    if (!st) return null
+    let best: number | null = null, bd = 46 * this.ui
+    for (const c of st.customers) {
+      const v = this.customers.get(c.id)
+      if (!v || !this.callable(st, c)) continue
+      for (const y of [0.6, 1.1, v.head.y + 0.3]) {
+        const p = this.project(_v.set(v.person.root.position.x, y, v.person.root.position.z))
+        if (!p) continue
+        const d = Math.hypot(p.x - sx, p.y - sy)
+        if (d < bd) { bd = d; best = c.id }
+      }
+    }
+    return best
   }
 
   private onHover(e: FederatedPointerEvent) {
@@ -1125,7 +1165,16 @@ export class FloorView3D {
     }
   }
 
+  /** Whether a waiting customer can be called now (a free station of their kind, and nobody on staff to call them). */
+  private callable(state: FloorState, c: FloorState['customers'][number]): boolean {
+    if (this.demo || (c.state !== 'waiting' && c.state !== 'entering')) return false
+    const kind = TREATMENTS[c.plan.treatment]?.station
+    return state.stations.some(s => s.customer === null && s.slot >= 0 && s.kind === kind)
+  }
+
   private placeCustomerUi(state: FloorState, dt: number) {
+    let tagged = false
+    this.callTag.visible = false
     for (const c of state.customers) {
       const v = this.customers.get(c.id)
       if (!v) continue
@@ -1136,7 +1185,10 @@ export class FloorView3D {
       const sc = target ? easeOutBack(Math.min(1, next)) * 0.9 + next * 0.1 : next
       v.bubble.visible = next > 0.02
       this.pin(v.bubble, _v.copy(v.head).setY(v.head.y + 0.12), 2, -22 + Math.sin(this.t * 2.4 + c.id) * 2.5)
-      v.bubble.scale.set(sc * this.ui)
+      // Callable: the bubble pulses, and the first in line carries a "Tap to call" tag.
+      const call = this.callable(state, c) && v.bubble.visible
+      v.bubble.scale.set(sc * this.ui * (call ? 1 + 0.09 * Math.abs(Math.sin(this.t * 3.2)) : 1))
+      if (call && !tagged) { tagged = true; this.callTag.visible = true; this.callTag.scale.set(this.ui); this.callTag.position.set(v.bubble.x, v.bubble.y - 34 * this.ui); this.callTag.alpha = 0.75 + 0.25 * Math.sin(this.t * 3.2) }
       if (v.bubble.visible) {
         const mood = c.mood
         const col = mood > 0.72 ? 0x6fd3ad : mood > 0.45 ? 0xf2c76b : 0xf08aa8

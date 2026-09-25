@@ -1,5 +1,6 @@
 import { check } from './harness.ts'
-import { MAX_CATCH_UP, newSave, startDay, reduce, runFor, tick } from '../src/core/salon.ts'
+import { MAX_CATCH_UP, newSave, startDay, reduce } from '../src/core/salon.ts'
+import { runFor, tick } from './calls.ts'
 import { handleGuestMessage, parseGuestMessage, publicState, routeOps, stationCrew } from '../src/core/coop/protocol.ts'
 
 export function run() {

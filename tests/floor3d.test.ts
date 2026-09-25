@@ -1,6 +1,6 @@
 import { check, near } from './harness.ts'
 import { Vector3 } from 'three'
-import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, DOOR_INSIDE, findPath, FLOOR_H, FLOOR_W, PARTITIONS, SLOTS, SOFA_SEATS, spawnPoint, STANDING, stationSeat, stationSpot, WALL_H, type Pt } from '../src/core/floor.ts'
+import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, DESK_FRONT, DOOR_INSIDE, stationFront, findPath, FLOOR_H, FLOOR_W, PARTITIONS, SLOTS, SOFA_SEATS, spawnPoint, STANDING, stationSeat, stationSpot, WALL_H, type Pt } from '../src/core/floor.ts'
 import { DEPTH_K, lenX, lenZ, ROOM3, toSim, toWorld, turnTo, UNITS_PER_M, wallHeight, yawFor } from '../src/render3d/mapping.ts'
 import { CameraRig } from '../src/render3d/camera.ts'
 import { reachable } from './unlocks.test.ts'
@@ -67,6 +67,81 @@ export function run() {
   near('walking up faces the back', Math.abs(yawFor(0, -10)), Math.PI)
   near('the short way round, across PI', turnTo(3, -3), 2 * Math.PI - 6, 1e-9)
   near('the short way round, small', turnTo(0.2, 0.5), 0.3, 1e-9)
+
+  // ---- natural paths: people keep off the walls when there is an open way round (the cost field keeps them
+  // off furniture too, as far as the aisles allow)
+  const pathBad: string[] = []
+  let pathChecked = 0
+  // Day one, a middling salon and a full one (a full salon's aisles are narrow: there is often no open way round).
+  for (const slots of [[0], [0, 1, 3], SLOTS.map((_, i) => i)]) {
+    const all = slots
+    const grid = blockedGrid(all, [])
+    const idx = (p: Pt) => Math.floor(p.y / CELL) * COLS + Math.floor(p.x / CELL)
+    // A wall cell: the room's walls (the back wall, the front, the sides) and the partitions.
+    const wall = (x: number, y: number) => {
+      if (x < 0 || y < 0 || x >= COLS || y >= FLOOR_H / CELL) return true
+      const px = x * CELL + CELL / 2, py = y * CELL + CELL / 2
+      if (py < WALL_H + 4 || py > FLOOR_H - 12 || px > FLOOR_W - 16 || px < 12) return true
+      return PARTITIONS.some(r => px > r.x - 4 && px < r.x + r.w + 4 && py > r.y - 4 && py < r.y + r.h + 4)
+    }
+    // Cells right beside a wall: the ones to keep off.
+    const hugs = (i: number) => { const x = i % COLS, y = (i / COLS) | 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (wall(x + dx, y + dy) && !grid[i]) return true; return false }
+    // The nearest open cell to one inside furniture (a seat, a tucked-in work spot).
+    const openNear = (i: number) => { if (!grid[i]) return i; let best = i, bd = Infinity; for (let j = 0; j < COLS * Math.ceil(FLOOR_H / CELL); j++) { if (grid[j]) continue; const d = Math.hypot((j % COLS) - (i % COLS), ((j / COLS) | 0) - ((i / COLS) | 0)); if (d < bd) { bd = d; best = j } } return best }
+    // Shortest length over open cells (Dijkstra), optionally keeping off the hugging cells except near the ends.
+    const shortest = (a: Pt, b: Pt, open: boolean) => {
+      const n = COLS * Math.ceil(FLOOR_H / CELL), dist = new Float64Array(n).fill(Infinity), done = new Uint8Array(n)
+      const s = openNear(idx(a)), t = openNear(idx(b)), near = (i: number) => Math.hypot((i % COLS) - (s % COLS), ((i / COLS) | 0) - ((s / COLS) | 0)) < 3.5 || Math.hypot((i % COLS) - (t % COLS), ((i / COLS) | 0) - ((t / COLS) | 0)) < 3.5
+      dist[s] = 0
+      for (;;) {
+        let u = -1, best = Infinity
+        for (let i = 0; i < n; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i }
+        if (u < 0 || u === t) break
+        done[u] = 1
+        const x = u % COLS, y = (u / COLS) | 0
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy, v = ny * COLS + nx
+          if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= COLS || v >= n || grid[v]) continue
+          if (dx && dy && (grid[y * COLS + nx] || grid[ny * COLS + x])) continue
+          if (open && hugs(v) && !near(v)) continue
+          const d = dist[u] + (dx && dy ? 1.414 : 1)
+          if (d < dist[v]) dist[v] = d
+        }
+      }
+      return dist[t]
+    }
+    const len = (a: Pt, path: Pt[]) => { let l = 0, p = a; for (const q of path) { l += Math.hypot(q.x - p.x, q.y - p.y); p = q } return l / CELL }
+    const trips: [string, Pt, Pt][] = []
+    // Arrivals go door, desk front, sofa (salon.ts); called customers go sofa, station front, seat.
+    trips.push(['door to the desk', DOOR_INSIDE, DESK_FRONT])
+    for (const [i, seat] of SOFA_SEATS.entries()) trips.push([`desk to sofa ${i}`, DESK_FRONT, seat])
+    for (const i of all) trips.push([`${all.length} stations: sofa to station ${i}`, SOFA_SEATS[1], stationFront(i)], [`${all.length} stations: start to work spot ${i}`, spawnPoint(0), stationSpot(i)])
+    const bad = pathBad
+    for (const [name, a, b] of trips) {
+      const plain = shortest(a, b, false), open = shortest(a, b, true)
+      if (process.env.PATH_DEBUG) console.log(name, plain.toFixed(1), open.toFixed(1))
+      if (!Number.isFinite(open) || open > plain * 1.3) continue
+      pathChecked++
+      const path = findPath(grid, a, b)
+      // Walk the path in small steps; away from its two ends, no point may lie in a cell hugging a wall or furniture.
+      let p = a
+      const total = len(a, path)
+      let walked = 0
+      for (const q of path) {
+        const d = Math.hypot(q.x - p.x, q.y - p.y)
+        for (let k = 0; k < d; k += 4) {
+          const x = p.x + ((q.x - p.x) * k) / d, y = p.y + ((q.y - p.y) * k) / d, at = walked + k / CELL
+          if (at > 2.5 && at < total - 2.5 && hugs(idx({ x, y }))) { bad.push(`${name} scrapes by (${Math.round(x)}, ${Math.round(y)})`); break }
+        }
+        walked += d / CELL
+        p = q
+      }
+    }
+    const arrive = findPath(grid, DOOR_INSIDE, SOFA_SEATS[0])
+    check('paths: the same path every time (host and guests agree)', JSON.stringify(arrive) === JSON.stringify(findPath(grid, DOOR_INSIDE, SOFA_SEATS[0])))
+  }
+  check('paths: enough trips have an open route to compare', pathChecked >= 10, pathChecked)
+  check('paths: no route runs along a wall when an open way exists within 30% longer', pathBad.length === 0, [...new Set(pathBad)].slice(0, 5))
 
   // ---- camera framing
   const rig = new CameraRig()

@@ -51,6 +51,8 @@
   window.__serve = id => { window.__serving = true; window.__serveLog = ''; serve(id).then(r => { window.__serveLog = r; window.__serving = false }, e => { window.__serveLog = 'ERR ' + e; window.__serving = false }); return 'started' }
   window.__serveNext = () => {
     const s = view()
+    // Customers wait on the sofa until called: call each free station's next in line (as a tap on it would).
+    for (const x of s.stations) if (x.customer === null && x.slot >= 0) g().act({ a: 'call', station: x.id })
     const st = s.stations.find(x => (!window.__only || x.id === window.__only) && x.id !== window.__skip && x.lead === null && x.customer !== null && s.customers.find(c => c.id === x.customer)?.state === 'seated' && x.slot >= 0)
     if (!st) return ''
     window.__serve(st.id)
