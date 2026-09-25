@@ -5,7 +5,7 @@ import { sfx } from '../audio/sfx.ts'
 import type { Look } from '../core/customers.ts'
 import { arrivals, nextUnlock } from '../core/economy.ts'
 import { ARCHETYPE_BY_ID } from '../core/persona.ts'
-import type { Review } from '../core/reviews.ts'
+import { dayVerdict, type Review } from '../core/reviews.ts'
 import { salonTags, type GoogleReview } from '../core/review-writer.ts'
 import type { Player } from '../core/salon.ts'
 import { confetti } from './confetti.ts'
@@ -104,8 +104,10 @@ export class Receipt {
     paper.append(h('hr', 'gs-rule'))
     const net = h('div', 'gs-net', `<span>Profit</span><b>$0</b>`)
     paper.append(net)
-    paper.append(h('div', 'gs-served', `${d.served} happy customer${d.served === 1 ? '' : 's'} today`))
-    const stamp = h('div', 'gs-stamp', d.net > 0 ? 'GREAT DAY' : 'THANK YOU')
+    // Honest: "happy" counts four stars and up, and the stamp follows the day's reviews, not the money.
+    const verdict = dayVerdict(d.reviews, d.served)
+    paper.append(h('div', 'gs-served', verdict.line))
+    const stamp = h('div', `gs-stamp ${verdict.tone}`, verdict.stamp)
     paper.append(stamp)
     // ---------------------------------------------------------------- the Google-style listing
     const side = h('div', 'gs-reviews')
@@ -142,7 +144,7 @@ export class Receipt {
     await this.countUp(netEl, Math.abs(d.net), 700, d.net < 0 ? '-' : '')
     sfx.cash()
     stamp.classList.add('in')
-    if (d.net > 0) confetti(this.host, rectCentre(paper), 50)
+    if (d.net > 0 && verdict.tone !== 'meh') confetti(this.host, rectCentre(paper), 50)
     await this.pause(500)
 
     // Today's reviews land one by one: each pops in, fills its bar and nudges the rating.

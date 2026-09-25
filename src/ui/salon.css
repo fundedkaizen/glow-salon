@@ -210,6 +210,7 @@
 .gs-served { text-align: center; font: 800 13px var(--gs-font); color: var(--gs-ink-soft); margin-top: 10px; }
 .gs-stamp { display: table; margin: 16px auto 0; transform: rotate(-8deg) scale(2); opacity: 0; font: 700 16px var(--gs-head); color: var(--gs-mint-deep); border: 3px solid var(--gs-mint-deep); border-radius: 10px; padding: 4px 12px; letter-spacing: 1.5px; transition: all 0.35s var(--gs-ease); }
 .gs-stamp.in { transform: rotate(-8deg) scale(1); opacity: 0.85; }
+.gs-stamp.meh { color: #9a7aa8; border-color: #9a7aa8; }
 .gs-reviews { flex: 1; min-width: 0; max-width: 620px; display: flex; flex-direction: column; gap: 12px; }
 .gs-gcard { background: #fff; border-radius: 22px; padding: 18px 20px; box-shadow: var(--gs-shadow); animation: gs-card-in 0.5s var(--gs-ease) both; }
 .gs-g-head { display: flex; align-items: center; gap: 16px; }

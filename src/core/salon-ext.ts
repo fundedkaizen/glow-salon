@@ -5,7 +5,7 @@ import { CONFIRM_PRICE } from './economy.ts'
 import { stationSpot } from './floor.ts'
 import { goalFor, goalTally, type DailyGoal } from './goals.ts'
 import { personaFor, type Persona } from './persona.ts'
-import { writeGoogleReview, type GoogleReview } from './review-writer.ts'
+import { TAGS, writeGoogleReview, type GoogleReview } from './review-writer.ts'
 import { MOOD_DRAIN_WAITING, reduce, type Customer, type SalonState } from './salon.ts'
 import { candidatesFor, cleanStaffName, gainXp, has, hire, MAX_STAFF, rest, staffDuration, staffResult, STAFF_GRACE, STAFF_ID_BASE, tire, weekOf, type Candidate, type StaffMember } from './staff.ts'
 import { planTreatment } from './treatments/plan.ts'
@@ -46,6 +46,9 @@ export type SalonExt = {
     goal: DailyGoal | null
     /** Stations players are walking over to (player id to station and when), so staff leave them be. */
     claims: Record<number, { station: string; at: number }>
+    /** Review lines written today (none twice in a day), and how many reviews mentioned the cat. */
+    lines: string[]
+    catLines: number
   }
   vote: ExtVote | null
 }
@@ -68,7 +71,7 @@ export type ExtAction =
 export const DEFAULT_SALON_NAME = 'Glow Salon'
 export const DEFAULT_CAT_NAME = 'Mochi'
 
-const emptyToday = (): SalonExt['today'] => ({ ready: [], wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [], goal: null, claims: {} })
+const emptyToday = (): SalonExt['today'] => ({ ready: [], wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [], goal: null, claims: {}, lines: [], catLines: 0 })
 
 export function newExt(): SalonExt {
   return { salonName: DEFAULT_SALON_NAME, catName: DEFAULT_CAT_NAME, staff: [], hired: [], week: -1, campaigns: [], loyalty: false, friends: {}, decorOrder: [], recent: [], stars: [0, 0, 0, 0, 0], lastDay: 0, names: [], today: emptyToday(), vote: null }
@@ -425,7 +428,9 @@ export function extReview(state: SalonState, c: Customer, by: number, stars: num
     id: `d${state.day}c${c.id}`, day: state.day, name: c.plan.name, stars, result, mood: c.mood, regular: met, disaster: c.plan.disaster, ambience,
     seed: c.plan.seed, voice: persona.voice, archetype: persona.archetype, budget: persona.budget, price, look: c.plan.look,
     salon: e.salonName, staff: who, cat: e.today.pets > 0, recent: e.recent, owned: state.owned, byStaff: by >= STAFF_ID_BASE,
+    today: (e.today.lines ??= []), catToday: e.today.catLines ?? 0, photo: result.photo === true,
   })
+  if (review.tags.includes(TAGS.cat)) e.today.catLines = (e.today.catLines ?? 0) + 1
   e.stars[Math.max(1, Math.min(5, review.stars)) - 1]++
   if (c.plan.regular && stars >= 4) {
     const before = e.friends[c.plan.regular] ?? 0

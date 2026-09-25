@@ -100,6 +100,8 @@ export type TreatmentResult = {
   disaster: boolean
   /** 0 to 1: every step done well, plus extras. */
   thoroughness: number
+  /** The lead saved the before-and-after photo (set by the salon glue, not the session). */
+  photo?: boolean
 }
 
 export const TIER_RATE = [1, 1.5, 2.1, 2.6]
