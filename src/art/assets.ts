@@ -64,6 +64,15 @@ const HAND_STYLES: Record<string, LayerStyle> = {
 }
 
 const tex = (c: HTMLCanvasElement) => canvasTexture(c)
+/** The backdrop is soft and blurry, so it is stored at 1024 (the view scales it back up): 60% less memory. */
+function backdropTex(c: HTMLCanvasElement) {
+  const small = document.createElement('canvas')
+  small.width = small.height = 1024
+  const ctx = small.getContext('2d')!
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(c, 0, 0, 1024, 1024)
+  return canvasTexture(small)
+}
 const cropTex = (c: Crop): CropTex => ({ texture: tex(c.canvas), x: c.x, y: c.y })
 const toTex = <K extends string>(r: Record<K, Crop>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, cropTex(v as Crop)])) as Record<K, CropTex>
 
@@ -78,7 +87,7 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
     }
     return {
       surface: { base: tex(art.base), height: tex(art.height), bump: 2.4, sss: [0.95, 0.32, 0.26], layers, order },
-      backdrop: tex(paintBackdrop('facial', look)),
+      backdrop: backdropTex(paintBackdrop('facial', look)),
       features: { eyes: toTex(art.eyes), brows: toTex(art.brows), mouth: toTex(art.mouth) },
       towel: tex(paintSteamTowel(seed)),
       pimples: Object.fromEntries(Object.entries(paintPimples(art.skin)).map(([k, c]) => [k, tex(c)])) as PartAssets['pimples'],
@@ -95,7 +104,7 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
   }
   return {
     surface: { base: tex(art.base), height: tex(art.height), bump: 4, sss: [0.95, 0.35, 0.28], layers, order },
-    backdrop: tex(paintBackdrop('nails', look)),
+    backdrop: backdropTex(paintBackdrop('nails', look)),
     tips: art.tips.map(cropTex),
     skinRGB: art.skin.base,
   }

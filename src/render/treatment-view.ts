@@ -6,7 +6,7 @@ import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, peelCurve, regionMask, type 
 import { POLISH_COLORS, type StepDef, type TreatmentId } from '../core/treatments/types.ts'
 import { starsFor } from '../core/reviews.ts'
 import { assetsFor, type PartAssets } from '../art/assets.ts'
-import { BACKDROP_OFFSET } from '../art/backdrop.ts'
+import { BACKDROP, BACKDROP_OFFSET } from '../art/backdrop.ts'
 import { bits } from '../art/bits.ts'
 import { toolArt } from '../art/tools.ts'
 import { PLAYER_COLORS } from '../art/palette.ts'
@@ -133,6 +133,7 @@ export class TreatmentView {
 
     const backdrop = new Sprite(this.assets.backdrop)
     backdrop.position.set(-BACKDROP_OFFSET, -BACKDROP_OFFSET)
+    backdrop.scale.set(BACKDROP / this.assets.backdrop.width)
     this.photoRoot.addChild(backdrop, this.artRoot)
     // Squash and wobble around the middle of the face, not the sheet's corner.
     this.artRoot.pivot.set(512, 540)
@@ -366,6 +367,15 @@ export class TreatmentView {
   }
 
   snapshot(): SessionSnapshot { return this.session.snapshot() }
+
+  /** The lead left and this helper takes over the treatment (drop-out never stalls a customer). */
+  promote() {
+    if (this.opts.role === 'lead') return
+    this.opts.role = 'lead'
+    this.hud.setRole('lead')
+    this.hud.setStep(this.session.step, this.session.status)
+    if (this.session.ready) this.advanceAt = this.time + 0.4
+  }
 
   /** For browser checks: art-space centres of grid cells the current step still needs worked. */
   cellsToWork(limit = 400): [number, number][] {

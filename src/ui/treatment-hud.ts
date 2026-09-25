@@ -127,6 +127,12 @@ export class TreatmentHud {
 
   hideControls() { this.el.classList.add('revealing') }
 
+  /** A helper who takes over becomes the lead: they get Skip, Finish and the choices. */
+  setRole(role: 'lead' | 'helper') {
+    this.opts.role = role
+    this.chip.innerHTML = role === 'helper' ? `Helping <b>${esc(this.opts.leadName)}</b>` : `<b>${esc(this.opts.customer)}</b>`
+  }
+
   /** A step this customer does not need: it leaves the tray. */
   hideStep(i: number) {
     this.tray.querySelector<HTMLElement>(`.tool[data-i="${i}"]`)?.classList.add('gone')

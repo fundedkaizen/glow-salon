@@ -12,7 +12,8 @@ import { TreatmentView } from '../render/treatment-view.ts'
  *   a partner asks for a snapshot        -> send view.snapshot() to them (only the lead is asked)
  *   a snapshot arrives (late joiner)     -> view.applySnapshot(snap)
  *
- * and closes it (view.destroy()) when the station's customer has gone or the player left.
+ * calls view.promote() if the lead drops out and this player becomes the station's lead, and closes it
+ * (view.destroy()) when the station's customer has gone or the player left.
  */
 export type TreatmentNet = {
   /** Send this player's ops to the rest of the station's crew (host: route them; guest: send to the host). */
