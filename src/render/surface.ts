@@ -167,6 +167,9 @@ export class Surface {
     this.root.addChildAt(child, index)
   }
 
+  /** Dry the skin at once (before the reveal photo). */
+  dryAll() { this.renderer.render({ container: new Container(), target: this.wet, clear: true }); this.wetPending.length = 0 }
+
   setLayerMix(id: string, mix: number) { const l = this.layers.get(id); if (l) l.uniforms.uniforms.uP[0] = mix }
   setLayerTint(id: string, color: number, amount = 1) {
     const l = this.layers.get(id)

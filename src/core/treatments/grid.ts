@@ -57,18 +57,34 @@ export function paintedShare(grid: Float32Array, mask: Uint8Array, full = 0.8) {
   return n ? s / n : 1
 }
 
-/** Base64 of a grid quantised to bytes, for co-op late joiners and saves of a paused treatment. */
+/**
+ * A grid packed for the network (a co-op late joiner): quantised to 32 levels and run-length encoded, so a
+ * mostly empty or mostly full layer is a few hundred bytes. Base64 text, prefixed "r1:".
+ */
 export function encodeGrid(grid: Float32Array): string {
-  const bytes = new Uint8Array(grid.length)
-  for (let i = 0; i < grid.length; i++) bytes[i] = Math.round(grid[i] * 255)
+  const out: number[] = []
+  let i = 0
+  while (i < grid.length) {
+    const v = Math.round(Math.max(0, Math.min(1, grid[i])) * 31)
+    let run = 1
+    while (i + run < grid.length && run < 255 && Math.round(Math.max(0, Math.min(1, grid[i + run])) * 31) === v) run++
+    out.push(run, v)
+    i += run
+  }
+  const bytes = Uint8Array.from(out)
   let text = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(text)
+  for (let k = 0; k < bytes.length; k += 0x8000) text += String.fromCharCode(...bytes.subarray(k, k + 0x8000))
+  return 'r1:' + btoa(text)
 }
 
 export function decodeGrid(text: string): Float32Array {
-  const raw = atob(text)
   const grid = new Float32Array(GRID * GRID)
-  for (let i = 0; i < grid.length && i < raw.length; i++) grid[i] = raw.charCodeAt(i) / 255
+  if (!text.startsWith('r1:')) return grid
+  const raw = atob(text.slice(3))
+  let i = 0
+  for (let k = 0; k + 1 < raw.length && i < grid.length; k += 2) {
+    const run = raw.charCodeAt(k), v = raw.charCodeAt(k + 1) / 31
+    for (let n = 0; n < run && i < grid.length; n++) grid[i++] = v
+  }
   return grid
 }

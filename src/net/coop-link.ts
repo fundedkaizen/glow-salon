@@ -19,6 +19,9 @@ export type CoopStatus =
 
 export type CoopRoute = { to?: number; skip?: number }
 
+/** The largest frame this client sends; the relay's limit is 256 KB. */
+export const MAX_FRAME = 200_000
+
 export function relayUrl(): string {
   const configured = (import.meta.env?.VITE_COOP_URL as string | undefined) || ''
   if (configured) return configured
@@ -88,6 +91,8 @@ export class CoopLink<Out extends { t: string }, In extends { t: string } = Out 
           : message.hostLeft ? { kind: 'error', reason: 'Your friend closed their salon.' }
           : this.role === 'host' ? { kind: 'waiting', code: this.code, link: this.link } : { kind: 'alone', code: this.code, link: this.link, role: 'guest' })
       } else if (message.t === 'error') {
+        // The relay closes after an error; keep its reason rather than "the connection dropped".
+        this.closed = true
         this.onStatus({ kind: 'error', reason: String(message.reason) })
       } else this.onMessage(message as unknown as In)
     }
@@ -101,7 +106,11 @@ export class CoopLink<Out extends { t: string }, In extends { t: string } = Out 
 
   /** Send to the host (from a guest), or from the host to the guests `route` names (all of them by default). */
   send(message: Out, route?: CoopRoute) {
-    if (this.socket?.readyState === WebSocket.OPEN && this.paired) this.socket.send(JSON.stringify(route ? { ...message, ...route } : message))
+    if (this.socket?.readyState !== WebSocket.OPEN || !this.paired) return
+    const text = JSON.stringify(route ? { ...message, ...route } : message)
+    // The relay drops (and may be shared by other games): never send a frame near its 256 KB limit.
+    if (text.length > MAX_FRAME) { console.warn(`co-op: dropped a ${message.t} message of ${text.length} bytes`); return }
+    this.socket.send(text)
   }
 
   close() {

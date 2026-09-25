@@ -202,10 +202,17 @@ export class TreatmentView {
     const parts: Sprite[] = []
     const sprite = (tex: Sprite['texture'], scale: number, anchorY = 0.5) => { const s = new Sprite(tex); s.anchor.set(0.5, anchorY); s.scale.set(scale); root.addChild(s); parts.push(s); return s }
     if (t.kind === 'whitehead') {
-      const b = sprite(bits.whiteheadBase(), 0.5 * t.size)
-      const head = sprite(bits.whiteheadHead(), 0.34 * t.size)
+      const p = this.assets.pimples
+      const red = 0.65 + ((t.id * 2654435761) % 1000) / 1000 * 0.5
+      const deep = t.stage === 2
+      const halo = sprite(p?.halo ?? bits.whiteheadBase(), (deep ? 0.62 : 0.46) * t.size)
+      halo.alpha = Math.min(1, 0.55 * red + (deep ? 0.3 : 0))
+      sprite(p ? (deep ? p.deepDome : p.dome) : bits.whiteheadBase(), (deep ? 0.52 : 0.42) * t.size)
+      const blanch = sprite(p?.blanch ?? bits.glow(), 0.4 * t.size)
+      blanch.alpha = 0
       // Deep ones sit under the skin: a bigger, redder bump with no head yet.
-      if (t.stage === 2) { b.scale.set(0.62 * t.size); b.tint = 0xffd0d0; head.visible = false }
+      const head = sprite(p?.head ?? bits.whiteheadHead(), 0.3 * t.size)
+      head.visible = !deep
     }
     else if (t.kind === 'blackhead') { sprite(bits.blackhead(), 0.32 * t.size); const plug = sprite(bits.plug(), 0.4 * t.size, 0.1); plug.visible = false }
     else if (t.kind === 'drop' || t.kind === 'patch') { const r = sprite(bits.ring(), t.kind === 'drop' ? 0.9 : 0.7); if (t.kind === 'patch') r.tint = 0xf49ac0; r.visible = false }
@@ -605,7 +612,12 @@ export class TreatmentView {
         this.fx.spawn({ texture: bits.pus(), x: e.x, y: e.y, vx: Math.cos(dir) * 140, vy: -520 * e.size * juicy, gravity: 1500, life: 0.6, scale: 0.55 * e.size, scaleEnd: 0.3, alpha: 1, alphaEnd: 0.8, stretch: 1.5, tint })
         this.fx.spawn({ texture: bits.glow(), x: e.x, y: e.y, life: 0.35, scale: 0.6 * e.size, scaleEnd: 2.2 * e.size, alpha: 0.9, alphaEnd: 0, blend: 'add', tint: 0xfff4d8 })
         this.twinkle(e.x + 20, e.y - 20, 0.35)
-        if (tv) this.hideTarget(tv, 0.08)
+        const p = this.assets.pimples
+        if (p) {
+          this.fx.spawn({ texture: p.mark, x: e.x, y: e.y, life: 3.5, scale: 0.42 * e.size, scaleEnd: 0.3 * e.size, alpha: 0.95, alphaEnd: 0 })
+          this.fx.spawn({ texture: p.dab, x: e.x + (Math.random() - 0.5) * 6, y: e.y + 2, life: 1.6, scale: 0.55 * e.size, scaleEnd: 0.45 * e.size, alpha: 1, alphaEnd: 0 })
+        }
+        if (tv) this.hideTarget(tv, 0.03)
         break
       }
       case 'blackhead': {
@@ -657,10 +669,11 @@ export class TreatmentView {
     const t = tv.t
     sfx.pop(0.5, this.pan(t.x))
     this.flinch(0.6)
-    tv.parts[1].visible = true
-    tv.parts[1].scale.set(0.01)
-    this.animate(0.25, k => tv.parts[1].scale.set(0.34 * t.size * easeOutBack(k)))
-    tv.parts[0].tint = 0xffffff
+    const head = tv.parts[3]
+    head.visible = true
+    head.scale.set(0.01)
+    this.animate(0.3, k => head.scale.set(0.3 * t.size * easeOutBack(k)))
+    if (this.assets.pimples) tv.parts[1].texture = this.assets.pimples.dome
     for (let i = 0; i < 6; i++) { const a = Math.random() * Math.PI * 2; this.fx.spawn({ texture: bits.drop(), x: t.x, y: t.y, vx: Math.cos(a) * 140, vy: Math.sin(a) * 140 - 60, gravity: 900, life: 0.35, scale: 0.14, alpha: 0.8, alphaEnd: 0 }) }
   }
 
@@ -949,10 +962,15 @@ export class TreatmentView {
       if (t.kind === 'whitehead') {
         const p = t.progress
         const pressed = pressing?.id === t.id
-        const jig = pressed ? Math.sin(this.time * 50) * 0.04 * p : 0
-        if (tv.parts[1].visible) tv.parts[1].scale.set(0.34 * t.size * (1 + p * 0.6 + jig), 0.34 * t.size * (1 + p * 0.5 - jig))
-        tv.parts[0].scale.set((t.stage === 2 ? 0.62 : 0.5) * t.size * (1 + p * 0.35 + jig))
-        tv.parts[0].alpha = 0.8 + p * 0.2
+        const deep = t.stage === 2
+        const jig = pressed ? Math.sin(this.time * 55) * 0.05 * p : 0
+        const [halo, dome, blanch, head] = tv.parts
+        dome.scale.set((deep ? 0.52 : 0.42) * t.size * (1 + p * 0.35 + jig), (deep ? 0.52 : 0.42) * t.size * (1 + p * 0.3 - jig))
+        halo.scale.set((deep ? 0.62 : 0.46) * t.size * (1 + p * 0.25))
+        blanch.alpha = pressed ? p * 0.85 : blanch.alpha * 0.9
+        blanch.scale.set(0.4 * t.size * (1 + p * 0.4))
+        if (head.visible) { head.scale.set(0.3 * t.size * (1 + p * 0.55 + jig), 0.3 * t.size * (1 + p * 0.5 - jig)); head.alpha = 0.85 + p * 0.15 }
+        tv.root.position.set(t.x + (pressed ? (Math.random() - 0.5) * 1.6 * p : 0), t.y + (pressed ? (Math.random() - 0.5) * 1.6 * p : 0))
         if (!pressed && p > 0 && p < 1) t.progress = Math.max(0, p - dt * 0.05)
       } else if (t.kind === 'drop' || t.kind === 'patch') {
         const r = tv.parts[0]
@@ -1008,6 +1026,9 @@ export class TreatmentView {
     this.lampSprite.visible = false
     this.foam.clear()
     this.result = this.session.result()
+    // Everything dries for the photo: no droplets, no wet film, just a dewy glow.
+    this.surface.resolve('wet', 0)
+    this.surface.dryAll()
     this.camGoal = this.opts.treatment === 'facial' ? { x: 512, y: 540, zoom: 0.9 } : { x: 480, y: 560, zoom: 0.92 }
     this.setExpr('beam')
     this.exprTimer = 0

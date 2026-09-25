@@ -201,7 +201,11 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   ctx.drawImage(fbm(S, 90, 3, seed + 11), 0, 0)
   ctx.globalAlpha = 1
   ctx.globalCompositeOperation = 'source-over'
-  // Temples and the sides of the forehead turn away.
+  // Temples and the sides of the forehead turn away, a little cooler; the cheeks warmer.
+  blob(ctx, 270, 440, 90, 120, [196, 170, 200], 0.14)
+  blob(ctx, 754, 440, 90, 120, [196, 170, 200], 0.14)
+  blob(ctx, 380, 680, 150, 110, [255, 160, 130], 0.1)
+  blob(ctx, 644, 680, 150, 110, [255, 160, 130], 0.1)
   blob(ctx, 262, 430, 80, 140, skin.shadow, 0.3)
   blob(ctx, 766, 430, 90, 150, skin.shadow, 0.45)
   // Eye sockets (deeper on the far side), the brow bone catching the light, lids.
@@ -238,9 +242,9 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   ctx.lineCap = 'round'
   blurred(ctx, 2.2, () => {
     // The shadow side of the bridge, running down into the wing.
-    ctx.strokeStyle = rgba(skin.deep, 0.32)
-    ctx.lineWidth = 4
-    ctx.beginPath(); ctx.moveTo(538, 520); ctx.bezierCurveTo(544, 560, 548, 596, 552, n.y + 2); ctx.stroke()
+    ctx.strokeStyle = rgba(skin.shadow, 0.22)
+    ctx.lineWidth = 7
+    ctx.beginPath(); ctx.moveTo(538, 540); ctx.bezierCurveTo(544, 560, 548, 596, 552, n.y + 2); ctx.stroke()
     // Wings (alae): soft crescents around the nostrils.
     ctx.strokeStyle = rgba(skin.deep, 0.45)
     ctx.lineWidth = 3.4
@@ -436,32 +440,59 @@ function paintHair(ctx: Ctx, hair: typeof HAIR[number], style: number, seed: num
 
 /** The spa headband: a terry band across the hairline with a cute knotted bow. */
 function paintHeadband(ctx: Ctx, band: RGB, seed: number) {
-  const light = shade(band, 0.35), dark = shade(band, -0.22)
-  ctx.save()
+  const r = makeRng(seed + 61)
+  const light = shade(band, 0.45), mid = shade(band, 0.15), dark = shade(band, -0.18)
+  // The band wraps around the head: it follows the hairline and tucks behind the ears at the sides.
+  const top = (t: number) => ({ x: 170 + 684 * t, y: (1 - t) ** 2 * 392 + 2 * (1 - t) * t * 196 + t * t * 392 })
+  const bot = (t: number) => ({ x: 182 + 660 * t, y: (1 - t) ** 2 * 454 + 2 * (1 - t) * t * 270 + t * t * 454 })
   const path = () => {
     ctx.beginPath()
-    ctx.moveTo(158, 372)
-    ctx.quadraticCurveTo(512, 176, 866, 372)
-    ctx.lineTo(852, 434)
-    ctx.quadraticCurveTo(512, 262, 172, 434)
+    for (let k = 0; k <= 40; k++) { const p = top(k / 40); if (k === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y) }
+    for (let k = 40; k >= 0; k--) { const p = bot(k / 40); ctx.lineTo(p.x, p.y) }
     ctx.closePath()
   }
-  blurred(ctx, 14, () => { ctx.fillStyle = 'rgba(90,50,60,0.35)'; ctx.translate(0, 14); path(); ctx.fill() })
+  // A soft shadow on the forehead under the band.
+  blurred(ctx, 12, () => { ctx.fillStyle = 'rgba(110,60,70,0.3)'; ctx.translate(0, 12); path(); ctx.fill() })
+  ctx.save()
   path()
-  const g = ctx.createLinearGradient(0, 250, 0, 400)
-  g.addColorStop(0, rgba(light)); g.addColorStop(0.5, rgba(band)); g.addColorStop(1, rgba(dark))
-  ctx.fillStyle = g
+  ctx.fillStyle = rgba(mid)
   ctx.fill()
   ctx.clip()
-  terry(ctx, 140, 150, 744, 300, band, seed + 7, 0.03)
-  blurred(ctx, 8, () => { ctx.strokeStyle = rgba(light, 0.8); ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(180, 384); ctx.quadraticCurveTo(512, 200, 844, 384); ctx.stroke() })
+  // Rounded like a rolled towel: light along the top, shade underneath.
+  for (let k = 0; k <= 40; k++) {
+    const t = k / 40, a = top(t), b = bot(t)
+    const g = ctx.createLinearGradient(a.x, a.y, b.x, b.y)
+    g.addColorStop(0, rgba(light)); g.addColorStop(0.35, rgba(shade(band, 0.3))); g.addColorStop(0.75, rgba(mid)); g.addColorStop(1, rgba(dark))
+    ctx.strokeStyle = g
+    ctx.lineWidth = 22
+    ctx.beginPath(); ctx.moveTo(a.x, a.y - 4); ctx.lineTo(b.x, b.y + 4); ctx.stroke()
+  }
+  terry(ctx, 150, 180, 724, 300, mid, seed + 7, 0.02)
+  // Soft gathers and folds across the band.
+  blurred(ctx, 3, () => {
+    for (let i = 0; i < 16; i++) {
+      const t = r.range(0.05, 0.95), a = top(t), b = bot(t)
+      const bend = r.range(-14, 14)
+      ctx.strokeStyle = i % 2 ? rgba(light, 0.55) : rgba(dark, 0.4)
+      ctx.lineWidth = r.range(3, 6)
+      ctx.beginPath(); ctx.moveTo(a.x + bend * 0.3, a.y + 6); ctx.quadraticCurveTo((a.x + b.x) / 2 + bend, (a.y + b.y) / 2, b.x + bend * 0.2, b.y - 6); ctx.stroke()
+    }
+  })
+  // Where it goes behind the head, it darkens into the hair.
+  for (const side of [0, 1]) {
+    const x = side ? 854 : 170
+    const g = ctx.createLinearGradient(x, 0, side ? x - 110 : x + 110, 0)
+    g.addColorStop(0, 'rgba(60,30,40,0.55)'); g.addColorStop(1, 'rgba(60,30,40,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(side ? x - 110 : x, 150, 110, 340)
+  }
   ctx.restore()
-  // The bow on top.
-  const bx = 512, by = 214
+  // A small knotted bow on top.
+  const bx = 512, by = 238
   for (const side of [-1, 1]) {
     ctx.save()
     ctx.translate(bx, by)
-    ctx.scale(side, 1)
+    ctx.scale(side * 0.62, 0.62)
     ctx.beginPath()
     ctx.moveTo(0, 0)
     ctx.bezierCurveTo(40, -90, 120, -86, 118, -30)
@@ -471,13 +502,14 @@ function paintHeadband(ctx: Ctx, band: RGB, seed: number) {
     ctx.fillStyle = bg
     ctx.fill()
     ctx.clip()
-    terry(ctx, 0, -100, 130, 130, band, seed + 9 + side, 0.03)
-    blob(ctx, 60, -50, 30, 20, light, 0.6)
+    terry(ctx, 0, -100, 130, 130, band, seed + 9 + side, 0.02)
+    blurred(ctx, 3, () => { ctx.strokeStyle = rgba(dark, 0.45); ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(10, -4); ctx.quadraticCurveTo(60, -40, 100, -44); ctx.stroke() })
+    blob(ctx, 64, -52, 26, 16, light, 0.7)
     ctx.restore()
   }
   ctx.beginPath()
-  ctx.ellipse(bx, by, 30, 26, 0, 0, Math.PI * 2)
-  const kg = ctx.createRadialGradient(bx - 8, by - 8, 4, bx, by, 32)
+  ctx.ellipse(bx, by, 20, 17, 0, 0, Math.PI * 2)
+  const kg = ctx.createRadialGradient(bx - 6, by - 6, 3, bx, by, 21)
   kg.addColorStop(0, rgba(light)); kg.addColorStop(1, rgba(dark))
   ctx.fillStyle = kg
   ctx.fill()

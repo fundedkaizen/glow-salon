@@ -9,6 +9,7 @@ import { paintHand } from './hand.ts'
 import { normalFromHeight } from './normal.ts'
 import { paintBackdrop } from './backdrop.ts'
 import { paintSteamTowel } from './props.ts'
+import { paintPimples } from './pimples.ts'
 
 /**
  * The asset layer: everything a close-up needs, by body part. Today every sheet is painted in code
@@ -30,6 +31,8 @@ export type PartAssets = {
   tips?: CropTex[]
   /** Facial only: the warm towel draped over the face during the steam step (art space). */
   towel?: Texture
+  /** Facial only: pimple parts painted for this skin. */
+  pimples?: Record<'halo' | 'dome' | 'deepDome' | 'head' | 'blanch' | 'mark' | 'dab', Texture>
   skinRGB: [number, number, number]
 }
 
@@ -79,6 +82,7 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
       backdrop: tex(paintBackdrop('facial', look)),
       features: { eyes: toTex(art.eyes), brows: toTex(art.brows), mouth: toTex(art.mouth) },
       towel: tex(paintSteamTowel(seed)),
+      pimples: Object.fromEntries(Object.entries(paintPimples(art.skin)).map(([k, c]) => [k, tex(c)])) as PartAssets['pimples'],
       skinRGB: art.skin.base,
     }
   }

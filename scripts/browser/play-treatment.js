@@ -44,7 +44,7 @@
     const i = s.step
     log.push(`${i}:${step.id}`)
     if (step.choice && s.choices[i] === undefined) {
-      document.querySelector('.swatch.wish, .swatch')?.click()
+      ;(document.querySelector('.swatch.wish') ?? document.querySelector('.swatch'))?.click()
       await sleep(200)
     }
     const t0 = performance.now()
