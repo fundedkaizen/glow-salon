@@ -35,6 +35,8 @@
 :where(.gs) button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; pointer-events: auto; }
 :where(.gs) input { font: inherit; color: inherit; pointer-events: auto; }
 .gs [hidden] { display: none !important; }
+/* The game's #ui layer lets clicks fall through to the canvas; the salon's panels, scrollers and fields take them. */
+#ui .gs-veil, #ui .gs-title, #ui .gs-os-main, #ui .gs-reviews, #ui .gs-end, #ui .gs-panel, #ui .gs-chip, #ui .gs-toast, #ui .gs textarea, #ui .gs select, #ui .gs input { pointer-events: auto; }
 
 /* ---------------------------------------------------------------- buttons */
 .gs-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 999px; background: #fff; font: 800 16px var(--gs-font); box-shadow: var(--gs-shadow-sm), inset 0 -3px 0 rgba(160, 110, 140, 0.12); transition: transform 0.15s var(--gs-ease), box-shadow 0.15s, filter 0.2s; white-space: nowrap; }
