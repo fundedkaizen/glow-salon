@@ -920,22 +920,45 @@ function paintJewellery(ctx: Ctx, skin: SkinTone, seed: number, masc = false): H
     }
   }
   if (r() < (masc ? 0.15 : 0.55)) {
-    // A bracelet across the wrist, sagging a little in the middle (on a man, gold beads, not pearls).
+    // A bracelet resting on the sleeve's rolled rim and going round the wrist: it follows the cuff's
+    // curve across the whole wrist, and the beads shrink and darken toward the sides as they turn away.
+    // (A fixed straight row floated across the back of the hand once the hand was redrawn.)
     const pearls = r() < 0.5 && !masc
-    const beads: { x: number; y: number }[] = []
-    for (let x = 372; x <= 676; x += pearls ? 17 : 14) beads.push({ x, y: 902 + 12 * Math.sin(((x - 372) / 304) * Math.PI) })
-    softBatch(ctx, 4, k => { k.fillStyle = rgba(skin.deep, 0.4); for (const b of beads) { k.beginPath(); k.arc(b.x + 2, b.y + 6, pearls ? 9 : 7.5, 0, Math.PI * 2); k.fill() } }, 'multiply')
-    for (const b of beads) {
-      const rr = pearls ? 8.5 : 7
-      const bg = ctx.createRadialGradient(b.x - 2.5, b.y - 3, 1, b.x, b.y, rr)
+    const rr = pearls ? 8.5 : 7
+    const cx = 520, half = 162                               // the wrist's centre and half width at the cuff
+    const beads: { x: number; y: number; k: number; turn: number }[] = []
+    const dT = (2 * rr * 1.02) / half
+    for (let th = -1.35; th <= 1.35 + 1e-6; th += dT) {
+      const x = cx + half * Math.sin(th)
+      beads.push({ x, y: cuffTopAt(x) - rr * 0.55, k: 0.72 + 0.28 * Math.cos(th), turn: 1 - Math.cos(th) })
+    }
+    softBatch(ctx, 4, k => { k.fillStyle = rgba(skin.deep, 0.4); for (const b of beads) { k.beginPath(); k.arc(b.x + 2, b.y + 5, rr * b.k + 1, 0, Math.PI * 2); k.fill() } }, 'multiply')
+    // Draw the far (side) beads first so the front ones overlap them.
+    for (const b of [...beads].sort((a, c) => c.turn - a.turn)) {
+      const br = rr * b.k
+      const bg = ctx.createRadialGradient(b.x - 2.5 * b.k, b.y - 3 * b.k, 1, b.x, b.y, br)
       if (pearls) { bg.addColorStop(0, '#ffffff'); bg.addColorStop(0.6, '#f3eaee'); bg.addColorStop(1, '#c8b4c2') }
       else { bg.addColorStop(0, rgba(metal.light)); bg.addColorStop(0.55, rgba(metal.base)); bg.addColorStop(1, rgba(metal.dark)) }
-      ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(b.x, b.y, rr, 0, Math.PI * 2); ctx.fill()
-      sctx.fillStyle = '#fff'; sctx.beginPath(); sctx.arc(b.x, b.y, rr + 1, 0, Math.PI * 2); sctx.fill()
+      ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(b.x, b.y, br, 0, Math.PI * 2); ctx.fill()
+      if (b.turn > 0.02) { ctx.fillStyle = `rgba(60, 40, 50, ${Math.min(0.45, b.turn * 0.6)})`; ctx.beginPath(); ctx.arc(b.x, b.y, br, 0, Math.PI * 2); ctx.fill() }
+      sctx.fillStyle = '#fff'; sctx.beginPath(); sctx.arc(b.x, b.y, br + 1, 0, Math.PI * 2); sctx.fill()
     }
   }
   void warm
   return sil
+}
+
+/** The sleeve cuff's top edge at x: the same two curves the cuff is painted with (see the sleeve in paintHand). */
+function cuffTopAt(x: number): number {
+  const seg = x < 520 ? [300, 1030, 310, 950, 360, 930, 520, 928] : [520, 928, 680, 930, 730, 950, 740, 1030]
+  let best = seg[7], bd = Infinity
+  for (let i = 0; i <= 64; i++) {
+    const t = i / 64, u = 1 - t
+    const px = u * u * u * seg[0] + 3 * u * u * t * seg[2] + 3 * u * t * t * seg[4] + t * t * t * seg[6]
+    const py = u * u * u * seg[1] + 3 * u * u * t * seg[3] + 3 * u * t * t * seg[5] + t * t * t * seg[7]
+    if (Math.abs(px - x) < bd) { bd = Math.abs(px - x); best = py }
+  }
+  return best
 }
 
 /** The tone's warm occlusion colour (its deep shade over its base), for multiplying soft contact shadows. */

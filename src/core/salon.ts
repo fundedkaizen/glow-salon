@@ -267,7 +267,9 @@ export function reduce(state: SalonState, by: number, action: Action): boolean {
       const c = state.customers.find(cu => cu.id === s.customer)
       if (!c || (c.state !== 'seated' && c.state !== 'treating')) return false
       for (const other of state.stations) if (other !== s) releaseFromStation(other, by)
-      if (s.lead === null || s.lead === by) s.lead = by
+      // A player takes over from an employee (they step aside and find other work): the employee is not a
+      // real close-up, so joining them as a helper left the player waiting for a treatment that never came.
+      if (s.lead === null || s.lead === by || s.lead >= STAFF_ID_BASE) s.lead = by
       else if (!s.helpers.includes(by)) { if (s.helpers.length >= 3) return false; s.helpers.push(by) }
       p.station = s.id
       c.state = 'treating'
@@ -399,7 +401,8 @@ function complete(state: SalonState, id: string, by: number) {
 
 function finish(state: SalonState, by: number, stationId: string, result: TreatmentResult, foam: number): boolean {
   const s = state.stations.find(st => st.id === stationId)
-  if (!s || s.lead !== by || s.customer === null) return false
+  // The lead or a helper (four hands) can close the customer out: a helper could not, and waited on the lead.
+  if (!s || (s.lead !== by && !s.helpers.includes(by)) || s.customer === null) return false
   const c = state.customers.find(cu => cu.id === s.customer)
   if (!c) return false
   // The customer's own treatment: a Foot Clinic pays more than a Classic Pedicure.

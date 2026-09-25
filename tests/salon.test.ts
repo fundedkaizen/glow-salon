@@ -65,6 +65,22 @@ export function run() {
   const toSlot = findPath(grid, DOOR_INSIDE, { x: SLOTS[4].x - 100, y: SLOTS[4].y + 30 })
   check('path to a station spot', toSlot.length > 0)
 
+  // ---------------------------------------------------------------- co-op at one station (25 Sep fixes)
+  {
+    const cs = startDay(newSave(7))
+    reduce(cs, 0, { a: 'join', name: 'Kaizen' }); reduce(cs, 1, { a: 'join', name: 'Partner' })
+    reduce(cs, 0, { a: 'open' })
+    runUntil(cs, () => cs.customers[0]?.state === 'seated')
+    // An employee is working the station: a player who taps it takes over (joining them as a helper waited forever).
+    cs.stations[0].lead = 100
+    cs.customers[0].state = 'treating'
+    check('a player takes over from an employee', reduce(cs, 0, { a: 'work', station: 's0' }) && cs.stations[0].lead === 0)
+    check('the partner joins as the helper', reduce(cs, 1, { a: 'work', station: 's0' }) && cs.stations[0].helpers.includes(1))
+    // The helper can close the customer out (Done); only the lead could before.
+    check('the helper can finish', reduce(cs, 1, { a: 'finish', station: 's0', result: goodResult('nails') }) && cs.stations[0].customer === null)
+    check('someone not at the station cannot finish', !reduce(cs, 2, { a: 'finish', station: 's0', result: goodResult('nails') }))
+  }
+
   // ---------------------------------------------------------------- the day loop
   const state = startDay(newSave(99))
   reduce(state, 0, { a: 'join', name: 'Kaizen' })

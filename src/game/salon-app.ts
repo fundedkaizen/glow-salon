@@ -102,7 +102,7 @@ export class SalonGame {
   private receipt: Receipt | null = null
   private receiptDay = -1
   private lobby: Lobby
-  private screen: { view: TreatmentScreen; station: string; customer: number; role: 'lead' | 'helper' } | null = null
+  private screen: { view: TreatmentScreen; station: string; customer: number; role: 'lead' | 'helper'; fc: FloorCustomer } | null = null
   private snapTimer = 0
   private saveTimer = 0
   private app: Application
@@ -113,6 +113,10 @@ export class SalonGame {
     this.app = app
     this.ui = ui
     this.opts = opts
+    // The graphics card can reset (a lost WebGL context: memory pressure, a phone backgrounding the page).
+    // Pixi restores itself, but the close-up's painted art and its masks are gone: the hand showed as a flat
+    // brown square. Rebuild the close-up and put the treatment back exactly as it was.
+    app.canvas.addEventListener('webglcontextrestored', () => setTimeout(() => this.rebuildTreatment(), 50))
     this.lobby = new Lobby(ui, {
       saveInfo: () => { const s = loadSave(store); return s ? { day: s.day, money: s.money, salonName: s.ext?.salonName ?? 'Glow Salon' } : null },
       onContinue: () => this.playSolo(loadSave(store) ?? newSave()),
@@ -373,6 +377,15 @@ export class SalonGame {
 
   // ------------------------------------------------------------------ treatments
 
+  private rebuildTreatment() {
+    const sc = this.screen
+    if (!sc) return
+    const snap = sc.view.snapshot?.()
+    this.leaveTreatment(false)
+    this.startTreatment(sc.station, sc.fc)
+    if (snap) this.screen?.view.applySnapshot?.(snap)
+  }
+
   private startTreatment(stationId: string, customer: FloorCustomer) {
     const s = this.view()
     if (!s || this.screen) return
@@ -392,7 +405,7 @@ export class SalonGame {
     }
     const view = this.opts.openTreatment ? this.opts.openTreatment(handoff) : this.defaultTreatment(handoff, s)
     if (!view) return
-    this.screen = { view, station: stationId, customer: customer.id, role }
+    this.screen = { view, station: stationId, customer: customer.id, role, fc: customer }
     this.mode = 'treatment'
     music.quiet(true)
     if (this.floor) { this.floor.root.visible = false; this.floor.inputEnabled = false }

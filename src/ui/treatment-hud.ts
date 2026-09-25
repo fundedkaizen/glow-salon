@@ -98,7 +98,8 @@ export class TreatmentHud {
     this.hint.textContent = s.hint
     // Each player's count shows on the steps with spots to do.
     this.scores.hidden = !s.targets || !this.scores.childElementCount
-    this.finishBtn.hidden = !s.optional || this.opts.role === 'helper'
+    // Both players get Finish on an optional step (the second press is ignored: the op names its step).
+    this.finishBtn.hidden = !s.optional
     this.skipBtn.hidden = this.opts.role === 'helper' || !!s.optional
     this.choice.hidden = !s.choice || (this.opts.role === 'helper' && !helperCanChoose)
     this.tray.querySelectorAll<HTMLElement>('.tool').forEach((el, i) => {
@@ -180,7 +181,7 @@ export class TreatmentHud {
       <div class="reveal-stars">${[1, 2, 3, 4, 5].map(i => `<span class="rstar${i <= o.stars ? ' on' : ''}" style="--d:${i * 0.12}s">&#9733;</span>`).join('')}</div>
       <div class="reveal-btns">
         <button class="pill reveal-photo">Save photo</button>
-        ${o.lead ? '<button class="pill pill-main reveal-done">Done</button>' : '<span class="reveal-wait">Nice teamwork!</span>'}
+        <button class="pill pill-main reveal-done">Done</button>
       </div>`
     this.card.querySelector('.reveal-photo')!.addEventListener('click', () => this.opts.actions.photo())
     this.card.querySelector('.reveal-done')?.addEventListener('click', () => this.opts.actions.done())

@@ -692,7 +692,7 @@ export class FloorView {
     const st = this.state.stations.find(s => s.id === t.id)
     const c = st && st.customer !== null ? this.state.customers.find(cu => cu.id === st.customer) : null
     if (!st || !c || (c.state !== 'seated' && c.state !== 'treating')) { softPop(0.8); return }
-    if (st.lead !== null && st.lead >= STAFF_ID_BASE) { softPop(0.8); return }
+    // An employee's station: the player takes over (the salon reducer moves the employee on).
     this.me.x = t.x; this.me.y = t.y; this.me.facing = 1
     this.hooks.onAction({ a: 'work', station: st.id })
     this.hooks.onStartTreatment(st.id, c)

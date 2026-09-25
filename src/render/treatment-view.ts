@@ -100,6 +100,8 @@ export class TreatmentView {
   private fourShown = false
   private helpTimer = 0
   private towel: Sprite | null = null
+  /** Until when the towel's lift-off animation owns it (after that, off the towel step it must be gone). */
+  private towelLiftUntil = 0
   private uvLamp: Sprite | null = null
   private uvGlow: Sprite | null = null
   private flap = new Graphics()
@@ -270,7 +272,7 @@ export class TreatmentView {
       customer: customer.name, wish: this.session.def.steps.some(st => st.choice === 'polish') ? customer.wish : null, role: opts.role, leadName: opts.leadName,
       actions: {
         skip: () => { if (this.opts.role === 'lead' && !this.session.finished) { sfx.click(); this.local({ k: 'advance', s: this.session.step, skip: true }) } },
-        finish: () => { if (this.opts.role === 'lead') { sfx.click(); this.local({ k: 'advance', s: this.session.step }) } },
+        finish: () => { if (!this.session.finished) { sfx.click(); this.local({ k: 'advance', s: this.session.step }) } },
         leave: () => { sfx.click(); this.opts.onLeave() },
         choose: i => { sfx.click(); this.local({ k: 'choose', s: this.session.step, i }) },
         photo: () => this.savePhoto(),
@@ -1267,6 +1269,7 @@ export class TreatmentView {
       // Lift the towel away: the skin underneath is flushed and dewy.
       const tw = this.towel
       tw.alpha = 1
+      this.towelLiftUntil = this.time + 0.75
       this.animate(0.7, t => { tw.alpha = 1 - t; tw.y = 512 - t * 260; tw.rotation = -t * 0.08 })
       this.surface.skin.uniforms.uniforms.uSkin[0] = 1
       for (let i = 0; i < 16; i++) this.fx.spawn({ texture: bits.steam(), x: 280 + Math.random() * 460, y: 400 + Math.random() * 420, vx: (Math.random() - 0.5) * 60, vy: -140 - Math.random() * 120, life: 1.6, scale: 1, scaleEnd: 3, alpha: 0.55, alphaEnd: 0 })
@@ -1817,6 +1820,10 @@ export class TreatmentView {
       if (on && Math.random() < dt * (holding ? 9 : 3)) this.fx.spawn({ texture: bits.wisp(), x: 300 + Math.random() * 430, y: 600 + Math.random() * 180, vx: (Math.random() - 0.5) * 30, vy: -60 - Math.random() * 50, life: 2.2, scale: 0.8 + Math.random() * 0.5, scaleEnd: 1.8, alpha: 0.45, alphaEnd: 0, fadeIn: 0.4, spin: (Math.random() - 0.5) * 0.3 })
       skinU[0] = Math.max(skinU[0], this.session.hold * 1.2)
       if (on && Math.random() < dt * (holding ? 26 : 8)) this.fx.spawn({ texture: bits.steam(), x: 260 + Math.random() * 500, y: 380 + Math.random() * 480, vx: (Math.random() - 0.5) * 50, vy: -90 - Math.random() * 90, life: 2, scale: 0.8, scaleEnd: 2.8, alpha: 0.5, alphaEnd: 0, fadeIn: 0.25, spin: (Math.random() - 0.5) * 0.6 })
+    } else if (this.towel && this.towel.alpha > 0 && this.time > this.towelLiftUntil) {
+      // Off the towel step the towel is gone. A screen that caught up without seeing the step end (a helper's
+      // resync, a late join) never ran the lift, and the towel stayed over the face through the pops.
+      this.towel.alpha = Math.max(0, this.towel.alpha - dt * 4)
     }
     if (step.id === 'dry') {
       const d = this.session.hold
