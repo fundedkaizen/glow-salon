@@ -6,7 +6,7 @@ import { ambienceStars, arrivals, ITEM_BY_ID, toolTier } from '../core/economy.t
 import { spawnPoint, stationSpot } from '../core/floor.ts'
 import { goalTally } from '../core/goals.ts'
 import { average } from '../core/reviews.ts'
-import { awards, newSave, reduce, startDay, tick, toSave, type Action, type SalonState } from '../core/salon.ts'
+import { awards, newSave, reduce, runFor, startDay, tick, toSave, type Action, type SalonState } from '../core/salon.ts'
 import { ext } from '../core/salon-ext.ts'
 import { exportCode, importCode, loadSave, writeSave, type Store } from '../core/save.ts'
 import type { Op, SessionSnapshot, TreatmentResult } from '../core/treatments/session.ts'
@@ -124,18 +124,9 @@ export class SalonGame {
     window.addEventListener('resize', () => this.resize())
     window.addEventListener('beforeunload', () => this.save())
     this.app.ticker.add(t => this.frame(Math.min(0.05, t.deltaMS / 1000)))
-    // A hidden tab gets no animation frames: while hosting, keep the day and the guests' snapshots going.
-    let last = performance.now()
-    setInterval(() => {
-      const now = performance.now()
-      const dt = Math.min(0.25, (now - last) / 1000)
-      last = now
-      // Hidden, or simply not getting frames (a background tab or window some browsers pause without hiding).
-      const stalled = now - this.lastFrame > 400
-      if ((!document.hidden && !stalled) || !this.host || !this.hostLink?.paired) return
-      tick(this.host, dt)
-      this.sendSnap()
-    }, 100)
+    // A hidden tab gets no animation frames and its timers are throttled (once a second, then once a minute):
+    // while hosting, a worker's timer (not throttled) and every guest message keep the day running.
+    startBackgroundClock(() => this.backgroundTick())
     this.toTitle()
     const params = new URLSearchParams(location.search)
     const room = params.get('join') ?? params.get('room')
@@ -204,7 +195,11 @@ export class SalonGame {
   private hostGame() {
     this.playSolo(loadSave(store) ?? newSave())
     const link: HostLink = new CoopLink(
-      msg => { if (typeof msg.from === 'number') { const { from, ...rest } = msg; this.onGuest(rest as GuestMessage, from) } },
+      msg => {
+        // Socket messages arrive even when this tab's timers are asleep: each one brings the day up to now.
+        this.backgroundTick()
+        if (typeof msg.from === 'number') { const { from, ...rest } = msg; this.onGuest(rest as GuestMessage, from) }
+      },
       status => this.onHostStatus(status),
       (id, joined) => {
         if (!this.host || joined) return
@@ -320,6 +315,30 @@ export class SalonGame {
   }
 
   private sendSnap() { if (this.host && this.hostLink?.paired) this.hostLink.send({ t: 'snap', s: publicState(this.host) }) }
+
+  // ------------------------------------------------------------------ the host's clock
+
+  /** Real time the host's day has been advanced to (performance.now()). */
+  private hostClock = performance.now()
+  private lastSnapAt = 0
+
+  /** Hosting with friends in the room: the day follows real time, frames or not. */
+  private get coopHost() { return !!this.host && !!this.hostLink?.paired }
+
+  /** Advance the host's day to now in 0.25 s steps (up to MAX_CATCH_UP seconds at once). */
+  private catchUp(now: number) {
+    const elapsed = (now - this.hostClock) / 1000
+    this.hostClock = now
+    if (this.host && elapsed > 0) runFor(this.host, elapsed)
+  }
+
+  /** From the worker's timer or a guest's message: only when this tab gets no frames (hidden or stalled). */
+  private backgroundTick() {
+    const now = performance.now()
+    if (!this.coopHost || (!document.hidden && now - this.lastFrame <= 400)) return
+    this.catchUp(now)
+    if (now - this.lastSnapAt >= 100) { this.lastSnapAt = now; this.sendSnap() }
+  }
 
   /**
    * Saves happen at day boundaries only: before opening (as is) and at closing time (as the next morning).
@@ -447,7 +466,12 @@ export class SalonGame {
       d.view.update(dt)
       return
     }
-    if (this.host) tick(this.host, dt)
+    if (this.host) {
+      const now = performance.now()
+      // Co-op: the day follows real time, so a slow frame never slows it down for the guests.
+      if (this.coopHost) this.catchUp(now)
+      else { this.hostClock = now; tick(this.host, dt) }
+    }
     const s = this.view()
     if (!s) return
     if (this.floor) { this.floor.setState(s); this.floor.update(dt) }
@@ -484,6 +508,21 @@ export class SalonGame {
     this.floor?.resize(w, h)
     this.demo?.view.resize(w, h)
     this.screen?.view.resize(w, h)
+  }
+}
+
+/**
+ * A 100 ms beat that keeps going in a background tab. Timers in a dedicated worker are not throttled the way
+ * a hidden page's own timers are; where workers are unavailable, a page timer does what it can.
+ */
+function startBackgroundClock(beat: () => void) {
+  try {
+    const url = URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 100)'], { type: 'text/javascript' }))
+    const worker = new Worker(url)
+    worker.onmessage = beat
+    worker.onerror = () => { worker.terminate(); setInterval(beat, 100) }
+  } catch {
+    setInterval(beat, 100)
   }
 }
 

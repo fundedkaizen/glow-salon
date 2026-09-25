@@ -495,6 +495,18 @@ export function tick(state: SalonState, dt: number) {
   }
 }
 
+/** The longest stretch one catch-up replays (a host tab woken after a long sleep). */
+export const MAX_CATCH_UP = 120
+
+/**
+ * Advance the day by real elapsed seconds in 0.25 s steps (tick() takes at most 0.25 at a time), so a host
+ * whose tab gets few or no frames keeps the salon running at full speed for the guests.
+ */
+export function runFor(state: SalonState, seconds: number) {
+  let left = Math.min(MAX_CATCH_UP, Math.max(0, seconds))
+  while (left > 1e-6) { const d = Math.min(0.25, left); tick(state, d); left -= d }
+}
+
 function seatPoint(seat: number | null): Pt {
   if (seat === null) return STANDING[0]
   return seat < SOFA_SEATS.length ? SOFA_SEATS[seat] : STANDING[(seat - SOFA_SEATS.length) % STANDING.length]
