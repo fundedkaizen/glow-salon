@@ -110,7 +110,21 @@ export function paintRobe(color: RGB, skin: SkinTone, seed: number): HTMLCanvasE
   softBatch(ctx, 16, k => { k.translate(10, 14); k.fillStyle = 'rgba(120,60,90,0.3)'; body(k); k.fill() })
   // The V of the neckline is left open, so the neck and chest painted on the art sheet show through with no
   // seam; the lapels cross above the sheet's edge.
-  const vee = (k: Ctx2) => { k.beginPath(); k.moveTo(404, 880); k.lineTo(620, 880); k.lineTo(512, 1004); k.closePath() }
+  // Each lapel's inner edge: from beside the neck, curving down to where the two cross below the throat. The V of
+  // skin is cut exactly between them, so no sliver of the robe's body shows inside it.
+  const inner = (side: number, t: number) => {
+    const p0 = [512 + side * 96, 892], p1 = [512 + side * 86, 940], p2 = [512 + side * 40, 985], p3 = [512 - side * 30, 1050]
+    const v = 1 - t
+    return [v ** 3 * p0[0] + 3 * v * v * t * p1[0] + 3 * v * t * t * p2[0] + t ** 3 * p3[0], v ** 3 * p0[1] + 3 * v * v * t * p1[1] + 3 * v * t * t * p2[1] + t ** 3 * p3[1]]
+  }
+  const crossT = (() => { let t = 0; while (t < 1 && (inner(1, t)[0] - 512) > 0) t += 0.01; return t })()
+  const vee = (k: Ctx2) => {
+    k.beginPath(); k.moveTo(512 - 104, 860)
+    for (let t = 0; t <= crossT; t += 0.05) { const [x, y] = inner(-1, t); k.lineTo(x - 2, y) }
+    const [cx, cy] = inner(1, crossT); k.lineTo(cx, cy + 2)
+    for (let t = crossT; t >= 0; t -= 0.05) { const [x, y] = inner(1, t); k.lineTo(x + 2, y) }
+    k.lineTo(512 + 104, 860); k.closePath()
+  }
   ctx.save()
   body(ctx)
   const g = ctx.createLinearGradient(0, 900, 0, 1340)
@@ -149,14 +163,19 @@ export function paintRobe(color: RGB, skin: SkinTone, seed: number): HTMLCanvasE
   ctx.restore()
   // The shawl collar: the right lapel first, then the left crossing over it.
   for (const side of [1, -1]) {
+    // The left lapel (side -1) wraps over the right: past the crossing its edge runs on diagonally toward the
+    // far hip; the right one's lower part tucks under it. The shoulder corners are rounded.
+    const over = side < 0
     const lapel = (k: Ctx2) => {
       k.beginPath()
       k.moveTo(512 + side * 96, 892)
       k.bezierCurveTo(512 + side * 86, 940, 512 + side * 40, 985, 512 - side * 30, 1050)
-      k.lineTo(512 - side * 70, 1345)
+      if (over) k.quadraticCurveTo(512 - side * 120, 1180, 512 - side * 230, 1345)
+      else k.lineTo(512 - side * 70, 1345)
       k.lineTo(512 + side * 60, 1345)
-      k.bezierCurveTo(512 + side * 120, 1180, 512 + side * 200, 1020, 512 + side * 226, 898)
-      k.quadraticCurveTo(512 + side * 160, 872, 512 + side * 96, 892)
+      k.bezierCurveTo(512 + side * 120, 1180, 512 + side * 200, 1020, 512 + side * 218, 908)
+      k.quadraticCurveTo(512 + side * 230, 882, 512 + side * 196, 877)
+      k.quadraticCurveTo(512 + side * 150, 873, 512 + side * 96, 892)
       k.closePath()
     }
     // Shadow cast on the body and the chest, down and right.
@@ -172,7 +191,9 @@ export function paintRobe(color: RGB, skin: SkinTone, seed: number): HTMLCanvasE
     // The roll: a lit ridge along the inner edge, shade toward the outer.
     softBatch(ctx, 5, k => {
       k.strokeStyle = rgba(shade(lit, 0.2), 0.8); k.lineWidth = 12
-      k.beginPath(); k.moveTo(512 + side * 106, 900); k.bezierCurveTo(512 + side * 96, 945, 512 + side * 50, 990, 512 - side * 18, 1052); k.stroke()
+      k.beginPath(); k.moveTo(512 + side * 106, 900); k.bezierCurveTo(512 + side * 96, 945, 512 + side * 50, 990, 512 - side * 18, 1052)
+      if (over) k.quadraticCurveTo(512 - side * 104, 1180, 512 - side * 214, 1345)
+      k.stroke()
       k.strokeStyle = rgba(fold, 0.55); k.lineWidth = 16
       k.beginPath(); k.moveTo(512 + side * 212, 910); k.bezierCurveTo(512 + side * 190, 1020, 512 + side * 116, 1170, 512 + side * 64, 1340); k.stroke()
     })
