@@ -221,7 +221,7 @@ export const REVIEWS_DATA = {
    "My {part} looks brand new.",
    "Honestly the best {treatment} I've ever had.",
    "{staff} made it look effortless.",
-   "I left feeling like a new person.",
+   "I left feeling like myself again.",
    "Calm, gentle and so thorough.",
    "Worth every single penny.",
    "I keep looking in the mirror.",
