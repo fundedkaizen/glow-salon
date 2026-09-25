@@ -41,6 +41,8 @@ export function footPreview(app: Application, look: Look, params: URLSearchParam
 
   const want = params.get('layers')?.split(',').filter(Boolean) ?? (after ? ['color', 'top'] : conditionLayers(profile, view))
   for (const id of want) surface.resolve(id, 1)
+  // After the treatment the skin is moisturised: a soft dewy sheen.
+  if (after) surface.skin.uniforms.uniforms.uSkin[3] = 0.9
   if (after) surface.setLayerTint('color', POLISH_COLORS[Number(params.get('polish') ?? 0) % POLISH_COLORS.length].hex)
   if (!after && sev > 0) placeSpots(spots, assets, profile, view)
   if (params.has('pins')) world.addChild(pins(assets, view))

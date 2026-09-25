@@ -104,6 +104,19 @@ function toeOutline(t: Toe, rootExtend = 0.25): number[] {
   return pts
 }
 
+/**
+ * A toe seen from below: round pads (the tip's big one, and one over the middle joint; two on the big toe),
+ * each an ellipse along the toe, joined by a slimmer neck. Returns the pads, tip last.
+ */
+function soleToePads(t: Toe) {
+  const ang = Math.atan2(t.tip.y - t.base.y, t.tip.x - t.base.x) + Math.PI / 2
+  const big = t.name === 'big'
+  const pad = (u: number, rx: number, ry: number) => { const c = alongToe(t, u); return { x: c.x, y: c.y, rx, ry, rot: ang } }
+  return big
+    ? [pad(0.32, t.r0 * 1.0, t.r0 * 0.95), pad(0.7, t.r1 * 1.08, t.r1 * 1.3)]
+    : [pad(0.4, t.r0 * 0.94, t.r0 * 0.95), pad(0.74, t.r1 * 1.05, t.r1 * 1.28)]
+}
+
 function clipTo(ctx: Ctx, mask: HTMLCanvasElement) {
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -125,7 +138,12 @@ function silhouette(a: FootAnatomy, view: FootView): HTMLCanvasElement {
   ctx.fillStyle = '#fff'
   const toes = view === 'top' ? a.shape.toes : a.shape.soleToes
   ctx.beginPath(); smoothPath(ctx, view === 'top' ? a.shapes.topOut.t === 'poly' ? a.shapes.topOut.pts : [] : a.shapes.soleOut.t === 'poly' ? a.shapes.soleOut.pts : []); ctx.fill()
-  for (const t of toes) { ctx.beginPath(); smoothPath(ctx, toeOutline(t)); ctx.fill() }
+  for (const t of toes) {
+    if (view === 'top') { ctx.beginPath(); smoothPath(ctx, toeOutline(t)); ctx.fill(); continue }
+    // From below: round pads on a slimmer neck.
+    ctx.beginPath(); shapePath(ctx, { t: 'capsule', x0: t.base.x, y0: t.base.y, x1: alongToe(t, 0.8).x, y1: alongToe(t, 0.8).y, r0: t.r0 * 0.93, r1: t.r1 * 0.92 }); ctx.fill()
+    for (const pd of soleToePads(t)) { ctx.beginPath(); ctx.ellipse(pd.x, pd.y, pd.rx, pd.ry, pd.rot, 0, Math.PI * 2); ctx.fill() }
+  }
   // Webbing: the skin between the toe roots.
   for (let i = 0; i < toes.length - 1; i++) {
     const p = alongToe(toes[i], 0.05), q = alongToe(toes[i + 1], 0.05)
@@ -519,17 +537,18 @@ function paintSoleBase(sole: SkinTone, top: SkinTone, seed: number, a: FootAnato
   const [sc, s] = canvas(S)
   const toes = a.shape.soleToes
   const w = a.shape.width, sx = (x: number) => 512 + (x - 512) * w
-  const ao = aoOf(sole)
+  // Shadows on the sole stay warm and a little red (a grey shadow reads as mud on deep tones).
+  const ao = mixRGB(aoOf(sole), [240, 160, 140], 0.3)
   const lg = s.createLinearGradient(300, 80, 740, 980)
   lg.addColorStop(0, rgba(mixRGB(sole.base, sole.light, 0.3))); lg.addColorStop(0.55, rgba(sole.base)); lg.addColorStop(1, rgba(mixRGB(sole.base, sole.shadow, 0.3)))
   s.fillStyle = lg
   s.fillRect(0, 0, S, S)
   s.globalCompositeOperation = 'soft-light'
-  s.globalAlpha = 0.3
+  s.globalAlpha = 0.16
   s.drawImage(fbm(S, 50, 4, seed + 2), 0, 0)
   s.globalAlpha = 1
   s.globalCompositeOperation = 'source-over'
-  skinDabs(s, sole, seed + 1, 320, 740, 80, 990, 260)
+  skinDabs(s, sole, seed + 1, 320, 740, 80, 990, 160)
   // Broad form first: the sole dips between the ball and the heel (the arch lifts on the inner side), and
   // everything rounds away at the edges.
   softBatch(s, 46, c => {
@@ -540,7 +559,7 @@ function paintSoleBase(sole: SkinTone, top: SkinTone, seed: number, a: FootAnato
   // The pads: heel, ball and the pad under the big toe's joint are domes, lit at the top left, warm and pink
   // where the blood shows through, each with its rim turning into shade.
   const pad = (x: number, y: number, rx: number, ry: number, rot: number, lift: number) => {
-    softBatch(s, Math.max(16, rx * 0.36), c => { c.fillStyle = rgba(mixRGB(sole.light, sole.blush, 0.2), 0.55 * lift); c.beginPath(); c.ellipse(x - rx * 0.2, y - ry * 0.22, rx * 0.62, ry * 0.52, rot, 0, Math.PI * 2); c.fill() })
+    softBatch(s, Math.max(16, rx * 0.36), c => { c.fillStyle = rgba(mixRGB(mixRGB(sole.light, sole.blush, 0.15), [255, 238, 224], 0.3), 0.7 * lift); c.beginPath(); c.ellipse(x - rx * 0.2, y - ry * 0.22, rx * 0.62, ry * 0.52, rot, 0, Math.PI * 2); c.fill() })
     softBatch(s, Math.max(8, rx * 0.14), c => { c.fillStyle = rgba(sole.blush, 0.18 * lift); c.beginPath(); c.ellipse(x, y, rx * 0.8, ry * 0.75, rot, 0, Math.PI * 2); c.fill() })
     softBatch(s, Math.max(10, rx * 0.16), c => { c.strokeStyle = rgba(ao, 0.42 * lift); c.lineWidth = rx * 0.26; c.beginPath(); c.ellipse(x + rx * 0.06, y + ry * 0.1, rx * 0.98, ry * 0.95, rot, -0.2, Math.PI * 1.1); c.stroke() }, 'multiply')
   }
@@ -550,36 +569,34 @@ function paintSoleBase(sole: SkinTone, top: SkinTone, seed: number, a: FootAnato
   // The outer edge carries weight: a lighter, flatter band; the arch is thin, pinker, unworn skin.
   softBatch(s, 20, c => { c.fillStyle = rgba(sole.light, 0.35); c.beginPath(); c.ellipse(sx(684), 650, 30 * w, 200, 0.05, 0, Math.PI * 2); c.fill() })
   blob(s, sx(452), 640, 50 * w, 140, mixRGB(sole.blush, sole.light, 0.3), 0.26)
-  // Toes from below: each a round pad with a crease across its middle joint, painted on its own and faded
-  // toward its root, where it tucks into the ball in one deep fold.
+  // Toes from below: round pads, each lit at its top left with a soft shine, warm where the blood shows, shaded
+  // round its lower right; a crease where each meets the next; faded toward the root, where the toe tucks
+  // into the ball in one fold.
   const [tc, tx] = canvas(S)
   for (const [i, t] of toes.entries()) {
-    const d = toeDir(t), n = { x: -d.y, y: d.x }
-    const mid = alongToe(t, 0.55), wd = (t.r0 + t.r1) / 2
-    const outline = toeOutline(t, 0.1)
     tx.clearRect(0, 0, S, S)
-    tx.save()
-    tx.beginPath(); smoothPath(tx, outline); tx.clip()
-    // The toes point up the screen, so n points to screen right, away from the light.
-    const g = tx.createLinearGradient(mid.x + n.x * wd, mid.y + n.y * wd, mid.x - n.x * wd, mid.y - n.y * wd)
-    g.addColorStop(0, rgba(mixRGB(sole.base, ao, 0.5))); g.addColorStop(0.45, rgba(sole.base)); g.addColorStop(0.75, rgba(mixRGB(sole.base, sole.light, 0.5))); g.addColorStop(1, rgba(mixRGB(sole.base, sole.shadow, 0.3)))
-    tx.fillStyle = g
-    tx.fillRect(0, 0, S, S)
-    blurred(tx, 5, () => { tx.strokeStyle = rgba(mixRGB(sole.shadow, ao, 0.4), 0.5); tx.lineWidth = 9; tx.beginPath(); smoothPath(tx, outline); tx.stroke() })
-    const p = alongToe(t, 0.78)
-    blob(tx, p.x, p.y, t.r1 * 1.05, t.r1 * 0.95, sole.blush, 0.3)
-    blob(tx, p.x - t.r1 * 0.25, p.y - t.r1 * 0.3, t.r1 * 0.45, t.r1 * 0.35, sole.light, 0.7)
-    const q = alongToe(t, 0.5)
-    blob(tx, q.x, q.y + 4, t.r0 * 0.8, t.r0 * 0.3, ao, 0.25)
-    tx.restore()
-    // The crease across the middle joint.
-    const cw = t.r0 * 0.72
-    tx.lineCap = 'round'
-    tx.strokeStyle = rgba(ao, 0.45); tx.lineWidth = i === 0 ? 3 : 2.4
-    tx.beginPath(); tx.moveTo(q.x - n.x * cw, q.y - n.y * cw); tx.quadraticCurveTo(q.x - d.x * 6, q.y - d.y * 6, q.x + n.x * cw, q.y + n.y * cw); tx.stroke()
-    tx.strokeStyle = rgba(sole.light, 0.4); tx.lineWidth = 1.6
-    tx.beginPath(); tx.moveTo(q.x - n.x * cw, q.y - n.y * cw + 3); tx.quadraticCurveTo(q.x - d.x * 3, q.y - d.y * 3 + 3, q.x + n.x * cw, q.y + n.y * cw + 3); tx.stroke()
-    const p0 = alongToe(t, -0.1), p1 = alongToe(t, 0.26)
+    // The neck between the pads, a little darker.
+    tx.fillStyle = rgba(mixRGB(sole.base, ao, 0.25))
+    tx.beginPath(); shapePath(tx, { t: 'capsule', x0: t.base.x, y0: t.base.y, x1: alongToe(t, 0.8).x, y1: alongToe(t, 0.8).y, r0: t.r0 * 0.93, r1: t.r1 * 0.92 }); tx.fill()
+    const pads = soleToePads(t)
+    for (const [j, pd] of pads.entries()) {
+      // A soft shadow under the pad on the one below it.
+      softBatch(tx, 4, c => { c.fillStyle = rgba(ao, 0.3); c.beginPath(); c.ellipse(pd.x + 2, pd.y + pd.ry * 0.25, pd.rx * 0.98, pd.ry * 0.95, pd.rot, 0, Math.PI * 2); c.fill() }, 'multiply')
+      const g = tx.createRadialGradient(pd.x - pd.rx * 0.3, pd.y - pd.ry * 0.35, pd.rx * 0.1, pd.x, pd.y, Math.max(pd.rx, pd.ry) * 1.05)
+      g.addColorStop(0, rgba(mixRGB(sole.base, sole.light, 0.7))); g.addColorStop(0.55, rgba(mixRGB(sole.base, sole.blush, 0.15))); g.addColorStop(0.9, rgba(mixRGB(sole.base, ao, 0.2))); g.addColorStop(1, rgba(mixRGB(sole.base, ao, 0.3)))
+      tx.fillStyle = g
+      tx.beginPath(); tx.ellipse(pd.x, pd.y, pd.rx, pd.ry, pd.rot, 0, Math.PI * 2); tx.fill()
+      blob(tx, pd.x - pd.rx * 0.3, pd.y - pd.ry * 0.35, pd.rx * 0.36, pd.ry * 0.24, sole.light, j === pads.length - 1 ? 0.5 : 0.35)
+    }
+    // The creases at the joints: a dark fold under each pad, lit just below.
+    const d = toeDir(t), n = { x: -d.y, y: d.x }
+    for (const pd of pads) {
+      const q = { x: pd.x - d.x * pd.ry * 0.95, y: pd.y - d.y * pd.ry * 0.95 }, cw = pd.rx * 0.8
+      tx.lineCap = 'round'
+      tx.strokeStyle = rgba(ao, 0.5); tx.lineWidth = i === 0 ? 3 : 2.2
+      tx.beginPath(); tx.moveTo(q.x - n.x * cw, q.y - n.y * cw + 2); tx.quadraticCurveTo(q.x - d.x * 5, q.y - d.y * 5, q.x + n.x * cw, q.y + n.y * cw + 2); tx.stroke()
+    }
+    const p0 = alongToe(t, -0.1), p1 = alongToe(t, 0.2)
     const fade = tx.createLinearGradient(p0.x, p0.y, p1.x, p1.y)
     fade.addColorStop(0, 'rgba(0,0,0,1)'); fade.addColorStop(1, 'rgba(0,0,0,0)')
     tx.globalCompositeOperation = 'destination-out'
@@ -649,7 +666,7 @@ function paintSoleHeight(seed: number, a: FootAnatomy, sil: HTMLCanvasElement) {
   blob(c, sx(552), 862, 130 * w, 116, [255, 255, 255], 0.4)
   blob(c, sx(520), 388, 200 * w, 76, [255, 255, 255], 0.35)
   blob(c, sx(430), 630, 60 * w, 150, [0, 0, 0], 0.35)
-  for (const t of a.shape.soleToes) { const p = alongToe(t, 0.76); blob(c, p.x, p.y, t.r1, t.r1, [255, 255, 255], 0.35); const q = alongToe(t, 0.04); blob(c, q.x, q.y, t.r0 * 0.9, 8, [0, 0, 0], 0.45) }
+  for (const t of a.shape.soleToes) { for (const pd of soleToePads(t)) blob(c, pd.x, pd.y, pd.rx, pd.ry, [255, 255, 255], 0.4); const q = alongToe(t, 0.04); blob(c, q.x, q.y, t.r0 * 0.9, 8, [0, 0, 0], 0.45) }
   dots(c, [0, 0, 0], 7000, () => ({ a: r.range(0.06, 0.18), x: r.range(300, 760), y: r.range(80, 1000), r: r.range(0.7, 1.3) }))
   const [gl, g] = canvas(S)
   g.fillStyle = '#000'
@@ -657,8 +674,10 @@ function paintSoleHeight(seed: number, a: FootAnatomy, sil: HTMLCanvasElement) {
   g.globalAlpha = 0.14
   g.drawImage(sil, 0, 0)
   g.globalAlpha = 1
-  blob(g, sx(520), 820, 60, 50, [255, 255, 255], 0.35)
-  for (const t of a.shape.soleToes) { const p = alongToe(t, 0.8); blob(g, p.x - 4, p.y - 6, t.r1 * 0.5, t.r1 * 0.4, [255, 255, 255], 0.35) }
+  blob(g, sx(530), 830, 100 * w, 80, [255, 255, 255], 0.55)
+  blob(g, sx(520), 380, 170 * w, 56, [255, 255, 255], 0.45)
+  blob(g, sx(392), 390, 50 * w, 44, [255, 255, 255], 0.4)
+  for (const t of a.shape.soleToes) for (const pd of soleToePads(t)) blob(g, pd.x - pd.rx * 0.2, pd.y - pd.ry * 0.25, pd.rx * 0.6, pd.ry * 0.5, [255, 255, 255], 0.28)
   return packHeight(h, gl)
 }
 
@@ -1250,42 +1269,58 @@ function soleLayers(sole: SkinTone, seed: number, a: FootAnatomy, sil: HTMLCanva
       l.fillStyle = rgba(shade(sole.shadow, -0.1), 0.2); l.fill(sh)
       l.fillStyle = 'rgba(255,252,246,0.6)'; l.fill(li)
     }),
-    // Cracked heels: a few fissures near the heel's rim, running mostly along it and a little inward. Each is a
-    // wedge, widest in the middle, dark red-brown inside, its lower wall catching the light, with a pale, dry,
-    // lifted margin around it.
+    // Cracked heels: thin fissures radiating in from the heel's rim, several of different lengths, some
+    // branching. Each has a dark hairline core, pink-red inside where it is deepest (near the rim), and dry,
+    // raised, flaky pale edges along both sides.
     cracks: () => sheet(sil, l => {
       const r = makeRng(seed + 81)
       const k = p.cracks
-      const count = Math.round(4 + 6 * k)
-      const wedges: number[][] = []
+      type Crack = { pts: { x: number; y: number }[]; w: number }
+      const cracks: Crack[] = []
+      const count = Math.round(6 + 10 * k)
       for (let i = 0; i < count; i++) {
-        // Around the back (bottom) and the sides of the heel.
-        const ang = r.range(0.15, Math.PI - 0.15) + (r() < 0.2 ? Math.PI * 0.95 : 0)
-        const rad = r.range(0.72, 0.9)
-        const len = r.range(0.4, 0.65 + 0.3 * k), w0 = r.range(1.6, 2.4) + 2.4 * k, wob = r.range(0, 6)
-        const dir = r() < 0.5 ? 1 : -1
-        const center: { x: number; y: number }[] = []
-        const steps = 10
-        for (let j = 0; j <= steps; j++) {
-          const t = j / steps, aa = ang + dir * len * (t - 0.5), rr = rad - 0.1 * Math.sin(Math.PI * t) + 0.012 * Math.sin(t * 9 + wob)
-          center.push({ x: heel.x + Math.cos(aa) * heel.rx * rr, y: heel.y + 10 + Math.sin(aa) * heel.ry * rr })
+        // From the back (bottom) and sides of the heel's rim, inward.
+        const ang = r.range(0.1, Math.PI - 0.1) + (r() < 0.25 ? r.range(Math.PI * 0.95, Math.PI * 1.15) : 0)
+        let x = heel.x + Math.cos(ang) * heel.rx * 0.97, y = heel.y + 10 + Math.sin(ang) * heel.ry * 0.97
+        let dir = Math.atan2(heel.y - y, heel.x - x) + r.range(-0.3, 0.3)
+        const len = r.range(22, 50 + 60 * k)
+        const pts = [{ x, y }]
+        for (let run = 0; run < len;) { const st = r.range(5, 9); dir += r.range(-0.35, 0.35); x += Math.cos(dir) * st; y += Math.sin(dir) * st; run += st; pts.push({ x, y }) }
+        const w = r.range(1.4, 2.2) + 1.8 * k
+        cracks.push({ pts, w })
+        // Some branch off partway.
+        if (pts.length > 4 && r() < 0.6) {
+          const from = pts[r.int(2, pts.length - 2)]
+          let bx = from.x, by = from.y, bd = dir + (r() < 0.5 ? -1 : 1) * r.range(0.6, 1.1)
+          const bp = [{ x: bx, y: by }]
+          for (let j = 0; j < r.int(2, 4); j++) { bx += Math.cos(bd) * 7; by += Math.sin(bd) * 7; bd += r.range(-0.3, 0.3); bp.push({ x: bx, y: by }) }
+          cracks.push({ pts: bp, w: w * 0.55 })
         }
-        const left: number[] = [], right: number[] = []
-        center.forEach((q, j) => {
-          const nq = center[Math.min(center.length - 1, j + 1)], pq = center[Math.max(0, j - 1)]
-          const dx = nq.x - pq.x, dy = nq.y - pq.y, dl = Math.hypot(dx, dy) || 1
-          const wd = w0 * Math.sin(Math.PI * (j / steps)) ** 0.7
-          left.push(q.x - (dy / dl) * wd, q.y + (dx / dl) * wd)
-          right.unshift(q.x + (dy / dl) * wd, q.y - (dx / dl) * wd)
-        })
-        wedges.push([...left, ...right])
       }
-      const path = (c: Ctx, pts: number[], dx = 0, dy = 0) => { c.beginPath(); for (let j = 0; j < pts.length; j += 2) (j ? c.lineTo(pts[j] + dx, pts[j + 1] + dy) : c.moveTo(pts[j] + dx, pts[j + 1] + dy)); c.closePath() }
-      const margin = mixRGB(sole.light, [252, 242, 226], 0.6)
-      softBatch(l, 5, c => { c.fillStyle = rgba(margin, 0.9); c.strokeStyle = rgba(margin, 0.9); c.lineWidth = 12; c.lineJoin = 'round'; for (const w of wedges) { path(c, w); c.fill(); c.stroke() } })
-      softBatch(l, 0.6, c => { c.fillStyle = rgba(mixRGB(sole.light, [255, 250, 240], 0.5), 0.95); for (const w of wedges) { path(c, w, 1.2, 1.8); c.fill() } })
-      softBatch(l, 0.5, c => { c.fillStyle = rgba(mixRGB(sole.deep, [120, 40, 40], 0.45), 0.95); for (const w of wedges) { path(c, w); c.fill() } })
-      softBatch(l, 1.5, c => { c.fillStyle = 'rgba(70,24,24,0.5)'; for (const w of wedges) { path(c, w, -0.8, -1); c.fill() } })
+      // Each crack as a tapered ribbon: widest at its start (the rim), closing to a hairline.
+      const ribbon = (c: Ctx, cr: Crack, scale: number, dx = 0, dy = 0) => {
+        const left: number[] = [], right: number[] = [], n = cr.pts.length
+        cr.pts.forEach((q, j) => {
+          const a2 = cr.pts[Math.min(n - 1, j + 1)], b2 = cr.pts[Math.max(0, j - 1)]
+          const ux = a2.x - b2.x, uy = a2.y - b2.y, ul = Math.hypot(ux, uy) || 1
+          const wd = Math.max(0.3, cr.w * scale * (1 - j / (n - 1)) ** 0.8)
+          left.push(q.x - (uy / ul) * wd + dx, q.y + (ux / ul) * wd + dy)
+          right.unshift(q.x + (uy / ul) * wd + dx, q.y - (ux / ul) * wd + dy)
+        })
+        const all = [...left, ...right]
+        c.beginPath(); for (let j = 0; j < all.length; j += 2) (j ? c.lineTo(all[j], all[j + 1]) : c.moveTo(all[j], all[j + 1])); c.closePath(); c.fill()
+      }
+      const margin = mixRGB(sole.light, [252, 242, 228], 0.55)
+      // Dry, raised, flaky edges.
+      softBatch(l, 2.5, c => { c.fillStyle = rgba(margin, 0.9); for (const cr of cracks) ribbon(c, cr, 3.2) })
+      const fr = makeRng(seed + 82)
+      const flakes = new Path2D()
+      for (const cr of cracks) for (const q of cr.pts) if (fr() < 0.6) { const sd = fr() < 0.5 ? -1 : 1, fx = q.x + sd * fr.range(2, 5), fy = q.y + fr.range(-2, 2), sz = fr.range(1.5, 3.5); flakes.moveTo(fx, fy); flakes.lineTo(fx + sz, fy - 1); flakes.lineTo(fx + sz * 0.5, fy + sz * 0.7); flakes.closePath() }
+      l.fillStyle = 'rgba(255,252,244,0.85)'; l.fill(flakes)
+      // The lit lower wall, the dark core, the red of the deep part.
+      softBatch(l, 0.5, c => { c.fillStyle = rgba(mixRGB(sole.light, [255, 250, 240], 0.5), 0.9); for (const cr of cracks) ribbon(c, cr, 1.1, 0.9, 1.3) })
+      softBatch(l, 0.4, c => { c.fillStyle = rgba(mixRGB(sole.deep, [90, 30, 30], 0.5), 0.95); for (const cr of cracks) ribbon(c, cr, 1) })
+      softBatch(l, 0.6, c => { c.fillStyle = rgba([214, 88, 96], 0.75); for (const cr of cracks) { if (cr.w < 2) continue; ribbon(c, { pts: cr.pts.slice(0, Math.max(2, Math.ceil(cr.pts.length * 0.4))), w: cr.w }, 0.45) } })
     }),
     // Dirt: grey-brown grime on everything that touches the floor; the arch stays clean.
     dirt: () => sheet(sil, l => {
