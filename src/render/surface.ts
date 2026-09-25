@@ -268,6 +268,9 @@ export class Surface {
   }
 
   destroy() {
+    // Shaders first: they hold the textures, and freeing a texture a shader still holds warns.
+    this.skin.mesh.shader?.destroy()
+    for (const layer of this.layers.values()) layer.mesh.shader?.destroy()
     for (const layer of this.layers.values()) layer.rt.destroy(true)
     this.wet.destroy(true)
     this.root.destroy({ children: true })

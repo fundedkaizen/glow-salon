@@ -1,6 +1,6 @@
 import { clamp, dist, inRegion } from '../geometry.ts'
 import { makeRng, type Rng } from '../rng.ts'
-import { FACE, HAND, REGIONS, freeEdgeOf, nailOf, type RegionId } from './anatomy.ts'
+import { FACE, HAND, REGIONS, bandEdge, freeEdgeOf, nailOf, type RegionId } from './anatomy.ts'
 import { GRID, decodeGrid, encodeGrid, paintedShare, rasterize, stamp, sumIn } from './grid.ts'
 import { profileFor, type FaceProfile, type HandProfile, type Profile } from './profile.ts'
 import { TREATMENTS } from './registry.ts'
@@ -170,8 +170,8 @@ export function hitRadius(target: Target) {
 
 /** Where whiteheads gather, by cluster: boxes in art space [x0, x1, y0, y1]. */
 const ZONES: Record<string, [number, number, number, number][]> = {
-  forehead: [[380, 644, 388, 432]],
-  tzone: [[420, 604, 390, 430], [470, 554, 540, 600], [440, 584, 820, 880]],
+  forehead: [[380, 644, 388, 452]],
+  tzone: [[420, 604, 390, 450], [470, 554, 540, 600], [440, 584, 820, 880]],
   chin: [[420, 604, 810, 890]],
   cheeks: [[300, 420, 600, 760], [604, 724, 600, 760]],
   scattered: [[300, 420, 600, 760], [604, 724, 600, 760], [430, 594, 820, 880], [400, 624, 390, 432], [470, 554, 560, 600]],
@@ -312,12 +312,14 @@ export class TreatmentSession {
     const f = this.face, h = this.hand
     if (f) {
       const placed: { x: number; y: number }[] = []
-      const place = (count: number, zones: [number, number, number, number][], gap: number, make: (x: number, y: number) => void) => {
+      // reach: how far the biggest bump spreads, so none of it lies on the headband.
+      const clearOfBand = (x: number, y: number, reach: number) => y - reach >= bandEdge('bottom', clamp((x - 186) / 652, 0, 1)).y
+      const place = (count: number, zones: [number, number, number, number][], gap: number, reach: number, make: (x: number, y: number) => void) => {
         let made = 0
         for (let tries = 0; made < count && tries < 600; tries++) {
           const z = r.pick(zones)
           const x = r.range(z[0], z[1]), y = r.range(z[2], z[3])
-          if (!inSkin(x, y) || !spaced(placed, x, y, gap)) continue
+          if (!inSkin(x, y) || !spaced(placed, x, y, gap) || !clearOfBand(x, y, reach)) continue
           placed.push({ x, y })
           make(x, y)
           made++
@@ -325,10 +327,10 @@ export class TreatmentSession {
       }
       // Most whiteheads gather in this customer's cluster; a few stray elsewhere.
       const inCluster = Math.round(f.whiteheads * 0.7)
-      place(inCluster, ZONES[f.cluster], 46, (x, y) => add('whitehead', x, y, r.range(0.5, 1.2)))
-      place(f.whiteheads - inCluster, ZONES.scattered, 56, (x, y) => add('whitehead', x, y, r.range(0.5, 1.25)))
+      place(inCluster, ZONES[f.cluster], 46, 30, (x, y) => add('whitehead', x, y, r.range(0.5, 1.2)))
+      place(f.whiteheads - inCluster, ZONES.scattered, 56, 30, (x, y) => add('whitehead', x, y, r.range(0.5, 1.25)))
       // Deep ones: bigger, red, under the skin; two squeezes.
-      place(f.deep, ZONES.scattered, 70, (x, y) => add('whitehead', x, y, r.range(1.15, 1.5), undefined, { stage: 2 }))
+      place(f.deep, ZONES.scattered, 70, 56, (x, y) => add('whitehead', x, y, r.range(1.15, 1.5), undefined, { stage: 2 }))
       const blackheads: { x: number; y: number }[] = []
       for (let tries = 0; blackheads.length < f.blackheads && tries < 800; tries++) {
         const side = r.chance(0.5) ? -1 : 1

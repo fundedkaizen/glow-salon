@@ -3,7 +3,7 @@ import { TreatmentSession, regionMask, zonesOf, type Op, type SessionEvent } fro
 import { TREATMENTS } from '../src/core/treatments/registry.ts'
 import { faceProfile, handProfile } from '../src/core/treatments/profile.ts'
 import { GRID, CELL, stamp, encodeGrid, decodeGrid } from '../src/core/treatments/grid.ts'
-import { REGIONS, HAND, nailOf } from '../src/core/treatments/anatomy.ts'
+import { REGIONS, HAND, bandEdge, nailOf } from '../src/core/treatments/anatomy.ts'
 import { inRegion } from '../src/core/geometry.ts'
 
 /** Every cell centre of a region, for sweeping a brush over all of it. */
@@ -104,6 +104,16 @@ export function run() {
     if (t.kind === 'blackhead' && !inRegion(REGIONS.nose, t.x, t.y)) offSkin++
   }
   check('targets always on skin, never under the headband', offSkin === 0, offSkin)
+  // Pimples are big bumps: the whole bump stays clear of the headband, not only its centre.
+  let onBand = 0, forehead = 0
+  for (let seed = 1; seed <= 200; seed++) for (const t of new TreatmentSession({ treatment: 'facial', seed, disaster: seed % 5 === 0 }).targets) {
+    if (t.kind !== 'whitehead') continue
+    const edge = bandEdge('bottom', Math.min(1, Math.max(0, (t.x - 186) / 652))).y
+    if (t.y - (t.stage === 2 ? 56 : 30) < edge) onBand++
+    if (t.y < 470) forehead++
+  }
+  check('no pimple spills onto the headband', onBand === 0, onBand)
+  check('foreheads still get pimples', forehead > 100, forehead)
   // Regions split into zones that each finish with their own cue: five nails, several areas of a face.
   check('each nail is a zone', zonesOf('nails').length === 5, zonesOf('nails').length)
   check('the face splits into areas', zonesOf('skin').length >= 5 && zonesOf('skin').length <= 30, zonesOf('skin').length)

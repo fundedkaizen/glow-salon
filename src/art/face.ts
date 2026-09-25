@@ -441,10 +441,16 @@ function paintHair(ctx: Ctx, hair: typeof HAIR[number], style: number, seed: num
   const volume = [1.0, 1.08, 0.92, 1.2, 0.95, 1.0][style % 6]
   const wave = [0.1, 0.5, 0.05, 1.1, 0.2, 0.3][style % 6]
   const bottom = 520 + 520 * length
+  // Full styles would spill past the 1024 art sheet and get cut off in a straight line: past a knee, ease
+  // the sideways reach in so the outermost hair still ends round and inside the sheet.
+  const X = (x: number) => {
+    const dx = x - 512, a = Math.abs(dx), knee = 380, max = 500
+    return a <= knee ? x : 512 + Math.sign(dx) * (knee + (max - knee) * Math.tanh((a - knee) / (max - knee)))
+  }
   // The mass behind everything, a little darker.
   ctx.save()
-  const mass = [512, 48, 700, 70, 856, 180, 930 * volume - 60 * (volume - 1) * 0, 380, 950, 600, 920, bottom - 140, 840, bottom, 640, bottom + 20, 384, bottom + 20, 184, bottom, 104, bottom - 140, 74, 600, 94 + 80 * (volume - 1) * 0, 380, 168, 180, 324, 70]
-  const scaleX = (v: number, i: number) => (i % 2 === 0 ? 512 + (v - 512) * volume : v)
+  const mass = [512, 48, 700, 70, 856, 180, 930, 380, 950, 600, 920, bottom - 140, 840, bottom, 640, bottom + 20, 384, bottom + 20, 184, bottom, 104, bottom - 140, 74, 600, 94, 380, 168, 180, 324, 70]
+  const scaleX = (v: number, i: number) => (i % 2 === 0 ? X(512 + (v - 512) * volume) : v)
   ctx.beginPath()
   smoothPath(ctx, mass.map(scaleX))
   const hg = ctx.createRadialGradient(512, 360, 120, 512, 480, 600)
@@ -476,8 +482,8 @@ function paintHair(ctx: Ctx, hair: typeof HAIR[number], style: number, seed: num
       const u = k / 24, p = at(u), q = at(Math.min(1, u + 0.02))
       const dx = q.x - p.x, dy = q.y - p.y, l = Math.hypot(dx, dy) || 1
       const w = width * (0.25 + Math.sin(Math.PI * Math.min(1, u * 1.1 + 0.08)) * 0.75) * (u > 0.85 ? (1 - u) / 0.15 * 0.7 + 0.3 : 1)
-      left.push([p.x - (dy / l) * w / 2, p.y + (dx / l) * w / 2])
-      right.push([p.x + (dy / l) * w / 2, p.y - (dx / l) * w / 2])
+      left.push([X(p.x - (dy / l) * w / 2), p.y + (dx / l) * w / 2])
+      right.push([X(p.x + (dy / l) * w / 2), p.y - (dx / l) * w / 2])
     }
     ctx.beginPath()
     ctx.moveTo(left[0][0], left[0][1])
@@ -500,7 +506,7 @@ function paintHair(ctx: Ctx, hair: typeof HAIR[number], style: number, seed: num
         const u = j / 20, p = at(u), q = at(Math.min(1, u + 0.02))
         const dx = q.x - p.x, dy = q.y - p.y, l = Math.hypot(dx, dy) || 1
         const o = off * (0.3 + Math.sin(Math.PI * Math.min(1, u * 1.1 + 0.08)) * 0.7)
-        const x = p.x - (dy / l) * o, y = p.y + (dx / l) * o
+        const x = X(p.x - (dy / l) * o), y = p.y + (dx / l) * o
         if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
       }
       ctx.stroke()
@@ -517,7 +523,7 @@ function paintHair(ctx: Ctx, hair: typeof HAIR[number], style: number, seed: num
       ctx.strokeStyle = rgba(hair.light, 0.28 - k * 0.07)
       ctx.lineWidth = 34 - k * 10
       ctx.beginPath()
-      ctx.ellipse(512, 360, 350 * volume - k * 6, 250 - k * 4, 0, Math.PI * 1.08, Math.PI * 1.92)
+      ctx.ellipse(512, 360, Math.min(350 * volume, 400) - k * 6, 250 - k * 4, 0, Math.PI * 1.08, Math.PI * 1.92)
       ctx.stroke()
     }
   })
