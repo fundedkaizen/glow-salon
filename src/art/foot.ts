@@ -224,7 +224,7 @@ function paintTopBase(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, 
   s.fillStyle = lg
   s.fillRect(0, 0, S, S)
   s.globalCompositeOperation = 'soft-light'
-  s.globalAlpha = 0.28
+  s.globalAlpha = 0.16
   s.drawImage(fbm(S, 70, 4, seed + 1), 0, 0)
   s.globalAlpha = 1
   s.globalCompositeOperation = 'source-over'
@@ -1103,11 +1103,11 @@ function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil
         for (const t of toes) { const q = alongToe(t, 0.6); c.fillStyle = rgba(mud, 0.15 + 0.4 * k); c.beginPath(); c.ellipse(q.x, q.y, t.r0 * 1.05, t.r0 * 1.5, 0, 0, Math.PI * 2); c.fill() }
         for (let i = 0; i < 4; i++) { const q = alongToe(toes[i], 0.2), n2 = alongToe(toes[i + 1], 0.2); c.fillStyle = rgba(shade(mud, -0.35), 0.3 + 0.5 * k); c.beginPath(); c.ellipse((q.x + n2.x) / 2, (q.y + n2.y) / 2, 16, 60, 0, 0, Math.PI * 2); c.fill() }
       })
-      softBatch(l, 1.2, c => {
+      softBatch(l, 1.6, c => {
         for (const [i, t] of toes.entries()) {
           const d = toeDir(t), n = { x: -d.y, y: d.x }, kn = alongToe(t, i === 0 ? 0.48 : 0.44)
-          c.strokeStyle = rgba(shade(mud, -0.4), 0.3 + 0.5 * k); c.lineWidth = 1.6
-          for (let j = -1; j <= 1; j++) { const cw = t.r0 * 0.55; c.beginPath(); c.moveTo(kn.x + d.x * j * 5 - n.x * cw, kn.y + d.y * j * 5 - n.y * cw); c.quadraticCurveTo(kn.x + d.x * (j * 5 + 5), kn.y + d.y * (j * 5 + 5), kn.x + d.x * j * 5 + n.x * cw, kn.y + d.y * j * 5 + n.y * cw); c.stroke() }
+          c.strokeStyle = rgba(shade(mud, -0.3), 0.15 + 0.3 * k); c.lineWidth = 2.2
+          for (const j of [-0.5, 0.5]) { const cw = t.r0 * (i === 0 ? 0.5 : 0.52), off = j * (i === 0 ? 6 : 5), bow = i === 0 ? 7 : 5; c.beginPath(); c.moveTo(kn.x + d.x * off - n.x * cw, kn.y + d.y * off - n.y * cw); c.quadraticCurveTo(kn.x + d.x * (off + bow), kn.y + d.y * (off + bow), kn.x + d.x * off + n.x * cw, kn.y + d.y * off + n.y * cw); c.stroke() }
         }
       })
       // Dragged smudges, darker at the end where the dirt gathered.
@@ -1359,47 +1359,56 @@ function paintTips(a: FootAnatomy, p: FootProfile): (Crop | null)[] {
     const len = p.grown[i]
     if (len < 4) return null
     const nl = toeNail(t)
-    const hw = nl.halfWidth, ov = Math.round(hw * 0.6)
+    // The free edge carries on the nail's rounded end: a little narrower than the plate, curving to a round tip.
+    const hw = nl.halfWidth * 0.86, ov = Math.round(nl.halfWidth * 0.5)
     const fung = p.fungus[i]
-    const W = Math.ceil(hw * 2 + 20), H = Math.ceil(len + 24 + ov)
+    const W = Math.ceil(hw * 2 + 24), H = Math.ceil(len + 26 + ov)
     const [c, ctx] = canvas(W, H)
     ctx.translate(W / 2, H - 6 - ov)
     const r = makeRng(Math.round(p.grown[i] * 100) + i)
     const edge: [number, number][] = []
-    const steps = fung ? 7 : 1
-    for (let k = 0; k <= steps; k++) { const u = k / steps; edge.push([-hw * 0.94 + u * hw * 1.88, -len * (0.9 + 0.1 * Math.sin(u * Math.PI)) + (fung ? r.range(-len * 0.12, len * 0.08) : 0)]) }
+    const steps = fung ? 9 : 8
+    for (let k = 0; k <= steps; k++) {
+      const u = k / steps, ang = Math.PI * (1 - u)
+      const rr = fung ? r.range(0.78, 1.05) : 1
+      edge.push([Math.cos(ang) * hw * rr, -len + (1 - Math.sin(ang)) * hw * 0.5 - (fung ? r.range(0, len * 0.12) : 0)])
+    }
     const outline = () => {
       ctx.beginPath()
-      ctx.moveTo(-hw * 0.99, ov)
-      ctx.bezierCurveTo(-hw, -len * 0.4, -hw * 0.98, -len * 0.8, edge[0][0], edge[0][1])
-      if (!fung) ctx.quadraticCurveTo(0, -len - 4, edge[1][0], edge[1][1])
-      else for (const q of edge.slice(1)) ctx.lineTo(q[0], q[1])
-      ctx.bezierCurveTo(hw * 0.98, -len * 0.8, hw, -len * 0.4, hw * 0.99, ov)
+      ctx.moveTo(-hw, ov)
+      ctx.lineTo(-hw, edge[0][1])
+      if (fung) for (const q of edge) ctx.lineTo(q[0], q[1])
+      else { ctx.moveTo(-hw, ov); ctx.lineTo(edge[0][0], edge[0][1]); for (let k = 1; k < edge.length; k++) ctx.lineTo(edge[k][0], edge[k][1]) }
+      ctx.lineTo(hw, ov)
       ctx.closePath()
     }
     blurred(ctx, 3, () => { ctx.save(); ctx.translate(2, 4); outline(); ctx.fillStyle = 'rgba(90,60,70,0.25)'; ctx.fill(); ctx.restore() })
     outline()
     // The free edge is polished like the rest of the nail when there is old polish on it.
-    const body: RGB = p.polish && fung <= 0.3 ? shade(hex(POLISH_COLORS[p.polish.color % POLISH_COLORS.length].hex), -0.05) : fung ? mixRGB([240, 226, 190], [214, 172, 84], fung) : [246, 238, 220]
+    const body: RGB = p.polish && fung <= 0.3 ? shade(hex(POLISH_COLORS[p.polish.color % POLISH_COLORS.length].hex), -0.05) : fung ? mixRGB([236, 212, 140], [208, 160, 72], fung) : [246, 238, 220]
     const g = ctx.createLinearGradient(0, ov, 0, -len)
-    g.addColorStop(0, rgba(body, 0)); g.addColorStop(Math.min(0.9, ov / (ov + len) + 0.02), rgba(body, p.polish || fung ? 0.95 : 0.85)); g.addColorStop(1, rgba(shade(body, -0.05), p.polish || fung ? 0.95 : 0.8))
+    g.addColorStop(0, rgba(body, 0)); g.addColorStop(Math.min(0.9, ov / (ov + len)), rgba(body, 0.5)); g.addColorStop(Math.min(0.95, ov / (ov + len) + 0.12), rgba(body, p.polish || fung ? 0.96 : 0.86)); g.addColorStop(1, rgba(shade(body, -0.04), p.polish || fung ? 0.96 : 0.82))
     ctx.fillStyle = g
     ctx.fill()
     ctx.save()
     outline(); ctx.clip()
+    // Curved across: lit on the left, shaded on the right.
     const sg = ctx.createLinearGradient(-hw, 0, hw, 0)
     sg.addColorStop(0, 'rgba(255,255,255,0.3)'); sg.addColorStop(0.4, 'rgba(255,255,255,0)'); sg.addColorStop(0.8, 'rgba(0,0,0,0)'); sg.addColorStop(1, 'rgba(120,90,50,0.3)')
     ctx.fillStyle = sg
     ctx.fillRect(-hw, -len - 10, hw * 2, len + 10 + ov)
     if (fung) {
-      ctx.strokeStyle = rgba([120, 80, 30], 0.6 * fung); ctx.lineWidth = 1.2
-      for (let k = 0; k < 3 + Math.round(fung * 4); k++) { const x = r.range(-hw * 0.8, hw * 0.8), y = r.range(-len, 0); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + r.range(-6, 6), y - r.range(4, 10)); ctx.stroke() }
-      dots(ctx, [255, 248, 220], 30, () => ({ x: r.range(-hw, hw), y: r.range(-len, -len * 0.5), r: r.range(0.8, 2), a: r.range(0.4, 0.9) }), 2)
+      // Thick, layered keratin: stacked ochre ridges along the edge, darker in the gaps.
+      ctx.strokeStyle = rgba([150, 104, 40], 0.6 * fung); ctx.lineWidth = 1.4
+      for (let k = 1; k <= 3; k++) { ctx.beginPath(); for (let j = 0; j <= 8; j++) { const x = -hw + (j / 8) * hw * 2, y = -len * (1 - k * 0.22) + r.range(-2, 2); if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y) } ctx.stroke() }
     }
     ctx.restore()
-    ctx.strokeStyle = fung ? rgba([150, 110, 50], 0.6) : 'rgba(196,176,160,0.55)'; ctx.lineWidth = 1.3
+    // Outline only the part past the toe (over the nail it would draw a box).
+    ctx.save(); ctx.beginPath(); ctx.rect(-W, -H, W * 2, H - 2); ctx.clip()
+    ctx.strokeStyle = fung ? rgba([150, 110, 50], 0.65) : 'rgba(196,176,160,0.55)'; ctx.lineWidth = 1.3
     outline(); ctx.stroke()
-    blurred(ctx, 1, () => { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(hw * 0.55, -len * 0.1); ctx.quadraticCurveTo(hw * 0.65, -len * 0.6, hw * 0.2, -len * 0.88); ctx.stroke() })
+    ctx.restore()
+    blurred(ctx, 1, () => { ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-hw * 0.55, -len * 0.1); ctx.quadraticCurveTo(-hw * 0.65, -len * 0.6, -hw * 0.2, -len * 0.85); ctx.stroke() })
     return { canvas: c, x: 0, y: 6 + ov }
   })
 }
@@ -1412,24 +1421,25 @@ function paintSpots(skin: SkinTone): FootArt['spots'] {
   return {
     // A corn: a hard, raised, yellowish dome, lit from the top left, on a red-rimmed base.
     corn: one(96, (c, m) => {
-      blob(c, m, m + 2, 46, 44, inflamed, 0.4)
-      blob(c, m + 7, m + 10, 34, 28, shade(skin.shadow, -0.2), 0.35)
-      // The dome grows out of the skin (soft edge) and hardens toward a waxy, yellow-grey centre.
-      const g = c.createRadialGradient(m - 8, m - 10, 2, m, m, 36)
-      g.addColorStop(0, rgba(mixRGB(hard, [255, 248, 230], 0.35))); g.addColorStop(0.35, rgba(hard)); g.addColorStop(0.7, rgba(mixRGB(hard, skin.base, 0.6), 0.9)); g.addColorStop(1, rgba(skin.base, 0))
+      blob(c, m, m + 2, 46, 42, inflamed, 0.35)
+      blob(c, m + 8, m + 12, 34, 26, shade(skin.shadow, -0.15), 0.3)
+      // A thick, hard bump growing out of the skin: skin-toned at its foot, waxy and yellow-grey on top.
+      const g = c.createRadialGradient(m - 6, m - 8, 2, m, m, 38)
+      g.addColorStop(0, rgba(mixRGB(hard, skin.light, 0.3))); g.addColorStop(0.4, rgba(hard, 0.95)); g.addColorStop(0.75, rgba(mixRGB(hard, skin.base, 0.65), 0.8)); g.addColorStop(1, rgba(skin.base, 0))
       c.fillStyle = g
-      c.beginPath(); c.arc(m, m, 36, 0, Math.PI * 2); c.fill()
-      c.strokeStyle = rgba(shade(hard, -0.25), 0.3); c.lineWidth = 1.2
-      for (const rr of [20, 13]) { c.beginPath(); c.arc(m + 1, m + 1, rr, Math.PI * 0.1, Math.PI * 1.7); c.stroke() }
-      blob(c, m - 10, m - 12, 10, 6, [255, 252, 240], 0.55)
+      c.beginPath(); c.arc(m, m, 38, 0, Math.PI * 2); c.fill()
+      // Rough, layered skin: flaky rings and a matte light on its upper side.
+      c.strokeStyle = rgba(shade(hard, -0.22), 0.28); c.lineWidth = 1.4
+      for (const rr of [24, 17]) { c.beginPath(); c.arc(m + 1, m + 1, rr, Math.PI * 0.05, Math.PI * 1.6); c.stroke() }
+      blob(c, m - 9, m - 11, 14, 8, mixRGB(hard, [255, 250, 236], 0.5), 0.4)
     }),
     // Its core: the hard, glassy plug in the middle that the tool lifts out.
     cornCore: one(48, (c, m) => {
       const g = c.createRadialGradient(m - 3, m - 3, 1, m, m, 11)
-      g.addColorStop(0, 'rgba(236,214,160,0.9)'); g.addColorStop(0.55, 'rgba(184,152,96,0.85)'); g.addColorStop(1, 'rgba(150,120,70,0)')
+      g.addColorStop(0, 'rgba(226,200,140,0.85)'); g.addColorStop(0.55, 'rgba(176,142,88,0.8)'); g.addColorStop(1, 'rgba(150,120,70,0)')
       c.fillStyle = g
       c.beginPath(); c.arc(m, m, 11, 0, Math.PI * 2); c.fill()
-      blob(c, m - 3, m - 4, 3, 2, [255, 255, 255], 0.9)
+      blob(c, m - 3, m - 4, 3, 2, [255, 248, 230], 0.5)
     }),
     // Where a corn was: a soft pink, smooth little hollow.
     cornMark: one(96, (c, m) => { blob(c, m, m, 28, 26, mixRGB(skin.blush, [240, 150, 150], 0.4), 0.6); blob(c, m + 2, m + 3, 12, 11, mixRGB(skin.blush, [220, 110, 120], 0.4), 0.45) }),
