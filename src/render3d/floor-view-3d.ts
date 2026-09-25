@@ -26,7 +26,7 @@ import { makeRng } from '../core/rng.ts'
 import { STREET } from './layout.ts'
 import { ProgressUi } from './progress-ui.ts'
 import { styleName } from './styles.ts'
-import { disposeGroup, Kit } from './kit.ts'
+import { disposeGroup, G, Kit, tf } from './kit.ts'
 import { lenX, lenZ, ROOM3, toSim, toWorld, turnTo, yawFor } from './mapping.ts'
 import { moodBubble, nameTag, speech, toolBubble, waitDots } from './overlay.ts'
 import { Person3D, type Tool3 } from './person3d.ts'
@@ -63,6 +63,29 @@ const GHOST_DEPTH = new MeshBasicMaterial({ colorWrite: false, transparent: true
 
 const { d: RD } = ROOM3
 
+/** The light's colour through the day. */
+const TOD = { morning: new Color(0xffe0c4), noon: new Color(0xfff4ea), close: new Color(0xffc896) }
+/** Where the bird hops: the lawn strip in front of the salon, between the flower bed and the hedges. */
+const BIRD_LAWN = { x0: -5.5, x1: 3.5, z0: ROOM3.d + 1.25, z1: ROOM3.d + 1.75 }
+function makeBird() {
+  const root = new Group(), kit = new Kit()
+  kit.add(G.sphere(0.06, 10), 0x8d6e63, 'matte', tf(0, 0.07, 0, 0, 0, 0, 1, 0.85, 1.3))
+  kit.add(G.sphere(0.04, 8), 0xf0a07a, 'matte', tf(0, 0.06, 0.03, 0, 0, 0, 1, 0.9, 1))
+  kit.add(G.box(0.05, 0.012, 0.07, 0.004), 0x6d4c41, 'matte', tf(0, 0.1, -0.08, 0.5, 0, 0))
+  const body = kit.build(false)
+  const head = new Group()
+  head.position.set(0, 0.11, 0.06)
+  const hk = new Kit()
+  hk.add(G.sphere(0.035, 10), 0x8d6e63, 'matte')
+  hk.add(G.cyl(0.001, 0.01, 0.03, 6), 0xf6c350, 'matte', tf(0, -0.005, 0.045, Math.PI / 2, 0, 0))
+  hk.add(G.sphere(0.008, 6), 0x2a2026, 'gloss', tf(0.022, 0.01, 0.02))
+  hk.add(G.sphere(0.008, 6), 0x2a2026, 'gloss', tf(-0.022, 0.01, 0.02))
+  head.add(hk.build(false))
+  root.add(body, head)
+  root.position.set(-1, 0, ROOM3.d + 1.5)
+  return { root, head, t: 1, hop: 0, from: new Vector3(-1, 0, ROOM3.d + 1.5), to: new Vector3(-1, 0, ROOM3.d + 1.5) }
+}
+
 /** A person on the floor: the modelled one once the models have loaded, else the stand-in. */
 type FloorPerson = Person3D | ModelPerson
 function makePerson(look: import('../core/customers.ts').Look, role: 'customer' | 'player' | 'staff', tint?: number, archetype?: string, seed?: number): FloorPerson {
@@ -82,6 +105,9 @@ export class FloorView3D {
   private rig = new CameraRig()
   private room: RoomParts
   private key: DirectionalLight
+  /** The time of day, 0 (morning) to 1 (closing), eased. */
+  private tod = 0
+  private bird = makeBird()
   private furniture: Group | null = null
   private furnitureKey = ''
   private stations = new Map<string, StationView>()
@@ -230,6 +256,7 @@ export class FloorView3D {
       this.scene.add(person.root)
       this.passers.push({ person, look, z: 0, dir: 1, wait: 2 + i * 7, speed: 1.1 + pr() * 0.4 })
     }
+    this.scene.add(this.bird.root)
     // ---- the cat
     this.cat = new Cat3D(() => this.grid)
     this.cat.onZ = text => { const p = this.catWorld(); this.float(text, _v.set(p.x - 0.1, p.y + 0.45, p.z), 0x9c86d9, 16) }
@@ -1382,8 +1409,37 @@ export class FloorView3D {
       this.fish.instanceMatrix.needsUpdate = true
     }
     this.room.garden.update(this.t)
-    // The key light breathes a touch, like sun through leaves.
-    this.key.intensity = 1.9 + Math.sin(this.t * 0.35) * 0.04
+    this.updateBird(dt)
+    // The light follows the day: a warm morning, a bright afternoon, a golden close; and it breathes a touch, like
+    // sun through leaves.
+    const st = this.state
+    const tod = !st || this.demo ? 0.45 : st.phase === 'prep' ? 0 : st.phase === 'open' ? Math.min(0.85, 0.1 + st.clock / 260) : 1
+    this.tod += (tod - this.tod) * Math.min(1, dt * 0.5)
+    const k = this.tod
+    const warm = k < 0.5 ? TOD.morning.clone().lerp(TOD.noon, k * 2) : TOD.noon.clone().lerp(TOD.close, (k - 0.5) * 2)
+    this.key.color.copy(warm)
+    this.key.intensity = (k < 0.5 ? 1.75 + k * 0.4 : 1.95 - (k - 0.5) * 0.4) + Math.sin(this.t * 0.35) * 0.04
+    this.key.position.x = -5 + (k - 0.5) * 6
+  }
+
+  /** A little bird hopping about the front lawn, now and then flying off and coming back. */
+  private updateBird(dt: number) {
+    const b = this.bird
+    b.t -= dt
+    if (b.hop > 0) {
+      b.hop = Math.max(0, b.hop - dt * 3.2)
+      const f = 1 - b.hop
+      b.root.position.set(b.from.x + (b.to.x - b.from.x) * f, Math.sin(f * Math.PI) * 0.12, b.from.z + (b.to.z - b.from.z) * f)
+    } else if (b.t <= 0) {
+      b.from.copy(b.root.position)
+      const lawn = BIRD_LAWN
+      b.to.set(Math.max(lawn.x0, Math.min(lawn.x1, b.from.x + (Math.random() - 0.5) * 0.9)), 0, Math.max(lawn.z0, Math.min(lawn.z1, b.from.z + (Math.random() - 0.5) * 0.5)))
+      b.root.rotation.y = Math.atan2(b.to.x - b.from.x, b.to.z - b.from.z)
+      b.hop = 1
+      b.t = Math.random() < 0.3 ? 1.2 + Math.random() * 2 : 0.25 + Math.random() * 0.4
+    }
+    // Pecking between hops.
+    b.head.rotation.x = b.hop > 0 ? 0 : Math.max(0, Math.sin(this.t * 9)) * 0.7
   }
 
   // ------------------------------------------------------------------ overlays and effects

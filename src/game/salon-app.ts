@@ -70,10 +70,10 @@ export type SalonOptions = {
 
 type Mode = 'title' | 'floor' | 'treatment'
 
-/** The salon floor: the 3D room with `?floor=3d`, else the 2D floor (the same API and hooks). */
+/** The salon floor: the 3D room, or the 2D floor with `?floor=2d` or where WebGL2 is missing (the same API and hooks). */
 type Floor = FloorView | FloorView3D
 function makeFloor(app: Application, playerId: number, hooks: FloorHooks, opts: { demo?: boolean } = {}): Floor {
-  if (new URLSearchParams(location.search).get('floor') === '3d') {
+  if (new URLSearchParams(location.search).get('floor') !== '2d') {
     try { return new FloorView3D(app, playerId, hooks, opts) } catch (error) { console.warn('3D floor unavailable, using the 2D floor', error) }
   }
   return new FloorView(app, playerId, hooks, opts)

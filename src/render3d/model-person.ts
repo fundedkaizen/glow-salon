@@ -59,6 +59,7 @@ export class ModelPerson {
   private faceMat!: MeshStandardMaterial
   private paintFace!: (e: Expr) => void
   private blinkIn = 3
+  private idleT = 4
   private blinkT = 0
 
   constructor(file: PeopleFile, kind: 'fem' | 'masc', look: Look, role: Role, tint: number, archetype?: string, seed?: number) {
@@ -196,6 +197,9 @@ export class ModelPerson {
   update(dt: number) {
     // Which clip: seated ones by seat (sleepy while dozing), walking, working, or idle.
     const sit = this.pose === 'sit'
+    // Standing about, people fidget: a word or a look round now and then.
+    if (!sit && this.pose === 'stand' && this.speed < 0.05 && !this.oneShot) { this.idleT -= dt; if (this.idleT <= 0) { this.idleT = 5 + Math.random() * 7; this.once('talk') } }
+    else this.idleT = 3 + Math.random() * 5
     const clip = sit ? (this.expr === 'sleepy' && this.seat !== 'chair' ? 'sleepy' : this.seat === 'chair' ? 'sit_chair' : this.seat === 'pedicure' ? 'sit_pedicure' : this.seat === 'stool' ? 'sit_stool' : 'sit_sofa') : this.pose === 'walk' ? 'walk' : this.pose === 'work' ? 'work' : 'idle'
     if (this.oneShot && !sit) {
       this.oneShot.left -= dt
