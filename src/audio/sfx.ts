@@ -73,6 +73,8 @@ export class Sfx {
   private dingBus!: GainNode
   musicBus!: GainNode
   private buffers = new Map<string, AudioBuffer>()
+  /** Per-recording gain so every clip in a group peaks at the same level (random picks stay even). */
+  private norm = new Map<string, number>()
   private loading = new Map<string, Promise<AudioBuffer | null>>()
   private noise: AudioBuffer | null = null
   volumes: Volumes = { master: 0.9, music: 0.55, sfx: 0.9, ding: 0.7 }
@@ -83,7 +85,15 @@ export class Sfx {
     if (!this.ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       if (!Ctor) return
-      const ctx = new Ctor({ latencyHint: 'interactive' })
+      this.attach(new Ctor({ latencyHint: 'interactive' }))
+    }
+    if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume()
+  }
+
+  /** Build the buses on a context (the live one, or an OfflineAudioContext for sound checks). */
+  attach(context: BaseAudioContext) {
+    {
+      const ctx = context as AudioContext
       this.ctx = ctx
       const limiter = ctx.createDynamicsCompressor()
       limiter.threshold.value = -8; limiter.knee.value = 6; limiter.ratio.value = 8; limiter.attack.value = 0.003; limiter.release.value = 0.12
@@ -100,7 +110,15 @@ export class Sfx {
       // Warm the most common groups so the first pop is not late.
       for (const list of [KIT.pop, KIT.bell, KIT.sparkle, KIT.pen, KIT.drip]) for (const c of list) void this.load(c.file)
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume()
+  }
+
+  /** Load every recording and loop (sound checks). */
+  async loadAll() {
+    const files = new Set<string>()
+    for (const list of Object.values(KIT)) for (const c of list) files.add(c.file)
+    for (const f of Object.values(LOOPS)) files.add(f)
+    await Promise.all([...files].map(f => this.load(f)))
+    return files.size
   }
 
   setVolumes(v: Partial<Volumes>) { Object.assign(this.volumes, v); this.applyVolumes() }
@@ -119,7 +137,13 @@ export class Sfx {
     if (have) return Promise.resolve(have)
     let p = this.loading.get(file)
     if (!p) {
-      p = fetch(url(file)).then(r => (r.ok ? r.arrayBuffer() : Promise.reject(r.status))).then(b => this.ctx!.decodeAudioData(b)).then(buf => { this.buffers.set(file, buf); return buf }).catch(() => null)
+      p = fetch(url(file)).then(r => (r.ok ? r.arrayBuffer() : Promise.reject(r.status))).then(b => this.ctx!.decodeAudioData(b)).then(buf => {
+        let peak = 0
+        for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i += 2) { const a = Math.abs(d[i]); if (a > peak) peak = a } }
+        this.norm.set(file, peak > 0.01 ? Math.min(4, 0.7 / peak) : 1)
+        this.buffers.set(file, buf)
+        return buf
+      }).catch(() => null)
       this.loading.set(file, p)
     }
     return p
@@ -150,7 +174,7 @@ export class Sfx {
       src.buffer = buf
       src.playbackRate.value = (opts.rate ?? 1) * range(0.96, 1.04)
       const g = ctx.createGain()
-      g.gain.value = (opts.gain ?? 1) * (c.gain ?? 1) * 10 ** (range(-2, 2) / 20)
+      g.gain.value = (opts.gain ?? 1) * (c.gain ?? 1) * (this.norm.get(c.file) ?? 1) * 10 ** (range(-2, 2) / 20)
       let node: AudioNode = src
       if (opts.lowpass) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = opts.lowpass * range(0.85, 1.15); node.connect(f); node = f }
       node.connect(g).connect(this.out(opts.pan ?? 0, opts.bus))
@@ -219,11 +243,14 @@ export class Sfx {
 
   // ------------------------------------------------------------------ the sounds
 
-  /** The step-complete ding: a dyad from a pentatonic set, soft enough for the hundredth time. */
-  ding(pan = 0) {
+  /**
+   * The step-complete ding: a soft glass bell with its fifth. Each step climbs one note of a pentatonic
+   * scale, so a whole treatment plays a gentle rising melody and the reveal resolves it.
+   */
+  ding(pan = 0, step = -1) {
     if (!this.ctx) return
-    const notes = [1046.5, 1174.7, 1318.5, 1568.0]
-    const a = pick(notes)
+    const scale = [880, 987.8, 1108.7, 1318.5, 1480.0, 1760, 1975.5]
+    const a = step >= 0 ? scale[step % scale.length] : pick(scale)
     this.bell(a, 0.16, pan * 0.4)
     this.bell(a * 1.4983, 0.07, pan * 0.4, 0.07)
     this.clip(KIT.bell, { gain: 0.22, pan: pan * 0.4, bus: 'ding', lowpass: 9000, delay: 0.02 })
@@ -248,9 +275,9 @@ export class Sfx {
   pop(size: number, pan = 0) {
     if (!this.ctx) return
     const rate = 1.18 - 0.3 * Math.min(1.4, size)
-    this.clip(KIT.pop, { gain: 0.9, pan, rate })
+    this.clip(KIT.pop, { gain: 1.5, pan, rate })
     if (size > 1.1) this.clip(KIT.popBig, { gain: 0.35, pan, rate: 1.3 })
-    this.tone({ freq: 340 * rate, freqEnd: 90, dur: 0.09, gain: 0.35, pan })
+    this.tone({ freq: 340 * rate, freqEnd: 90, dur: 0.09, gain: 0.45, pan })
     this.burst({ freq: 900 * rate, freqEnd: 300, q: 2.2, dur: 0.12, gain: 0.22, pan, delay: 0.01 })
     this.burst({ freq: 6000, q: 0.8, type: 'highpass', dur: 0.03, gain: 0.08, pan })
   }
@@ -258,7 +285,7 @@ export class Sfx {
   /** Pressure building while a whitehead swells: a faint rising creak. */
   squeeze(progress: number, pan = 0) {
     if (!this.ctx || !this.throttle('squeeze', 90)) return
-    this.burst({ freq: 500 + progress * 900, q: 7, dur: 0.1, gain: 0.03 + progress * 0.05, pan })
+    this.burst({ freq: 500 + progress * 900, q: 5, dur: 0.1, gain: 0.12 + progress * 0.2, pan })
   }
 
   /** A blackhead coming out of its pore: a little suction pop. */
@@ -270,7 +297,7 @@ export class Sfx {
 
   drip(pan = 0) {
     if (!this.ctx) return
-    this.clip(KIT.drip, { gain: 0.8, pan })
+    this.clip(KIT.drip, { gain: 0.55, pan })
     this.tone({ freq: range(1300, 1700), freqEnd: range(2600, 3200), dur: 0.07, gain: 0.05, pan, delay: 0.005 })
   }
 
@@ -285,10 +312,10 @@ export class Sfx {
         if (this.throttle('foamHiss', 420)) this.clip(KIT.foamHiss, { gain: 0.25 * s, pan, lowpass: 7000 })
         break
       case 'wipe':
-        if (this.throttle('wipe', 150)) this.clip(Math.random() < 0.6 ? KIT.cloth : KIT.coat, { gain: 0.35 + 0.45 * s, pan })
+        if (this.throttle('wipe', 150)) this.clip(Math.random() < 0.6 ? KIT.cloth : KIT.coat, { gain: 0.22 + 0.3 * s, pan })
         break
       case 'brush':
-        if (this.throttle('brush', 170)) { this.clip(KIT.horsehair, { gain: 0.4 + 0.4 * s, pan }); this.burst({ freq: 700, q: 1.2, type: 'lowpass', dur: 0.12, gain: 0.05 * s, pan }) }
+        if (this.throttle('brush', 170)) { this.clip(KIT.horsehair, { gain: 0.24 + 0.3 * s, pan }); this.burst({ freq: 700, q: 1.2, type: 'lowpass', dur: 0.12, gain: 0.05 * s, pan }) }
         break
       case 'cream':
         if (this.throttle('cream', 260)) this.clip(KIT.hands, { gain: 0.3 + 0.3 * s, pan, lowpass: 6000 })
@@ -360,7 +387,7 @@ export class Sfx {
 
   gem(pan = 0) {
     if (!this.ctx) return
-    this.clip(KIT.glass, { gain: 0.5, pan, rate: 1.6 })
+    this.clip(KIT.glass, { gain: 0.85, pan, rate: 1.6 })
     this.bell(range(1800, 2400), 0.05, pan, 0.03, 'ding')
   }
 
@@ -369,7 +396,7 @@ export class Sfx {
   cash() { if (!this.ctx) return; this.clip(KIT.coins, { gain: 0.7 }); this.clip(KIT.beep, { gain: 0.25, delay: 0.05 }) }
   door() { if (this.ctx) this.clip(KIT.door, { gain: 0.5 }) }
   bellDesk() { if (this.ctx) this.clip(KIT.counterBell, { gain: 0.5 }) }
-  click() { if (this.ctx && this.throttle('click', 40)) this.clip(KIT.pen, { gain: 0.6 }) }
+  click() { if (this.ctx && this.throttle('click', 40)) this.clip(KIT.pen, { gain: 0.35 }) }
   type() { if (this.ctx && this.throttle('type', 50)) this.clip(KIT.keys, { gain: 0.5 }) }
   shutter() { if (this.ctx) this.clip(KIT.shutter, { gain: 0.8 }) }
   buy() { if (!this.ctx) return; this.clip(KIT.beep, { gain: 0.35 }); this.bell(1318.5, 0.1, 0, 0.05); this.bell(1760, 0.08, 0, 0.14) }
@@ -470,6 +497,6 @@ export class LoopVoice {
   }
 }
 
-const LOOP_GAIN: Partial<Record<LoopName, number>> = { foam: 0.55, water: 0.5, soak: 0.45, splash: 0.4, steam: 0.22, fan: 0.28, rasp: 0.08, scrape: 0.05, hum: 0.12, brushWet: 0.06 }
+const LOOP_GAIN: Partial<Record<LoopName, number>> = { foam: 0.55, water: 0.5, soak: 0.45, splash: 0.4, steam: 0.22, fan: 0.28, rasp: 0.08, scrape: 0.05, hum: 0.06, brushWet: 0.06 }
 
 export const sfx = new Sfx()

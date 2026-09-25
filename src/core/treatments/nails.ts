@@ -1,7 +1,7 @@
 import type { TreatmentDef } from './types.ts'
 
-const hand = { x: 470, y: 600, zoom: 1 }
-const tips = { x: 480, y: 400, zoom: 1.32 }
+const hand = { x: 470, y: 590, zoom: 0.92 }
+const tips = { x: 480, y: 420, zoom: 1.25 }
 
 export const NAILS: TreatmentDef = {
   id: 'nails',
@@ -34,10 +34,10 @@ export const NAILS: TreatmentDef = {
     { id: 'nip', label: 'Nip hangnails', hint: 'Press each little hangnail to nip it', tool: 'nipper', gesture: 'targets', sound: 'snip', targets: 'hangnail', region: 'hand', camera: tips, reaction: 'flinch', need: 'targets' },
     { id: 'buff', label: 'Buff', hint: 'Buff each nail until it shines', tool: 'buffer', gesture: 'erase', sound: 'buff', layer: 'dull', region: 'nails', radius: 42, rate: 0.18, camera: tips, reaction: 'neutral' },
     { id: 'scrub', label: 'Hand scrub', hint: 'Rub the sugar scrub all over the hand', tool: 'scrub', gesture: 'rub', sound: 'scrub', layer: 'scrub', region: 'hand', radius: 88, rate: 0.16, also: [{ layer: 'dry', amount: -0.12 }], camera: hand, reaction: 'content', complete: 0.9 },
-    { id: 'wipe', label: 'Warm towel', hint: 'Wipe the scrub away with the warm towel', tool: 'towel', gesture: 'erase', sound: 'wipe', layer: 'scrub', region: 'hand', radius: 100, rate: 0.22, camera: hand, reaction: 'content', wet: 0.4, clears: ['dry'] },
-    { id: 'base', label: 'Base coat', hint: 'Paint a clear base coat on every nail', tool: 'polishBrush', gesture: 'paint', sound: 'polish', layer: 'base', region: 'nails', radius: 36, rate: 0.24, camera: tips, reaction: 'neutral' },
+    { id: 'wipe', label: 'Warm towel', hint: 'Wipe the scrub away with the warm towel', tool: 'towel', gesture: 'erase', sound: 'wipe', layer: 'scrub', region: 'hand', radius: 100, rate: 0.22, camera: hand, reaction: 'content', wet: 0.4, clears: ['dry', 'wet'] },
+    { id: 'base', label: 'Base coat', hint: 'Paint a clear base coat on every nail', tool: 'baseCoat', gesture: 'paint', sound: 'polish', layer: 'base', region: 'nails', radius: 36, rate: 0.24, camera: tips, reaction: 'neutral' },
     { id: 'color', label: 'Colour', hint: 'Pick a colour, then paint every nail', tool: 'polishBrush', gesture: 'paint', sound: 'polish', layer: 'color', region: 'nails', radius: 36, rate: 0.22, choice: 'polish', camera: tips, reaction: 'content' },
-    { id: 'top', label: 'Top coat', hint: 'Seal it with a glossy top coat', tool: 'polishBrush', gesture: 'paint', sound: 'polish', layer: 'top', region: 'nails', radius: 36, rate: 0.26, camera: tips, reaction: 'neutral' },
+    { id: 'top', label: 'Top coat', hint: 'Seal it with a glossy top coat', tool: 'topCoat', gesture: 'paint', sound: 'polish', layer: 'top', region: 'nails', radius: 36, rate: 0.26, camera: tips, reaction: 'neutral' },
     { id: 'cure', label: 'UV lamp', hint: 'Hold under the lamp to set the polish', tool: 'uvLamp', gesture: 'hold', sound: 'uv', region: 'nails', holdSeconds: 3, camera: hand, reaction: 'content' },
     { id: 'gems', label: 'Gems', hint: 'Tap a nail to add a gem, or finish', tool: 'gems', gesture: 'targets', sound: 'gem', targets: 'gem', region: 'nails', camera: tips, reaction: 'content', optional: true },
   ],

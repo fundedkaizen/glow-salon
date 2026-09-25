@@ -54,6 +54,8 @@ export function attachRelay(httpServer) {
 }
 
 function join(ws, requested) {
+  // A bad frame (too large, malformed) must close that one socket, never crash the relay.
+  ws.on('error', () => { try { ws.terminate() } catch { /* already gone */ } })
   ws.alive = true
   ws.on('pong', () => { ws.alive = true })
   let room, id

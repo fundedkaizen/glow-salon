@@ -1,4 +1,4 @@
-import { Container, RenderTexture, Sprite, Texture, type Geometry, type Mesh, type Renderer, type Shader } from 'pixi.js'
+import { Container, Graphics, RenderTexture, Sprite, Texture, type Geometry, type Mesh, type Renderer, type Shader } from 'pixi.js'
 import { GRID } from '../core/treatments/grid.ts'
 import { canvas } from '../art/paint.ts'
 import { layerMesh, skinMesh } from './shaders.ts'
@@ -63,7 +63,9 @@ function brushes() {
 
 export type SurfaceArt = {
   base: Texture
-  normal: Texture
+  /** Greyscale height (form and pores); the skin shader lights it. */
+  height: Texture
+  bump?: number
   sss: [number, number, number]
   layers: Record<string, { art: Texture; art2?: Texture; style: LayerStyle }>
   /** Bottom to top. */
@@ -86,7 +88,7 @@ export class Surface {
   constructor(renderer: Renderer, art: SurfaceArt, flipMask = 0) {
     this.renderer = renderer
     this.wet = RenderTexture.create({ width: MASK_SIZE, height: MASK_SIZE })
-    this.skin = skinMesh(art.base, art.normal, this.wet.source, art.sss, flipMask)
+    this.skin = skinMesh(art.base, art.height, this.wet.source, art.sss, flipMask, art.bump)
     this.root.addChild(this.skin.mesh)
     for (const id of art.order) {
       const def = art.layers[id]
@@ -101,7 +103,7 @@ export class Surface {
   }
 
   /** Start a layer from the session's coverage grid (seeded grime, a resumed treatment...). */
-  initFromGrid(id: string, grid: Float32Array) {
+  initFromGrid(id: string, grid: Float32Array, crisp = false) {
     const layer = this.layers.get(id) ?? (id === '$wet' ? null : null)
     const target = id === '$wet' ? this.wet : layer?.rt
     if (!target) return
@@ -120,6 +122,13 @@ export class Surface {
     bctx.imageSmoothingQuality = 'high'
     bctx.filter = 'blur(3px)'
     bctx.drawImage(c, 0, 0, MASK_SIZE, MASK_SIZE)
+    // Layers that fill whole shapes (old polish, cuticles) get crisp edges instead of a soft grid blur.
+    if (crisp) {
+      const img2 = bctx.getImageData(0, 0, MASK_SIZE, MASK_SIZE)
+      const d = img2.data
+      for (let i = 3; i < d.length; i += 4) { const a = d[i] / 255; const t = Math.max(0, Math.min(1, (a - 0.3) / 0.35)); d[i] = Math.round(t * t * (3 - 2 * t) * 255) }
+      bctx.putImageData(img2, 0, 0)
+    }
     const tex = Texture.from(big)
     const sprite = new Sprite(tex)
     this.renderer.render({ container: sprite, target, clear: true })
@@ -145,20 +154,46 @@ export class Surface {
   }
 
   /** Remove a layer below a line (the peel). */
-  clearBelow(id: string, y: number) {
+  clearBelow(id: string, y: number, curve: (x: number) => number = () => 0) {
     const layer = this.layers.get(id)
     if (!layer) return
-    const s = this.stampSprite
-    s.texture = Texture.WHITE
-    s.anchor.set(0)
-    s.position.set(0, y * K)
-    s.width = MASK_SIZE
-    s.height = Math.max(0, MASK_SIZE - y * K)
-    s.alpha = 1
-    s.blendMode = 'erase'
-    this.renderer.render({ container: s, target: layer.rt, clear: false })
-    s.blendMode = 'normal'
+    const g = this.eraser
+    g.clear()
+    g.moveTo(0, MASK_SIZE + 4)
+    for (let x = 0; x <= 1024; x += 8) g.lineTo(x * K, (y + curve(x)) * K)
+    g.lineTo(MASK_SIZE, MASK_SIZE + 4)
+    g.closePath()
+    g.fill({ color: 0xffffff })
+    g.blendMode = 'erase'
+    const holder = this.stampBatch
+    holder.removeChildren()
+    holder.addChild(g)
+    this.renderer.render({ container: holder, target: layer.rt, clear: false })
+    holder.removeChildren()
   }
+  private eraser = new Graphics()
+
+  /** Put a container (the targets) between the layers, just under `id`. */
+  insertBelow(id: string, child: Container) {
+    const layer = this.layers.get(id)
+    const index = layer ? this.root.getChildIndex(layer.mesh) : this.root.children.length
+    this.root.addChildAt(child, index)
+  }
+
+  /**
+   * Render one sprite into a render texture. It goes inside a container because Pixi renders a root
+   * container without its own position, so a lone sprite would ignore where it was placed.
+   */
+  private renderOne(sprite: Sprite, target: RenderTexture) {
+    const holder = this.stampBatch
+    holder.removeChildren()
+    holder.addChild(sprite)
+    this.renderer.render({ container: holder, target, clear: false })
+    holder.removeChildren()
+  }
+
+  /** Dry the skin at once (before the reveal photo). */
+  dryAll() { this.renderer.render({ container: new Container(), target: this.wet, clear: true }); this.wetPending.length = 0 }
 
   setLayerMix(id: string, mix: number) { const l = this.layers.get(id); if (l) l.uniforms.uniforms.uP[0] = mix }
   setLayerTint(id: string, color: number, amount = 1) {
@@ -206,7 +241,7 @@ export class Surface {
         s.width = s.height = MASK_SIZE
         s.alpha = Math.min(1, dt * 7)
         s.blendMode = res.to === 0 ? 'erase' : 'normal'
-        this.renderer.render({ container: s, target: layer.rt, clear: false })
+        this.renderOne(s, layer.rt)
         s.blendMode = 'normal'
         if (res.t > 0.7) {
           if (res.to === 0) { this.renderer.render({ container: new Container(), target: layer.rt, clear: true }); layer.hasPaint = false; layer.mesh.visible = false }
@@ -225,7 +260,7 @@ export class Surface {
       s.width = s.height = MASK_SIZE
       s.alpha = this.dryTimer * 0.045
       s.blendMode = 'erase'
-      this.renderer.render({ container: s, target: this.wet, clear: false })
+      this.renderOne(s, this.wet)
       s.blendMode = 'normal'
       this.dryTimer = 0
     }

@@ -95,6 +95,8 @@ export const TIER_RADIUS = [1, 1.16, 1.32]
 export const WET = '$wet'
 /** The peel line runs from the chin (progress 0) to the hairline (1). */
 export const PEEL_FROM = 915, PEEL_TO = 262
+/** The peel's front edge sags a little in the middle, like a real sheet being lifted. */
+export const peelCurve = (x: number) => 26 * (1 - Math.min(1, ((x - 512) / 290) ** 2))
 
 const regionCache = new Map<RegionId, Uint8Array>()
 export function regionMask(id: RegionId) {
@@ -455,7 +457,7 @@ export class TreatmentSession {
     for (const t of this.stepTargets()) {
       if (t.done) continue
       const d = dist(x, y, t.x, t.y)
-      if (d > radius + hitRadius(t) * 0.5) continue
+      if (d > radius * 0.6 + hitRadius(t) * 0.4) continue
       const lamp = this.lamp && dist(this.lamp.x, this.lamp.y, t.x, t.y) < 170 ? 2 : 1
       t.progress = clamp(t.progress + (rate * lamp) / (0.6 + 0.6 * t.size))
       this.emit({ e: 'target', id: t.id, progress: t.progress })
@@ -518,8 +520,8 @@ export class TreatmentSession {
     t.done = true
     t.progress = 1
     if (lamp) this.lampAssists++
-    if (t.kind === 'whitehead') { this.popped++; this.stampLayer('marks', t.x, t.y, 22 + 16 * t.size, 0.9, 'skin') }
-    if (t.kind === 'blackhead') { this.extracted++; this.stampLayer('marks', t.x, t.y, 12 + 6 * t.size, 0.35, 'skin') }
+    if (t.kind === 'whitehead') { this.popped++; this.stampLayer('marks', t.x, t.y, 12 + 9 * t.size, 0.85, 'skin') }
+    if (t.kind === 'blackhead') { this.extracted++; this.stampLayer('marks', t.x, t.y, 8 + 4 * t.size, 0.3, 'skin') }
     if (t.kind === 'drop') { this.stampLayer('serum', t.x, t.y, 96, 1, 'skin'); this.stampLayer(WET, t.x, t.y, 100, 0.9, 'everywhere') }
     if (t.kind === 'gem') t.n = this.targets.filter(o => o.kind === 'gem' && o.done).length
     this.emit({ e: 'targetDone', id: t.id, kind: t.kind, x: t.x, y: t.y, size: t.size, n: t.n })
@@ -547,14 +549,19 @@ export class TreatmentSession {
   private clearMaskBelow(lineY: number) {
     const mask = this.layers[this.current?.layer ?? 'mask']
     if (!mask) return
-    const row = Math.max(0, Math.min(GRID, Math.floor(lineY / (1024 / GRID))))
-    for (let gy = row; gy < GRID; gy++) mask.fill(0, gy * GRID, gy * GRID + GRID)
+    const cell = 1024 / GRID
+    for (let gx = 0; gx < GRID; gx++) {
+      const y = lineY + peelCurve((gx + 0.5) * cell)
+      for (let gy = Math.max(0, Math.floor(y / cell)); gy < GRID; gy++) mask[gy * GRID + gx] = 0
+    }
   }
 
   /** Finish the current step (or skip it) and move to the next. */
   private advance(skip: boolean) {
     const step = this.current
     if (!step) return
+    // A choice nobody made (a skip, or a resumed treatment) falls back to what the customer wanted.
+    if (step.choice && this.choices[this.step] === undefined) this.choices[this.step] = this.wish ?? 0
     if (step.optional) this.status[this.step] = !skip && this.stepTargets().some(t => t.done) ? 'done' : 'todo'
     else this.status[this.step] = skip ? 'skipped' : 'done'
     // The last few percent settle by themselves, so nobody hunts for pixels.

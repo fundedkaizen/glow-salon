@@ -2,15 +2,16 @@ import { Container, Graphics, Matrix, RenderTexture, Sprite, Text, type Applicat
 import type { Look } from '../core/customers.ts'
 import { FACE, HAND, fingerDir, nailOf } from '../core/treatments/anatomy.ts'
 import { GRID, CELL } from '../core/treatments/grid.ts'
-import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, type Op, type SessionEvent, type SessionSnapshot, type Target, type TreatmentResult } from '../core/treatments/session.ts'
+import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, peelCurve, regionMask, type Op, type SessionEvent, type SessionSnapshot, type Target, type TreatmentResult } from '../core/treatments/session.ts'
 import { POLISH_COLORS, type StepDef, type TreatmentId } from '../core/treatments/types.ts'
 import { starsFor } from '../core/reviews.ts'
 import { assetsFor, type PartAssets } from '../art/assets.ts'
-import { BACKDROP_OFFSET } from '../art/backdrop.ts'
+import { BACKDROP, BACKDROP_OFFSET } from '../art/backdrop.ts'
 import { bits } from '../art/bits.ts'
 import { toolArt } from '../art/tools.ts'
 import { PLAYER_COLORS } from '../art/palette.ts'
 import { sfx, type LoopName, type LoopVoice } from '../audio/sfx.ts'
+import { music } from '../audio/music.ts'
 import { TreatmentHud } from '../ui/treatment-hud.ts'
 import { FoamField } from './foam.ts'
 import { Particles, easeInOut, easeOutBack } from './particles.ts'
@@ -45,7 +46,7 @@ export type TreatmentViewOptions = {
 type TargetView = { t: Target; root: Container; parts: Sprite[]; flash: number; gone: boolean }
 
 const LOOP_FOR: Record<string, LoopName> = { foam: 'foam', water: 'water', steam: 'steam', fan: 'fan', uv: 'hum', rasp: 'rasp', push: 'scrape', loop: 'scrape', brush: 'brushWet' }
-const EXPRESSIONS = { neutral: ['closed', 'relaxed', 'neutral'], content: ['closed', 'relaxed', 'smile'], flinch: ['squeeze', 'worried', 'wince'], tickle: ['closed', 'happy', 'o'], beam: ['happy', 'happy', 'beam'], worry: ['closed', 'worried', 'neutral'] } as const
+const EXPRESSIONS = { neutral: ['open', 'relaxed', 'neutral'], content: ['closed', 'relaxed', 'smile'], flinch: ['squeeze', 'worried', 'wince'], tickle: ['happy', 'happy', 'o'], beam: ['open', 'happy', 'beam'], worry: ['wide', 'worried', 'neutral'], giggle: ['happy', 'happy', 'smile'] } as const
 type Expr = keyof typeof EXPRESSIONS
 
 export class TreatmentView {
@@ -103,6 +104,7 @@ export class TreatmentView {
   private loopLevel = 0
   private flush = 0
   private peelShown = 0
+  private peelGrip: { x: number; y: number } | null = null
   private peelTension = 0
   private lampTimer = 0
   private myLamp: { x: number; y: number } | null = null
@@ -123,14 +125,23 @@ export class TreatmentView {
     const { app, treatment, customer } = opts
     this.session = new TreatmentSession({ treatment, seed: customer.seed, disaster: customer.disaster, tier: opts.tier, wish: treatment === 'nails' ? customer.wish : undefined, startStep: opts.startStep })
     const order = this.session.def.layers.map(l => l.id)
+    const t0 = performance.now()
     this.assets = assetsFor(treatment, customer.look, customer.seed, order, this.session.profile)
+    this.buildMs = Math.round(performance.now() - t0)
     this.surface = new Surface(app.renderer, this.assets.surface, 0)
     this.foam = new FoamField(this.fx, (x, y) => this.coverage('foam', x, y))
 
     const backdrop = new Sprite(this.assets.backdrop)
     backdrop.position.set(-BACKDROP_OFFSET, -BACKDROP_OFFSET)
+    backdrop.scale.set(BACKDROP / this.assets.backdrop.width)
     this.photoRoot.addChild(backdrop, this.artRoot)
-    this.artRoot.addChild(this.surface.root, this.targetsLayer, this.foam.root, this.featuresLayer)
+    // Squash and wobble around the middle of the face, not the sheet's corner.
+    this.artRoot.pivot.set(512, 540)
+    this.artRoot.position.set(512, 540)
+    this.artRoot.addChild(this.surface.root, this.foam.root, this.featuresLayer)
+    // Facial targets (pimples) sit under the foam, cream and clay; nail targets (gems) sit on top of the polish.
+    if (treatment === 'facial') this.surface.insertBelow('cream', this.targetsLayer)
+    else this.artRoot.addChildAt(this.targetsLayer, this.artRoot.getChildIndex(this.surface.root) + 1)
     this.world.addChild(this.photoRoot, this.overFx, this.flap, this.fx.root, this.revealLayer, this.toolLayer)
     this.root.addChild(this.world)
     this.hint.anchor.set(0.5)
@@ -140,7 +151,7 @@ export class TreatmentView {
     this.buildLamp()
     this.buildFeatures()
     this.buildTargets()
-    for (const [id, grid] of Object.entries(this.session.layers)) this.surface.initFromGrid(id, grid)
+    for (const [id, grid] of Object.entries(this.session.layers)) this.surface.initFromGrid(id, grid, this.crispLayer(id))
 
     this.hud = new TreatmentHud(opts.overlay, this.session.def, {
       customer: customer.name, wish: treatment === 'nails' ? customer.wish : null, role: opts.role, leadName: opts.leadName,
@@ -153,6 +164,16 @@ export class TreatmentView {
         done: () => { sfx.click(); if (this.result) this.opts.onFinish(this.result, this.foam.made) },
       },
     })
+    // Colours already chosen (a resumed treatment) tint their layer.
+    this.session.def.steps.forEach((st, i) => { if (st.choice && this.session.choices[i] !== undefined && st.layer) this.surface.setLayerTint(st.layer, POLISH_COLORS[this.session.choices[i]].hex) })
+    // Resumed after the mask dried: it is dry clay now.
+    const dryIndex = this.session.def.steps.findIndex(st => st.id === 'dry')
+    if (dryIndex >= 0 && this.session.status[dryIndex] === 'done') { this.surface.setLayerMix('mask', 1); this.surface.setLayerGloss('mask', 0.05) }
+    // Steps this customer will never need drop off the tray up front.
+    this.session.def.steps.forEach((s, i) => {
+      const noTargets = s.need === 'targets' && s.targets !== 'patch' && !this.session.targets.some(t => t.kind === s.targets)
+      if ((s.need === 'disaster' && !this.session.disaster) || noTargets || this.session.status[i] === 'na') this.hud.hideStep(i)
+    })
     this.enterStep(true)
     app.canvas.addEventListener('pointerdown', this.onPointer)
     app.canvas.addEventListener('pointermove', this.onPointer)
@@ -162,6 +183,8 @@ export class TreatmentView {
     window.addEventListener('keydown', this.onKey)
     sfx.preload(['pop', 'bell', 'sparkle', 'drip', 'suction', 'cloth', 'horsehair', 'hands', 'tapeShort', 'peelSnap', 'paperRip', 'bubbleTiny', 'foamHiss', 'snip', 'glass', 'reveal', 'gel', 'spray'], ['foam', 'water', 'steam', 'fan', 'soak'])
     this.resize(app.screen.width, app.screen.height)
+    // No music during a treatment: only the close, dry tool sounds.
+    music.quiet(true)
     const c = this.cam
     Object.assign(c, this.camGoal)
     // Debug handle for browser checks.
@@ -169,6 +192,12 @@ export class TreatmentView {
   }
 
   // ------------------------------------------------------------------ setup
+
+  /** Layers seeded as whole shapes, drawn with crisp edges. */
+  private crispLayer(id: string) {
+    const seed = this.session.def.layers.find(l => l.id === id)?.seed
+    return seed === 'full' || seed === 'polish' || seed === 'cuticle' || seed === 'dirt'
+  }
 
   private buildFeatures() {
     const f = this.assets.features
@@ -195,8 +224,20 @@ export class TreatmentView {
     root.position.set(t.x, t.y)
     const parts: Sprite[] = []
     const sprite = (tex: Sprite['texture'], scale: number, anchorY = 0.5) => { const s = new Sprite(tex); s.anchor.set(0.5, anchorY); s.scale.set(scale); root.addChild(s); parts.push(s); return s }
-    if (t.kind === 'whitehead') { sprite(bits.whiteheadBase(), 0.5 * t.size); sprite(bits.whiteheadHead(), 0.34 * t.size) }
-    else if (t.kind === 'blackhead') { sprite(bits.blackhead(), 0.42 * t.size); const plug = sprite(bits.plug(), 0.4 * t.size, 0.1); plug.visible = false }
+    if (t.kind === 'whitehead') {
+      const p = this.assets.pimples
+      const red = 0.65 + ((t.id * 2654435761) % 1000) / 1000 * 0.5
+      const deep = t.stage === 2
+      const halo = sprite(p?.halo ?? bits.whiteheadBase(), (deep ? 0.62 : 0.46) * t.size)
+      halo.alpha = Math.min(1, 0.55 * red + (deep ? 0.3 : 0))
+      sprite(p ? (deep ? p.deepDome : p.dome) : bits.whiteheadBase(), (deep ? 0.52 : 0.42) * t.size)
+      const blanch = sprite(p?.blanch ?? bits.glow(), 0.4 * t.size)
+      blanch.alpha = 0
+      // Deep ones sit under the skin: a bigger, redder bump with no head yet.
+      const head = sprite(p?.head ?? bits.whiteheadHead(), 0.3 * t.size)
+      head.visible = !deep
+    }
+    else if (t.kind === 'blackhead') { sprite(bits.blackhead(), 0.32 * t.size); const plug = sprite(bits.plug(), 0.4 * t.size, 0.1); plug.visible = false }
     else if (t.kind === 'drop' || t.kind === 'patch') { const r = sprite(bits.ring(), t.kind === 'drop' ? 0.9 : 0.7); if (t.kind === 'patch') r.tint = 0xf49ac0; r.visible = false }
     else if (t.kind === 'tip') {
       const f = HAND.fingers[t.n ?? 0]
@@ -234,9 +275,10 @@ export class TreatmentView {
 
   resize(w: number, h: number) {
     const small = w < 700
-    this.view = { w, h, top: small ? 96 : 92, bottom: small ? 150 : 158 }
-    const availH = Math.max(200, h - this.view.top - this.view.bottom)
-    this.fit = Math.min(w / 1024, availH / 1024) * (small ? 1.25 : 1.05)
+    this.view = { w, h, top: small ? 88 : 84, bottom: small ? 150 : 150 }
+    // Frame the subject to fill most of the screen's height (the face or the hand, about 800 art px),
+    // never wider than the screen.
+    this.fit = Math.min((0.8 * h) / 800, (0.96 * w) / (this.opts.treatment === 'facial' ? 700 : 660))
   }
 
   private placeCamera(dt: number) {
@@ -274,7 +316,6 @@ export class TreatmentView {
     this.hud.setStep(this.session.step, this.session.status)
     if (step.choice) this.hud.chosen(this.session.choices[this.session.step])
     this.camGoal = { ...step.camera }
-    if (this.opts.treatment === 'facial' && step.camera.zoom === 1) this.camGoal.zoom = 0.98
     const art = toolArt(step.tool)
     this.tool.texture = art.texture
     this.tool.anchor.set(art.tip[0] / art.size, art.tip[1] / art.size)
@@ -285,14 +326,14 @@ export class TreatmentView {
     this.exprBase = step.reaction === 'flinch' ? 'neutral' : step.reaction === 'tickle' ? 'content' : step.reaction
     if (this.exprTimer <= 0) this.setExpr(this.exprBase)
     // Step props.
-    if (step.id === 'steam' && !this.towel) {
-      this.towel = new Sprite(toolArt('towel').texture)
-      this.towel.anchor.set(0.5); this.towel.position.set(512, 560); this.towel.scale.set(3.3, 3.6); this.towel.alpha = 0
+    if (step.id === 'steam' && !this.towel && this.assets.towel) {
+      this.towel = new Sprite(this.assets.towel)
+      this.towel.anchor.set(0.5); this.towel.position.set(512, 512); this.towel.alpha = 0
       this.overFx.addChild(this.towel)
     }
     if (step.id === 'cure' && !this.uvLamp) {
-      this.uvGlow = new Sprite(bits.glow()); this.uvGlow.anchor.set(0.5); this.uvGlow.position.set(500, 420); this.uvGlow.scale.set(11, 8); this.uvGlow.tint = 0xa27cff; this.uvGlow.blendMode = 'add'; this.uvGlow.alpha = 0
-      this.uvLamp = new Sprite(toolArt('uvLamp').texture); this.uvLamp.anchor.set(0.5, 0.78); this.uvLamp.position.set(500, 170); this.uvLamp.scale.set(3.4, 2.4); this.uvLamp.alpha = 0
+      this.uvGlow = new Sprite(bits.glow()); this.uvGlow.anchor.set(0.5); this.uvGlow.position.set(500, 400); this.uvGlow.scale.set(9, 6); this.uvGlow.tint = 0x8a6cff; this.uvGlow.blendMode = 'add'; this.uvGlow.alpha = 0
+      this.uvLamp = new Sprite(toolArt('uvLamp').texture); this.uvLamp.anchor.set(0.5, 0.78); this.uvLamp.position.set(490, 250); this.uvLamp.scale.set(2.7, 1.9); this.uvLamp.alpha = 0
       this.overFx.addChild(this.uvGlow, this.uvLamp)
     }
     if (step.id === 'color' && this.session.choices[this.session.step] !== undefined) this.surface.setLayerTint('color', POLISH_COLORS[this.session.choices[this.session.step]].hex)
@@ -327,10 +368,40 @@ export class TreatmentView {
 
   snapshot(): SessionSnapshot { return this.session.snapshot() }
 
+  /** The lead left and this helper takes over the treatment (drop-out never stalls a customer). */
+  promote() {
+    if (this.opts.role === 'lead') return
+    this.opts.role = 'lead'
+    this.hud.setRole('lead')
+    this.hud.setStep(this.session.step, this.session.status)
+    if (this.session.ready) this.advanceAt = this.time + 0.4
+  }
+
+  /** For browser checks: art-space centres of grid cells the current step still needs worked. */
+  cellsToWork(limit = 400): [number, number][] {
+    const step = this.step
+    if (!step?.layer) return []
+    const grid = this.session.layers[step.layer]
+    const region = regionMask(step.region)
+    const out: [number, number][] = []
+    for (let i = 0; i < grid.length && out.length < limit; i++) {
+      if (!region[i]) continue
+      const need = step.gesture === 'erase' ? grid[i] > 0.05 : grid[i] < 0.8
+      if (need) out.push([((i % GRID) + 0.5) * CELL, (Math.floor(i / GRID) + 0.5) * CELL])
+    }
+    return out
+  }
+
+  /** For browser checks: where an art-space point is on screen (CSS pixels). */
+  artToScreen(x: number, y: number) {
+    const rect = this.opts.app.canvas.getBoundingClientRect()
+    return { x: rect.left + this.world.x + x * this.world.scale.x, y: rect.top + this.world.y + y * this.world.scale.y }
+  }
+
   /** A late join: take the lead's state and redraw everything from it. */
   applySnapshot(snap: SessionSnapshot) {
     this.session.restore(snap)
-    for (const [id, grid] of Object.entries(this.session.layers)) this.surface.initFromGrid(id, grid)
+    for (const [id, grid] of Object.entries(this.session.layers)) this.surface.initFromGrid(id, grid, this.crispLayer(id))
     for (const tv of this.targets.values()) tv.root.destroy({ children: true })
     this.targets.clear()
     this.buildTargets()
@@ -399,10 +470,8 @@ export class TreatmentView {
     const step = this.step
     if (!step || this.session.finished) return
     if (this.lampRole) return
-    if (step.gesture === 'targets') {
-      const t = this.nearestTarget(this.pos.x, this.pos.y)
-      if (!t || (t.kind !== 'whitehead' && t.kind !== 'hangnail')) this.local({ k: 'tap', s: this.session.step, x: this.pos.x, y: this.pos.y })
-    }
+    // A press on a target: taps finish tap targets; on a pimple it is a fresh grip (deep ones need two).
+    if (step.gesture === 'targets') this.local({ k: 'tap', s: this.session.step, x: this.pos.x, y: this.pos.y })
     if (step.gesture === 'peel') {
       const line = PEEL_FROM + (PEEL_TO - PEEL_FROM) * this.session.peel.progress
       this.grabbing = Math.abs(this.pos.y - line) < 110 || this.pos.y > line
@@ -478,6 +547,7 @@ export class TreatmentView {
         case 'stamp': this.onStamp(e); break
         case 'target': this.onTargetProgress(e.id, e.progress); break
         case 'targetDone': this.onTargetDone(e); break
+        case 'targetStage': this.onTargetStage(e.id); break
         case 'miss': sfx.miss(this.pan(e.x)); break
         case 'ready': this.onReady(); break
         case 'resolve':
@@ -491,6 +561,7 @@ export class TreatmentView {
           sfx.toolUp('polishBrush')
           break
         case 'advance':
+          if (e.na) { this.hud.hideStep(e.from); break }
           this.onAdvanced(e.from, e.skipped)
           break
         case 'setup': break
@@ -504,7 +575,9 @@ export class TreatmentView {
     const step = this.step
     if (!step || e.layer === WET) return
     const main = e.layer === step.layer
-    if (e.layer === 'foam' && e.amount > 0) this.foam.rub(e.x, e.y, e.r, Math.min(1, 0.3 + this.screen.speed / 1600))
+    const foamy = this.session.face?.foamy ?? 1
+    if (e.layer === 'foam' && e.amount > 0) this.foam.rub(e.x, e.y, e.r * foamy, Math.min(1, (0.3 + this.screen.speed / 1600) * foamy))
+    if (this.personality === 'ticklish' && step.gesture === 'rub' && Math.random() < 0.004) this.flashExpr('giggle', 0.7)
     if (e.layer === 'foam' && e.amount < 0) this.foam.rinse(e.x, e.y, e.r * 1.1)
     if (!main || Math.random() > 0.5) return
     const r = e.r
@@ -554,19 +627,29 @@ export class TreatmentView {
     switch (e.kind) {
       case 'whitehead': {
         sfx.pop(e.size, pan)
-        this.flashExpr('flinch', 0.55)
+        this.flinch(e.size)
         this.cam.punch += 0.02 + 0.015 * e.size
-        this.cam.shake += 6 * e.size
-        const n = Math.round(8 + 10 * e.size)
+        this.cam.shake += 5 * e.size
+        // Every pop splatters its own way: how juicy this customer is, which way it squirts, its colour.
+        const juicy = (this.session.face?.juicy ?? 1) * (0.8 + Math.random() * 0.4)
+        const dir = -Math.PI / 2 + (Math.random() - 0.5) * 1.4
+        const spread = 1.2 + Math.random() * 1.6
+        const tint = [0xffffff, 0xfff4d6, 0xfff9ec, 0xf8f0ff][Math.floor(Math.random() * 4)]
+        const n = Math.round((6 + 10 * e.size) * juicy)
         for (let i = 0; i < n; i++) {
-          const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6, sp = 180 + Math.random() * 420 * e.size
-          this.fx.spawn({ texture: bits.pus(), x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, gravity: 1400, drag: 1.5, life: 0.5 + Math.random() * 0.35, scale: (0.25 + Math.random() * 0.35) * e.size, scaleEnd: 0.1, alpha: 1, alphaEnd: 0.6, stretch: 1.8 })
+          const a = dir + (Math.random() - 0.5) * spread, sp = (160 + Math.random() * 420 * e.size) * juicy
+          this.fx.spawn({ texture: bits.pus(), x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, gravity: 1400, drag: 1.5, life: 0.5 + Math.random() * 0.35, scale: (0.22 + Math.random() * 0.35) * e.size, scaleEnd: 0.1, alpha: 1, alphaEnd: 0.6, stretch: 1.8, tint })
         }
         // One big satisfying blob arcs up and lands.
-        this.fx.spawn({ texture: bits.pus(), x: e.x, y: e.y, vx: (Math.random() - 0.5) * 120, vy: -520 * e.size, gravity: 1500, life: 0.6, scale: 0.55 * e.size, scaleEnd: 0.3, alpha: 1, alphaEnd: 0.8, stretch: 1.5 })
+        this.fx.spawn({ texture: bits.pus(), x: e.x, y: e.y, vx: Math.cos(dir) * 140, vy: -520 * e.size * juicy, gravity: 1500, life: 0.6, scale: 0.55 * e.size, scaleEnd: 0.3, alpha: 1, alphaEnd: 0.8, stretch: 1.5, tint })
         this.fx.spawn({ texture: bits.glow(), x: e.x, y: e.y, life: 0.35, scale: 0.6 * e.size, scaleEnd: 2.2 * e.size, alpha: 0.9, alphaEnd: 0, blend: 'add', tint: 0xfff4d8 })
         this.twinkle(e.x + 20, e.y - 20, 0.35)
-        if (tv) this.hideTarget(tv, 0.08)
+        const p = this.assets.pimples
+        if (p) {
+          this.fx.spawn({ texture: p.mark, x: e.x, y: e.y, life: 3.5, scale: 0.42 * e.size, scaleEnd: 0.3 * e.size, alpha: 0.95, alphaEnd: 0 })
+          this.fx.spawn({ texture: p.dab, x: e.x + (Math.random() - 0.5) * 6, y: e.y + 2, life: 1.6, scale: 0.55 * e.size, scaleEnd: 0.45 * e.size, alpha: 1, alphaEnd: 0 })
+        }
+        if (tv) this.hideTarget(tv, 0.03)
         break
       }
       case 'blackhead': {
@@ -579,7 +662,7 @@ export class TreatmentView {
           this.hideTarget(tv, 0.05)
         }
         this.twinkle(e.x, e.y, 0.2)
-        if (Math.random() < 0.4) this.flashExpr('flinch', 0.3)
+        if (Math.random() < 0.35) this.flinch(0.5)
         break
       }
       case 'drop': {
@@ -611,6 +694,21 @@ export class TreatmentView {
     if (tv) tv.flash = 1
   }
 
+  /** A deep pimple's first squeeze: it comes to a head (and a little clear fluid). Let go and squeeze again. */
+  private onTargetStage(id: number) {
+    const tv = this.targets.get(id)
+    if (!tv) return
+    const t = tv.t
+    sfx.pop(0.5, this.pan(t.x))
+    this.flinch(0.6)
+    const head = tv.parts[3]
+    head.visible = true
+    head.scale.set(0.01)
+    this.animate(0.3, k => head.scale.set(0.3 * t.size * easeOutBack(k)))
+    if (this.assets.pimples) tv.parts[1].texture = this.assets.pimples.dome
+    for (let i = 0; i < 6; i++) { const a = Math.random() * Math.PI * 2; this.fx.spawn({ texture: bits.drop(), x: t.x, y: t.y, vx: Math.cos(a) * 140, vy: Math.sin(a) * 140 - 60, gravity: 900, life: 0.35, scale: 0.14, alpha: 0.8, alphaEnd: 0 }) }
+  }
+
   private hideTarget(tv: TargetView, delay: number) {
     tv.gone = true
     setTimeout(() => { if (!this.destroyed) tv.root.visible = false }, delay * 1000)
@@ -631,10 +729,10 @@ export class TreatmentView {
     const s = new Sprite(bits.gem())
     s.anchor.set(0.5)
     s.tint = colors[(t.n ?? 0) % colors.length]
-    s.scale.set(instant ? 0.5 : 0.01)
+    s.scale.set(instant ? 0.68 : 0.01)
     root.removeChildren()
     root.addChild(s)
-    if (!instant) this.animate(0.3, k => s.scale.set(0.5 * easeOutBack(k)))
+    if (!instant) this.animate(0.3, k => s.scale.set(0.68 * easeOutBack(k)))
   }
 
   private animations: { t: number; dur: number; fn: (t: number) => void }[] = []
@@ -644,7 +742,8 @@ export class TreatmentView {
     const step = this.step
     if (!step) return
     this.hud.ready()
-    sfx.ding(this.pan(step.camera.x))
+    const done = this.session.status.filter(st => st === 'done').length
+    sfx.ding(this.pan(step.camera.x), done)
     const c = step.camera
     this.burstSparkles(c.x, c.y, 14, 420)
     this.fx.spawn({ texture: bits.glow(), x: c.x, y: c.y, life: 0.6, scale: 1, scaleEnd: 7, alpha: 0.35, alphaEnd: 0, blend: 'add', tint: 0xfff0f6 })
@@ -654,7 +753,14 @@ export class TreatmentView {
 
   private onAdvanced(from: number, skipped: boolean) {
     const prev = this.session.def.steps[from]
-    if (prev?.id === 'steam' && this.towel) { const tw = this.towel; this.animate(0.5, t => { tw.alpha = 1 - t; tw.y = 560 - t * 200 }) }
+    if (prev?.id === 'steam' && this.towel) {
+      // Lift the towel away: the skin underneath is flushed and dewy.
+      const tw = this.towel
+      tw.alpha = 1
+      this.animate(0.7, t => { tw.alpha = 1 - t; tw.y = 512 - t * 260; tw.rotation = -t * 0.08 })
+      this.surface.skin.uniforms.uniforms.uSkin[0] = 1
+      for (let i = 0; i < 16; i++) this.fx.spawn({ texture: bits.steam(), x: 280 + Math.random() * 460, y: 400 + Math.random() * 420, vx: (Math.random() - 0.5) * 60, vy: -140 - Math.random() * 120, life: 1.6, scale: 1, scaleEnd: 3, alpha: 0.55, alphaEnd: 0 })
+    }
     if (prev?.id === 'dry') { this.surface.setLayerMix('mask', 1); this.surface.setLayerGloss('mask', 0.05) }
     if (prev?.id === 'peel' && this.flap.visible) this.releaseFlap()
     if (prev?.id === 'cure' && this.uvLamp) { const l = this.uvLamp, g = this.uvGlow!; this.animate(0.5, t => { l.alpha = 1 - t; g.alpha = 0; l.y = 170 - t * 200 }) }
@@ -674,7 +780,8 @@ export class TreatmentView {
   private onPeel(e: Extract<SessionEvent, { e: 'peel' }>) {
     this.peelTension = e.tension
     if (e.unstuck) { sfx.peelCreep(0, false); this.cam.punch += 0.01; this.flashExpr('tickle', 0.8) }
-    if (e.released) { sfx.peelSnap(); this.flashExpr('flinch', 0.4); this.cam.punch += 0.03; this.cam.shake += 8 }
+    if (e.released) { sfx.peelSnap(); this.flinch(1); this.cam.punch += 0.03; this.cam.shake += 6 }
+    else if (this.personality === 'ticklish' && e.progress > 0.1 && Math.random() < 0.04) this.flashExpr('giggle', 0.5)
   }
 
   private faceSpan(y: number): [number, number] {
@@ -695,7 +802,7 @@ export class TreatmentView {
     const prev = this.peelShown
     this.peelShown += (target - this.peelShown) * Math.min(1, dt * 12)
     const lineY = PEEL_FROM + (PEEL_TO - PEEL_FROM) * this.peelShown
-    this.surface.clearBelow('mask', lineY + 4)
+    this.surface.clearBelow('mask', lineY + 4, peelCurve)
     const speed = (this.peelShown - prev) / Math.max(dt, 1e-3)
     const stuck = this.down && this.grabbing && !this.session.peel.unstuck
     sfx.peelCreep(speed, stuck && this.peelTension > 0.03, this.pan(512))
@@ -705,20 +812,58 @@ export class TreatmentView {
     g.clear()
     if (hi - lo < 20) return
     const wob = stuck ? Math.sin(this.time * 38) * this.peelTension * 10 : 0
-    const thick = 12 + this.peelShown * 30 + (stuck ? this.peelTension * 18 : 0)
-    const x0 = lo + 30, x1 = hi - 30
-    // The sheet being pulled: the underside, with little specks of gunk it lifted out.
-    const hang = 16 + (this.down ? 20 : 6)
-    g.moveTo(x0, lineY).lineTo(x1, lineY).lineTo(x1 - 10, lineY - hang - thick).lineTo(x0 + 10, lineY - hang - thick).closePath().fill({ color: 0xc2e4d5, alpha: 0.96 })
-    for (let i = 0; i < 26; i++) {
-      const fx = x0 + ((i * 97) % Math.max(1, Math.floor(x1 - x0))), fy = lineY - 6 - ((i * 53) % Math.max(1, Math.floor(hang)))
-      g.circle(fx, fy, 2 + (i % 3)).fill({ color: 0x6b5a48, alpha: 0.55 })
+    const thick = 10 + this.peelShown * 26 + (stuck ? this.peelTension * 16 : 0)
+    const x0 = lo + 22, x1 = hi - 22
+    const front = (x: number) => lineY + peelCurve(x)
+    // Fresh skin behind the front: dewy, a little flushed.
+    if (this.peelShown > 0.02) {
+      for (let x = x0 + 30; x < x1 - 30; x += 70) this.surface.stamp(WET, x, front(x) + 30, 60, 0.12)
+      const skinU = this.surface.skin.uniforms.uniforms.uSkin
+      skinU[0] = Math.max(skinU[0], 0.35)
     }
-    // The rolled edge: a tube, light on top, dark underneath.
-    const ty = lineY - hang - thick / 2 + wob
-    g.roundRect(x0 - 6, ty - thick / 2, x1 - x0 + 12, thick, thick / 2).fill({ color: 0xa9d9c4 })
-    g.roundRect(x0, ty - thick / 2 + 2, x1 - x0, thick * 0.4, thick * 0.2).fill({ color: 0xe6f7ef, alpha: 0.9 })
-    g.roundRect(x0, ty + thick * 0.12, x1 - x0, thick * 0.3, thick * 0.15).fill({ color: 0x7fb9a2, alpha: 0.8 })
+    // The sheet curls up and back over itself: the matte, paler underside faces us.
+    const hang = 26 + (this.down ? 26 : 10) + this.peelShown * 20
+    const lip = (x: number) => front(x) - hang - thick * 0.4 + Math.sin(x * 0.045 + this.time * 2.2) * 2.5 + wob
+    const arc = (x: number, t: number) => front(x) + (lip(x) - front(x)) * t - Math.sin(Math.PI * t) * 10
+    // A soft shadow the curl casts on the face below the front.
+    for (let k = 0; k < 4; k++) {
+      const band: number[] = []
+      for (let x = x0; x <= x1; x += 16) band.push(x, front(x) + 2)
+      for (let x = x1; x >= x0; x -= 16) band.push(x, front(x) + 10 + k * 7)
+      g.poly(band).fill({ color: 0x6a3a4a, alpha: 0.07 })
+    }
+    // The underside, shaded from the fold (darker) to the lip (lighter).
+    for (let k = 0; k < 14; k++) {
+      const t0 = k / 14, t1 = (k + 1) / 14
+      const strip: number[] = []
+      for (let x = x0; x <= x1; x += 16) strip.push(x, arc(x, t0))
+      for (let x = x1; x >= x0; x -= 16) strip.push(x, arc(x, t1) - 0.5)
+      const shadeK = 0.78 + 0.22 * t1
+      const c = ((Math.round(0xd4 * shadeK) << 16) | (Math.round(0xee * shadeK) << 8) | Math.round(0xe2 * shadeK))
+      g.poly(strip).fill({ color: c, alpha: 0.98 })
+    }
+    // What it pulled out of the pores: dark specks and little creamy plugs, more the further it goes.
+    const count = Math.round(20 + this.peelShown * 50)
+    for (let i = 0; i < count; i++) {
+      const fx = x0 + 8 + ((i * 97 + 13) % Math.max(1, Math.floor(x1 - x0 - 16)))
+      const t = 0.15 + ((i * 37) % 70) / 100
+      const fy = arc(fx, t)
+      if (i % 3 === 0) {
+        g.ellipse(fx, fy, 1.8, 4.2).fill({ color: 0xf7ecc4, alpha: 0.95 })
+        g.circle(fx, fy - 3.4, 1.6).fill({ color: 0x5a4636, alpha: 0.9 })
+      } else g.circle(fx, fy, 1.2 + (i % 4) * 0.5).fill({ color: 0x5e4a3a, alpha: 0.55 })
+    }
+    // The rolled lip: a soft tube, light on top and shaded beneath, following the curve.
+    const tube = (dy: number, w: number, color: number, alpha: number) => {
+      g.moveTo(x0 - 4, lip(x0) + dy)
+      for (let x = x0; x <= x1; x += 12) g.lineTo(x, lip(x) + dy)
+      g.stroke({ width: w, color, alpha, cap: 'round' })
+    }
+    tube(0, thick, 0x9fd8bf, 1)
+    tube(-thick * 0.24, thick * 0.34, 0xe9fbf2, 0.95)
+    tube(thick * 0.26, thick * 0.24, 0x6fb497, 0.75)
+    // The fingers hold the lip where the pointer is.
+    this.peelGrip = { x: Math.max(x0 + 20, Math.min(x1 - 20, this.pos.x)), y: lip(this.pos.x) }
     // Before it is lifted: a curled corner at the chin to grab.
     if (!this.session.peel.unstuck) {
       const cy = PEEL_FROM - 12
@@ -734,6 +879,9 @@ export class TreatmentView {
     this.world.addChild(piece)
     g.clear(); g.visible = false
     this.flying.push({ g: piece, t: 0, vx: 60, vy: -1100, spin: 0.8 })
+    this.peelGrip = null
+    // The face gives a little wobble as the sheet lets go.
+    this.animate(0.5, t => { const k = Math.sin(t * Math.PI * 3) * (1 - t) * 0.012; this.artRoot.scale.set(1 - k, 1 + k) })
     for (let i = 0; i < 26; i++) this.fx.spawn({ texture: bits.flake(), x: 300 + Math.random() * 424, y: 300 + Math.random() * 200, vx: (Math.random() - 0.5) * 500, vy: -300 - Math.random() * 500, gravity: 1400, spin: (Math.random() - 0.5) * 12, life: 1, scale: 0.3 + Math.random() * 0.4, alpha: 1, alphaEnd: 0.5 })
     this.burstSparkles(512, 520, 18, 600)
   }
@@ -762,6 +910,18 @@ export class TreatmentView {
       const want = EXPRESSIONS[e][part === 'eyes' ? 0 : part === 'brows' ? 1 : 2]
       for (const [k, s] of Object.entries(this.features[part])) s.alpha = k === want ? 1 : 0
     }
+  }
+
+  private get personality() { return this.session.profile.personality }
+
+  /** A flinch, scaled by the customer's personality: calm ones often shrug it off, sensitive ones never do. */
+  private flinch(strength: number) {
+    const p = this.personality
+    if (p === 'calm' && Math.random() < 0.5) { this.flashExpr('worry', 0.3); return }
+    const k = p === 'sensitive' ? 1.6 : 1
+    this.flashExpr('flinch', 0.45 * k)
+    this.cam.shake += 4 * strength * k
+    if (p === 'sensitive') sfx.flinch()
   }
 
   private flashExpr(e: Expr, seconds: number) {
@@ -829,20 +989,24 @@ export class TreatmentView {
     if (!step) return
     const holding = this.down && !this.lampRole
     if (step.id === 'steam' && this.towel) {
-      this.towel.alpha += ((holding ? 1 : 0.25) - this.towel.alpha) * Math.min(1, dt * 8)
-      skinU[0] = Math.max(skinU[0], this.session.hold * 0.9)
-      if (holding && Math.random() < dt * 22) this.fx.spawn({ texture: bits.steam(), x: 300 + Math.random() * 420, y: 700 + Math.random() * 200, vx: (Math.random() - 0.5) * 40, vy: -120 - Math.random() * 80, life: 1.6, scale: 1, scaleEnd: 2.6, alpha: 0.4, alphaEnd: 0, fadeIn: 0.2 })
+      // The towel drops onto the face while held (a little settle), steam curls up from it.
+      const on = holding || this.session.hold > 0.02
+      this.towel.alpha += ((on ? 1 : 0) - this.towel.alpha) * Math.min(1, dt * 7)
+      const settle = holding ? 1 : 1.03
+      this.towel.scale.set(this.towel.scale.x + (settle - this.towel.scale.x) * Math.min(1, dt * 10))
+      skinU[0] = Math.max(skinU[0], this.session.hold * 1.2)
+      if (on && Math.random() < dt * (holding ? 26 : 8)) this.fx.spawn({ texture: bits.steam(), x: 260 + Math.random() * 500, y: 380 + Math.random() * 480, vx: (Math.random() - 0.5) * 50, vy: -90 - Math.random() * 90, life: 2, scale: 0.8, scaleEnd: 2.8, alpha: 0.5, alphaEnd: 0, fadeIn: 0.25, spin: (Math.random() - 0.5) * 0.6 })
     }
     if (step.id === 'dry') {
       const d = this.session.hold
       this.surface.setLayerMix('mask', d)
-      this.surface.setLayerGloss('mask', 0.55 - 0.5 * d)
+      this.surface.setLayerGloss('mask', 0.8 - 0.75 * d)
       if (holding && Math.random() < dt * 30) this.fx.spawn({ texture: bits.streak(), x: this.pos.x + (Math.random() - 0.5) * 200, y: this.pos.y - 150, vx: (Math.random() - 0.5) * 60, vy: 700, life: 0.4, scale: 0.6, alpha: 0.35, alphaEnd: 0, stretch: 2, tint: 0xffffff })
     }
     if (step.id === 'moisturize') skinU[3] = Math.min(0.9, this.session.progress())
     if (step.id === 'cure' && this.uvLamp && this.uvGlow) {
-      this.uvLamp.alpha += (1 - this.uvLamp.alpha) * Math.min(1, dt * 6)
-      this.uvGlow.alpha += ((holding ? 0.8 + Math.sin(this.time * 20) * 0.05 : 0.15) - this.uvGlow.alpha) * Math.min(1, dt * 10)
+      this.uvLamp.alpha += (0.92 - this.uvLamp.alpha) * Math.min(1, dt * 6)
+      this.uvGlow.alpha += ((holding ? 0.42 + Math.sin(this.time * 20) * 0.03 : 0.08) - this.uvGlow.alpha) * Math.min(1, dt * 10)
       if (holding && Math.random() < dt * 10) this.twinkle(300 + Math.random() * 450, 250 + Math.random() * 300, 0.25, 0xd8c8ff)
     }
     // A hint after a few idle seconds at the start of a step.
@@ -872,10 +1036,15 @@ export class TreatmentView {
       if (t.kind === 'whitehead') {
         const p = t.progress
         const pressed = pressing?.id === t.id
-        const jig = pressed ? Math.sin(this.time * 50) * 0.04 * p : 0
-        tv.parts[1].scale.set(0.34 * t.size * (1 + p * 0.6 + jig), 0.34 * t.size * (1 + p * 0.5 - jig))
-        tv.parts[0].scale.set(0.5 * t.size * (1 + p * 0.35))
-        tv.parts[0].alpha = 0.8 + p * 0.2
+        const deep = t.stage === 2
+        const jig = pressed ? Math.sin(this.time * 55) * 0.05 * p : 0
+        const [halo, dome, blanch, head] = tv.parts
+        dome.scale.set((deep ? 0.52 : 0.42) * t.size * (1 + p * 0.35 + jig), (deep ? 0.52 : 0.42) * t.size * (1 + p * 0.3 - jig))
+        halo.scale.set((deep ? 0.62 : 0.46) * t.size * (1 + p * 0.25))
+        blanch.alpha = pressed ? p * 0.85 : blanch.alpha * 0.9
+        blanch.scale.set(0.4 * t.size * (1 + p * 0.4))
+        if (head.visible) { head.scale.set(0.3 * t.size * (1 + p * 0.55 + jig), 0.3 * t.size * (1 + p * 0.5 - jig)); head.alpha = 0.85 + p * 0.15 }
+        tv.root.position.set(t.x + (pressed ? (Math.random() - 0.5) * 1.6 * p : 0), t.y + (pressed ? (Math.random() - 0.5) * 1.6 * p : 0))
         if (!pressed && p > 0 && p < 1) t.progress = Math.max(0, p - dt * 0.05)
       } else if (t.kind === 'drop' || t.kind === 'patch') {
         const r = tv.parts[0]
@@ -905,6 +1074,8 @@ export class TreatmentView {
     const base = step?.tool === 'towel' ? 1 : 0.9
     const pinch = step?.gesture === 'targets' && this.down ? 0.08 : 0
     this.tool.position.set(this.toolPos.x, this.toolPos.y)
+    // Peeling: the fingers pinch the rolled lip of the sheet instead of floating at the pointer.
+    if (step?.gesture === 'peel' && this.grabbing && this.peelGrip) { this.tool.position.set(this.peelGrip.x, this.peelGrip.y); rot = -0.2 }
     this.tool.rotation = rot
     this.tool.scale.set(base * (1 + this.press * 0.04 - pinch), base * (1 - this.press * 0.07))
     this.tool.alpha = this.down ? 1 : 0.85
@@ -931,9 +1102,23 @@ export class TreatmentView {
     this.lampSprite.visible = false
     this.foam.clear()
     this.result = this.session.result()
+    // Everything dries for the photo: no droplets, no wet film, just a dewy glow.
+    this.surface.resolve('wet', 0)
+    this.surface.dryAll()
     this.camGoal = this.opts.treatment === 'facial' ? { x: 512, y: 540, zoom: 0.9 } : { x: 480, y: 560, zoom: 0.92 }
     this.setExpr('beam')
     this.exprTimer = 0
+    // The finished look glows: a dewier skin and a soft bloom (seen on the After side of the wipe).
+    this.surface.skin.uniforms.uniforms.uSkin[3] = 1
+    const bloom = new Sprite(bits.glow())
+    bloom.anchor.set(0.5)
+    bloom.position.set(this.camGoal.x, this.camGoal.y)
+    bloom.scale.set(13, 15)
+    bloom.tint = 0xfff1f5
+    bloom.blendMode = 'add'
+    bloom.alpha = 0
+    this.overFx.addChild(bloom)
+    this.animate(1.4, t => { bloom.alpha = 0.11 * t })
   }
 
   private updateReveal(dt: number) {
@@ -980,6 +1165,8 @@ export class TreatmentView {
     }
   }
   private cardShown = false
+  /** How long painting this customer's art took (ms), for performance checks. */
+  buildMs = 0
 
   private savePhoto() {
     sfx.shutter()
@@ -1022,6 +1209,7 @@ export class TreatmentView {
   destroy() {
     this.destroyed = true
     this.loop?.stop()
+    music.quiet(false)
     const canvas = this.opts.app.canvas
     canvas.removeEventListener('pointerdown', this.onPointer)
     canvas.removeEventListener('pointermove', this.onPointer)

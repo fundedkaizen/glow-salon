@@ -23,8 +23,9 @@ const skinFragment = /* glsl */ `
 in vec2 vUV;
 out vec4 finalColor;
 uniform sampler2D uAlbedo;
-uniform sampler2D uNormal;
+uniform sampler2D uHeight;
 uniform sampler2D uWet;
+uniform vec3 uBump;   // x texel size, y fine strength, z soft strength
 uniform vec3 uLight;
 uniform vec4 uSkin;   // x steam flush, y wet everywhere, z time, w dewy sheen after moisturiser
 uniform vec3 uSss;
@@ -33,32 +34,43 @@ uniform float uFlipMask;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
+// Normals straight from the height map: fine ones (pores) and soft ones (the form, from a blurrier mip).
+vec3 normalAt(vec2 uv, float spread, float bias, float strength) {
+  vec2 dx = vec2(uBump.x * spread, 0.0), dy = vec2(0.0, uBump.x * spread);
+  float hx = texture(uHeight, uv + dx, bias).r - texture(uHeight, uv - dx, bias).r;
+  float hy = texture(uHeight, uv + dy, bias).r - texture(uHeight, uv - dy, bias).r;
+  return normalize(vec3(-hx * strength, -hy * strength, 1.0));
+}
+
 void main() {
   vec4 alb = texture(uAlbedo, vUV);
   if (alb.a < 0.003) discard;
   vec3 base = alb.rgb / alb.a;
-  vec3 n = normalize(texture(uNormal, vUV).xyz * 2.0 - 1.0);
+  vec3 n = normalAt(vUV, 1.0, 0.0, uBump.y);
+  vec3 nSoft = normalAt(vUV, 10.0, 3.0, uBump.z);
   vec3 L = normalize(uLight);
-  float ndl = dot(n, L);
+  float ndl = dot(nSoft, L);
   float wrap = clamp((ndl + 0.5) / 1.5, 0.0, 1.0);
   // Light that has travelled under the skin comes out warm, strongest where the light turns away.
   float scatter = smoothstep(0.05, 0.55, wrap) * (1.0 - smoothstep(0.45, 1.0, wrap));
-  vec3 col = base * (0.66 + 0.44 * wrap) + uSss * scatter * 0.26;
+  vec3 col = base * (0.78 + 0.26 * wrap) + uSss * scatter * 0.2;
   vec2 muv = vec2(vUV.x, mix(vUV.y, 1.0 - vUV.y, uFlipMask));
   float wet = clamp(texture(uWet, muv).a * 1.25 + uSkin.y, 0.0, 1.0);
   vec3 V = vec3(0.0, 0.0, 1.0);
   vec3 H = normalize(L + V);
   float ndh = max(dot(n, H), 0.0);
-  float drySheen = pow(ndh, 14.0) * 0.05;
-  float wetSpec = pow(ndh, 70.0 + 220.0 * wet) * 1.1 * wet;
+  float ndhSoft = max(dot(nSoft, H), 0.0);
+  float drySheen = pow(ndhSoft, 14.0) * 0.05;
+  float wetSpec = pow(ndhSoft, 60.0 + 160.0 * wet) * 1.0 * wet;
   // Tiny glints where pores catch the light through a film of water.
   float sparkleSeed = hash(floor(vUV * 700.0));
-  float glint = step(0.985, sparkleSeed) * pow(ndh, 60.0) * wet * (0.6 + 0.4 * sin(uSkin.z * 3.0 + sparkleSeed * 40.0));
-  float dewy = pow(ndh, 30.0) * uSkin.w * 0.32;
+  float glint = step(0.9975, sparkleSeed) * pow(ndhSoft, 20.0) * smoothstep(0.5, 1.0, wet) * (0.5 + 0.5 * sin(uSkin.z * 3.0 + sparkleSeed * 40.0));
+  float dewy = pow(ndhSoft, 30.0) * uSkin.w * 0.32;
   col *= mix(vec3(1.0), vec3(1.07, 0.95, 0.94), uSkin.x);
   // Wet skin reads a touch deeper and richer under the shine.
   col = mix(col, col * col * 1.18, wet * 0.18);
-  col += vec3(1.0, 0.985, 0.97) * (drySheen + wetSpec + glint * 1.4 + dewy);
+  col += vec3(1.0, 0.985, 0.97) * (drySheen + wetSpec + dewy);
+  col += vec3(glint) * 0.0;
   float a = alb.a * uColor.a;
   finalColor = vec4(col * a, a);
 }`
@@ -116,18 +128,18 @@ export function artQuad(size = 1024) {
 /** Light from the top left, a little in front: the same for every close-up so they match. */
 export const LIGHT: [number, number, number] = [-0.32, -0.5, 0.8]
 
-export type SkinUniforms = UniformGroup<{ uLight: { value: Float32Array; type: 'vec3<f32>' }; uSkin: { value: Float32Array; type: 'vec4<f32>' }; uSss: { value: Float32Array; type: 'vec3<f32>' }; uFlipMask: { value: number; type: 'f32' } }>
-
-export function skinMesh(albedo: Texture, normal: Texture, wet: TextureSource, sss: [number, number, number], flipMask: number) {
+/** `height` is a greyscale height map (the form and the pores); the shader derives the normals from it. */
+export function skinMesh(albedo: Texture, height: Texture, wet: TextureSource, sss: [number, number, number], flipMask: number, bump = 2.4) {
   const uniforms = new UniformGroup({
     uLight: { value: new Float32Array(LIGHT), type: 'vec3<f32>' },
     uSkin: { value: new Float32Array([0, 0, 0, 0]), type: 'vec4<f32>' },
     uSss: { value: new Float32Array(sss), type: 'vec3<f32>' },
     uFlipMask: { value: flipMask, type: 'f32' },
+    uBump: { value: new Float32Array([1 / height.width, bump * 4, bump * 0.6]), type: 'vec3<f32>' },
   })
   const shader = new Shader({
     glProgram: GlProgram.from({ vertex, fragment: skinFragment, name: 'glow-skin' }),
-    resources: { uAlbedo: albedo.source, uNormal: normal.source, uWet: wet, skinUniforms: uniforms },
+    resources: { uAlbedo: albedo.source, uHeight: height.source, uWet: wet, skinUniforms: uniforms },
   })
   const mesh = new Mesh({ geometry: artQuad(), shader })
   return { mesh, uniforms }

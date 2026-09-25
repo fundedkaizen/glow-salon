@@ -19,7 +19,7 @@ export const FACE = {
   eyes: [{ x: 398, y: 516 }, { x: 626, y: 516 }] as Point[],
   brows: [{ x: 392, y: 446 }, { x: 632, y: 446 }] as Point[],
   nose: { x: 512, y: 636 },
-  lips: { x: 512, y: 762 },
+  lips: { x: 512, y: 748 },
   ears: [{ x: 226, y: 548 }, { x: 798, y: 548 }] as Point[],
 }
 
@@ -30,19 +30,19 @@ function faceOutline(): number[] {
     const t = (i / 72) * Math.PI * 2
     const s = Math.sin(t), c = Math.cos(t)
     const top = c > 0
-    const ry = top ? 372 : 388
+    const ry = top ? 360 : 368
     // The lower half narrows into a soft jaw and chin; the temples narrow a little too.
-    const jaw = top ? 1 - 0.07 * c ** 4 : 1 - 0.3 * (-c) ** 2.1
+    const jaw = top ? 1 - 0.07 * c ** 4 : 1 - 0.3 * (-c) ** 2.0
     const cheek = 1 + 0.03 * Math.exp(-(((t % Math.PI) - Math.PI / 2) ** 2) * 6)
-    pts.push(cx + 282 * s * jaw * cheek, cy - ry * c)
+    pts.push(cx + 280 * s * jaw * cheek, cy - ry * c)
   }
   return pts
 }
 
 const faceShape: Shape = { t: 'poly', pts: FACE.outline }
-const eyeShapes: Shape[] = FACE.eyes.map(e => ({ t: 'ellipse', cx: e.x, cy: e.y + 2, rx: 78, ry: 34 }))
+const eyeShapes: Shape[] = FACE.eyes.map(e => ({ t: 'ellipse', cx: e.x, cy: e.y + 2, rx: 84, ry: 40 }))
 const browShapes: Shape[] = FACE.brows.map((b, i) => ({ t: 'ellipse', cx: b.x, cy: b.y, rx: 80, ry: 24, rot: i ? -0.1 : 0.1 }))
-const lipShape: Shape = { t: 'ellipse', cx: FACE.lips.x, cy: FACE.lips.y, rx: 92, ry: 40 }
+const lipShape: Shape = { t: 'ellipse', cx: FACE.lips.x, cy: FACE.lips.y + 4, rx: 96, ry: 46 }
 const noseShape: Shape = { t: 'ellipse', cx: FACE.nose.x, cy: FACE.nose.y, rx: 78, ry: 64 }
 
 // ---------------------------------------------------------------- hand
@@ -52,7 +52,7 @@ export type Finger = { name: string; base: Point; tip: Point; r0: number; r1: nu
 export const HAND = {
   palm: [388, 1060, 356, 900, 338, 760, 352, 640, 398, 586, 480, 566, 572, 572, 650, 598, 704, 650, 716, 760, 690, 900, 650, 1060],
   fingers: [
-    { name: 'thumb', base: { x: 392, y: 780 }, tip: { x: 212, y: 566 }, r0: 56, r1: 40, nailLength: 88 },
+    { name: 'thumb', base: { x: 350, y: 850 }, tip: { x: 196, y: 612 }, r0: 54, r1: 39, nailLength: 86 },
     { name: 'index', base: { x: 420, y: 612 }, tip: { x: 382, y: 300 }, r0: 44, r1: 35, nailLength: 80 },
     { name: 'middle', base: { x: 505, y: 596 }, tip: { x: 505, y: 238 }, r0: 45, r1: 36, nailLength: 84 },
     { name: 'ring', base: { x: 590, y: 608 }, tip: { x: 622, y: 282 }, r0: 42, r1: 34, nailLength: 78 },
@@ -81,9 +81,11 @@ export function freeEdgeOf(f: Finger, grown = 34) {
 }
 
 const fingerShapes: Shape[] = HAND.fingers.map(f => ({ t: 'capsule', x0: f.base.x, y0: f.base.y, x1: f.tip.x, y1: f.tip.y, r0: f.r0, r1: f.r1 }))
+/** Nails: rounded plates whose free edge ends at the fingertip (the capsule's round end sits inside). */
 const nailShapes: Shape[] = HAND.fingers.map(f => {
   const n = nailOf(f)
-  return { t: 'capsule', x0: n.base.x, y0: n.base.y, x1: n.tip.x, y1: n.tip.y, r0: n.halfWidth * 0.94, r1: n.halfWidth }
+  const end = n.halfWidth * 0.8
+  return { t: 'capsule', x0: n.base.x + n.dir.x * n.halfWidth * 0.6, y0: n.base.y + n.dir.y * n.halfWidth * 0.6, x1: n.tip.x - n.dir.x * end, y1: n.tip.y - n.dir.y * end, r0: n.halfWidth * 0.94, r1: n.halfWidth }
 })
 /** The band at each nail's free edge, which the file smooths after clipping. */
 const tipShapes: Shape[] = HAND.fingers.map(f => {

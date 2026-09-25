@@ -9,9 +9,9 @@ import { awards, newSave, reduce, startDay, tick, toSave, type Action, type Salo
 import { ext } from '../core/salon-ext.ts'
 import { exportCode, importCode, loadSave, writeSave, type Store } from '../core/save.ts'
 import type { Op, SessionSnapshot, TreatmentResult } from '../core/treatments/session.ts'
-import { CoopLink } from '../net/coop-link.ts'
+import { CoopLink, type CoopStatus } from '../net/coop-link.ts'
 import { FloorView, type FloorCustomer, type FloorState } from '../render/floor-view.ts'
-import { TreatmentView } from '../render/treatment-view.ts'
+import { openTreatment } from './treatment-glue.ts'
 import { Computer } from '../ui/computer.ts'
 import { FloorHud } from '../ui/floor-hud.ts'
 import { Lobby, openSettings } from '../ui/lobby.ts'
@@ -35,6 +35,8 @@ export type TreatmentHandoff = {
   startStep: number
   /** Send treatment ops to the rest of the station's crew. */
   sendOps: (ops: Op[]) => void
+  /** A helper joining late asks the lead for the treatment so far (the answer arrives as applySnapshot). */
+  requestSync: () => void
   /** Report progress (the lead only), shown on the floor. */
   progress: (step: number, steps: number, progress: number) => void
   /** The treatment is done: pays, reviews, back to the floor. */
@@ -51,7 +53,12 @@ export type TreatmentScreen = {
   applyRemote?: (ops: Op[], by: number) => void
   snapshot?: () => SessionSnapshot
   applySnapshot?: (snap: SessionSnapshot) => void
+  /** The lead left: this helper now leads the treatment. */
+  promote?: () => void
 }
+
+type HostLink = CoopLink<HostMessage, GuestMessage & { from?: number }>
+type GuestLink = CoopLink<GuestMessage, HostMessage>
 
 export type SalonOptions = {
   /** Open a treatment close-up. The default opens the TreatmentView on the same canvas. */
@@ -73,7 +80,9 @@ export class SalonGame {
   private host: SalonState | null = null
   private snap: PublicState | null = null
   private me = 0
-  private link: CoopLink | null = null
+  private hostLink: HostLink | null = null
+  private guestLink: GuestLink | null = null
+  private joined = false
   private floor: FloorView | null = null
   private demo: { view: FloorView; state: SalonState } | null = null
   private hud: FloorHud | null = null
@@ -114,7 +123,8 @@ export class SalonGame {
     window.addEventListener('beforeunload', () => this.save())
     this.app.ticker.add(t => this.frame(Math.min(0.05, t.deltaMS / 1000)))
     this.toTitle()
-    const room = new URLSearchParams(location.search).get('room')
+    const params = new URLSearchParams(location.search)
+    const room = params.get('join') ?? params.get('room')
     if (room) this.lobby.showCoopChoice(room)
   }
 
@@ -127,7 +137,8 @@ export class SalonGame {
     this.receipt?.close(); this.receipt = null
     this.hud?.destroy(); this.hud = null
     this.floor?.destroy(); this.floor = null
-    this.link?.close(); this.link = null
+    this.hostLink?.close(); this.hostLink = null
+    this.guestLink?.close(); this.guestLink = null
     this.host = null; this.snap = null
     this.mode = 'title'
     this.demo = makeDemo(this.app)
@@ -173,44 +184,55 @@ export class SalonGame {
 
   private hostGame() {
     this.playSolo(loadSave(store) ?? newSave())
-    const link = CoopLink.host({
-      onRoom: () => this.showRoom('Waiting for friends to join.'),
-      onPeer: (joined, id) => {
-        if (!this.host) return
-        if (!joined) { const name = this.host.players.find(p => p.id === id)?.name; reduce(this.host, id, { a: 'leave' }); if (name) this.hud?.toast(`${name} left the salon`, '#cdbdf2') }
+    const link: HostLink = new CoopLink(
+      msg => { if (typeof msg.from === 'number') { const { from, ...rest } = msg; this.onGuest(rest as GuestMessage, from) } },
+      status => this.onHostStatus(status),
+      (id, joined) => {
+        if (!this.host || joined) return
+        const name = this.host.players.find(p => p.id === id)?.name
+        reduce(this.host, id, { a: 'leave' })
+        if (name) this.hud?.toast(`${name} left the salon`, '#cdbdf2')
         this.showRoom('')
       },
-      onGuestMessage: (raw, from) => this.onGuest(raw, from),
-      onHostMessage: () => {},
-      onError: reason => { this.hud?.toast(reason, '#f59ab7', 5000); this.lobby.hide() },
-      onClosed: () => this.hud?.toast('The co-op connection closed. You are playing solo.', '#f59ab7', 5000),
-    })
-    this.link = link
+    )
+    this.hostLink = link
+    link.open()
+  }
+
+  private onHostStatus(status: CoopStatus) {
+    if (status.kind === 'waiting') this.showRoom('Waiting for friends to join.')
+    else if (status.kind === 'paired') this.showRoom('')
+    else if (status.kind === 'error') { this.hud?.toast(`${status.reason} You are playing solo.`, '#f59ab7', 5000); this.lobby.hide() }
   }
 
   private showRoom(status: string) {
-    const link = this.link
-    if (!link || !this.host || !link.code) return
+    const link = this.hostLink
+    if (!link || !this.host || !link.code || this.mode === 'title') return
     this.lobby.onCoopStart = () => {}
-    this.lobby.showCoop({ code: link.code, link: link.inviteUrl(), players: this.host.players.map(p => ({ id: p.id, name: p.name })), role: 'host', me: 0, status, canStart: true })
+    this.lobby.showCoop({ code: link.code, link: link.link, players: this.host.players.map(p => ({ id: p.id, name: p.name })), role: 'host', me: 0, status, canStart: true })
   }
 
   private joinGame(code: string) {
     this.lobby.hide()
-    const link = CoopLink.join(code, {
-      onRoom: (_code, _role, id) => {
-        this.me = id
-        link.toHost({ t: 'hello', name: this.myName() })
-        this.enterFloor()
-        this.hud?.toast('Joined! Say hi to your salon partner.', '#8fe0c4')
+    this.joined = false
+    const link: GuestLink = new CoopLink(
+      msg => this.onHost(msg),
+      status => {
+        if (status.kind === 'paired' && !this.joined) {
+          this.joined = true
+          this.me = link.id
+          link.send({ t: 'hello', name: this.myName() })
+          this.enterFloor()
+          this.hud?.toast('Joined! Say hi to your salon partner.', '#8fe0c4')
+        } else if (status.kind === 'error' || (status.kind === 'alone' && this.joined)) {
+          const reason = status.kind === 'error' ? status.reason : 'Your friend closed their salon.'
+          this.toTitle()
+          this.lobbyToast(reason)
+        }
       },
-      onPeer: (_j, _id, hostLeft) => { if (hostLeft) { this.toTitle(); this.lobbyToast('The host closed the salon.') } },
-      onHostMessage: msg => this.onHost(msg),
-      onGuestMessage: () => {},
-      onError: reason => { this.toTitle(); this.lobbyToast(reason) },
-      onClosed: () => { if (this.mode !== 'title') { this.toTitle(); this.lobbyToast('Lost the connection to the salon.') } },
-    })
-    this.link = link
+    )
+    this.guestLink = link
+    link.open(code.trim().toUpperCase())
   }
 
   private lobbyToast(text: string) { this.lobby.notice(text) }
@@ -228,7 +250,7 @@ export class SalonGame {
       reduce(this.host, this.me, a)
       if (a.a === 'buy' && this.host.owned.length !== before) this.save()
       if (a.a === 'next' || a.a === 'hire' || a.a === 'campaign' || a.a === 'renameStaff') this.save()
-    } else if (this.link) this.link.toHost({ t: 'act', a })
+    } else this.guestLink?.send({ t: 'act', a })
   }
 
   private onGuest(raw: GuestMessage, from: number) {
@@ -238,7 +260,7 @@ export class SalonGame {
     const wasNew = msg.t === 'hello' && !this.host.players.some(p => p.id === from)
     for (const d of handleGuestMessage(this.host, from, msg)) {
       if (d.to === this.me) this.deliver(d.msg)
-      else this.link?.toGuest(d.msg, d.to)
+      else this.hostLink?.send(d.msg, { to: d.to })
     }
     if (wasNew) { const name = this.host.players.find(p => p.id === from)?.name ?? 'A friend'; this.hud?.toast(`${name} joined the salon`, '#8fe0c4'); sfx.door(); this.showRoom('') ; this.sendSnap() }
   }
@@ -255,17 +277,23 @@ export class SalonGame {
     else if (msg.t === 'syncReq') {
       if (!sc || sc.station !== msg.st || sc.role !== 'lead' || !sc.view.snapshot) return
       const snap = sc.view.snapshot()
-      if (this.host) this.link?.toGuest({ t: 'sync', st: msg.st, snap }, msg.by)
-      else this.link?.toHost({ t: 'sync', st: msg.st, to: msg.by, snap })
+      if (this.host) this.hostLink?.send({ t: 'sync', st: msg.st, snap }, { to: msg.by })
+      else this.guestLink?.send({ t: 'sync', st: msg.st, to: msg.by, snap })
     } else if (msg.t === 'sync') { if (sc && sc.station === msg.st) sc.view.applySnapshot?.(msg.snap) }
   }
 
   private sendOps(station: string, ops: Op[]) {
-    if (this.host) { for (const d of routeOps(this.host, station, this.me, ops)) this.link?.toGuest(d.msg, d.to) }
-    else this.link?.toHost({ t: 'ops', st: station, ops })
+    if (this.host) { for (const d of routeOps(this.host, station, this.me, ops)) this.hostLink?.send(d.msg, { to: d.to }) }
+    else this.guestLink?.send({ t: 'ops', st: station, ops })
   }
 
-  private sendSnap() { if (this.host && this.link?.open) this.link.toGuest({ t: 'snap', s: publicState(this.host) }) }
+  private requestSync(station: string) {
+    const st = this.view()?.stations.find(x => x.id === station)
+    if (this.host) { if (st?.lead !== null && st?.lead !== undefined && st.lead !== this.me) this.hostLink?.send({ t: 'syncReq', st: station, by: this.me }, { to: st.lead }) }
+    else this.guestLink?.send({ t: 'syncReq', st: station })
+  }
+
+  private sendSnap() { if (this.host && this.hostLink?.paired) this.hostLink.send({ t: 'snap', s: publicState(this.host) }) }
 
   /**
    * Saves happen at day boundaries only: before opening (as is) and at closing time (as the next morning).
@@ -302,34 +330,31 @@ export class SalonGame {
       stationId, customer, role, playerId: this.me, leadName,
       tier: toolTier(s.owned, customer.plan.treatment), ambience: ambienceStars(s.owned), startStep: st.step,
       sendOps: ops => this.sendOps(stationId, ops),
+      requestSync: () => this.requestSync(stationId),
       progress: (step, steps, progress) => this.act({ a: 'progress', station: stationId, step, steps, progress }),
       finish: (result, foam) => { this.act({ a: 'finish', station: stationId, result, foam }); this.leaveTreatment(true) },
       leave: () => { this.act({ a: 'stopWork', station: stationId }); this.leaveTreatment(true) },
     }
-    const view = this.opts.openTreatment ? this.opts.openTreatment(handoff) : this.defaultTreatment(handoff)
+    const view = this.opts.openTreatment ? this.opts.openTreatment(handoff) : this.defaultTreatment(handoff, s)
+    if (!view) return
     this.screen = { view, station: stationId, customer: customer.id, role }
     this.mode = 'treatment'
     music.quiet(true)
     if (this.floor) { this.floor.root.visible = false; this.floor.inputEnabled = false }
     if (this.hud) this.hud.visible = false
-    // A helper joining late asks the lead for the treatment so far.
-    if (role === 'helper' && st.lead !== null) {
-      if (this.host) this.link?.toGuest({ t: 'syncReq', st: stationId, by: this.me }, st.lead)
-      else this.link?.toHost({ t: 'syncReq', st: stationId })
-    }
     this.resize()
   }
 
-  private defaultTreatment(h: TreatmentHandoff): TreatmentScreen {
-    const c = h.customer
-    const tv = new TreatmentView({
-      app: this.app, overlay: this.ui, treatment: c.plan.treatment,
-      customer: { name: c.plan.name, look: c.plan.look, seed: c.plan.seed, disaster: c.plan.disaster, wish: c.plan.wish },
-      tier: h.tier, startStep: h.startStep, role: h.role, leadName: h.leadName, playerId: h.playerId, mood: c.mood, ambience: h.ambience,
-      onOps: h.sendOps, onProgress: h.progress, onFinish: h.finish, onLeave: h.leave,
+  /** The real close-up, through the treatment glue (it asks the lead for a snapshot when helping). */
+  private defaultTreatment(h: TreatmentHandoff, s: NonNullable<ReturnType<SalonGame['view']>>): TreatmentScreen | null {
+    // A guest's copy of the salon has not heard back yet: take the lead we just asked for.
+    const stations = s.stations.map(st => (st.id === h.stationId && st.lead === null ? { ...st, lead: this.me } : st))
+    return openTreatment({
+      app: this.app, overlay: this.ui, state: { stations, customers: s.customers as SalonState['customers'], players: s.players, owned: s.owned },
+      stationId: h.stationId, me: this.me,
+      net: { sendOps: (_st, ops) => h.sendOps(ops), requestSync: () => h.requestSync() },
+      onProgress: h.progress, onFinish: h.finish, onLeave: h.leave,
     })
-    this.app.stage.addChild(tv.root)
-    return tv
   }
 
   private leaveTreatment(backToFloor: boolean) {
@@ -398,6 +423,8 @@ export class SalonGame {
       sc.view.update(dt)
       const st = s.stations.find(x => x.id === sc.station)
       if (sc.role === 'helper' && (!st || st.customer !== sc.customer)) this.leaveTreatment(true)
+      // The lead left and this helper took over.
+      else if (sc.role === 'helper' && st?.lead === this.me) { sc.role = 'lead'; sc.view.promote?.() }
     }
     // The day's end, and the next day for everyone.
     if (s.phase === 'receipt' && !this.receipt && this.receiptDay !== s.day && !this.screen) this.showReceipt(s)
@@ -406,7 +433,7 @@ export class SalonGame {
     // Host duties: snapshots for guests, and a save now and then.
     if (this.host) {
       this.snapTimer -= dt
-      if (this.snapTimer <= 0 && this.link?.open) { this.snapTimer = 0.1; this.sendSnap() }
+      if (this.snapTimer <= 0 && this.hostLink?.paired) { this.snapTimer = 0.1; this.sendSnap() }
       this.saveTimer -= dt
       if (this.saveTimer <= 0) { this.saveTimer = 20; this.save() }
     }

@@ -213,6 +213,10 @@ export function run() {
   const joiner = new TreatmentSession({ treatment: 'facial', seed: popSeed })
   joiner.restore(JSON.parse(JSON.stringify(snap)))
   check('snapshot restores step', joiner.step === f.step && joiner.popped === f.popped)
+  const size = JSON.stringify(snap).length
+  check('snapshot fits one co-op frame easily', size < 40000, size)
+  const disasterSnap = JSON.stringify(new TreatmentSession({ treatment: 'facial', seed: 77, disaster: true }).snapshot()).length
+  check('even a disaster snapshot is small', disasterSnap < 60000, disasterSnap)
   near('snapshot restores marks', joiner.layers.marks.reduce((x, y) => x + y, 0), f.layers.marks.reduce((x, y) => x + y, 0), 2)
 
   // Nails: the colour wish, and the tips to clip follow the profile.

@@ -81,81 +81,72 @@ export function paintFace(look: Look, seed: number, profile: FaceProfile): FaceA
 function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: RGB, seed: number, profile: FaceProfile, feat: Feat) {
   const [c, ctx] = canvas(S)
   const r = makeRng(seed)
-  // Hair spread on the pillow behind the head.
-  const hairShape = [512, 36, 700, 60, 850, 170, 930, 360, 948, 560, 920, 760, 850, 930, 760, 1010, 640, 1024, 384, 1024, 264, 1010, 174, 930, 104, 760, 76, 560, 94, 360, 174, 170, 324, 60]
-  ctx.save()
-  ctx.beginPath()
-  smoothPath(ctx, hairShape)
-  const hg = ctx.createRadialGradient(512, 420, 120, 512, 520, 560)
-  hg.addColorStop(0, rgba(hair.base))
-  hg.addColorStop(0.7, rgba(mixRGB(hair.base, hair.dark, 0.35)))
-  hg.addColorStop(1, rgba(hair.dark))
-  ctx.fillStyle = hg
-  ctx.fill()
-  ctx.clip()
-  // Strands flowing out from the crown, with light and dark variation.
-  for (let i = 0; i < 900; i++) {
-    const a = r.range(-Math.PI * 0.95, Math.PI * 0.95) - Math.PI / 2
-    const len = r.range(260, 560)
-    const x0 = 512 + Math.cos(a) * r.range(40, 160), y0 = 300 + Math.sin(a) * r.range(20, 120)
-    const bend = r.range(-0.35, 0.35)
-    const x1 = 512 + Math.cos(a + bend * 0.3) * len * 1.05, y1 = 330 + Math.sin(a + bend * 0.3) * len + Math.max(0, Math.cos(a)) * 0
-    const cx = (x0 + x1) / 2 + Math.cos(a + Math.PI / 2) * len * bend * 0.4, cy = (y0 + y1) / 2 + Math.sin(a + Math.PI / 2) * len * bend * 0.4
-    const tone = r() < 0.45 ? hair.light : r() < 0.5 ? hair.dark : hair.base
-    ctx.strokeStyle = rgba(tone, r.range(0.12, 0.32))
-    ctx.lineWidth = r.range(1.5, 4.5)
-    ctx.beginPath()
-    ctx.moveTo(x0, y0)
-    ctx.quadraticCurveTo(cx, cy, x1, y1)
-    ctx.stroke()
-  }
-  // A soft sheen band across the crown.
-  blurred(ctx, 26, () => {
-    ctx.globalCompositeOperation = 'screen'
-    ctx.strokeStyle = rgba(hair.light, 0.35)
-    ctx.lineWidth = 60
-    ctx.beginPath()
-    ctx.ellipse(512, 330, 330, 250, 0, Math.PI * 1.1, Math.PI * 1.9)
-    ctx.stroke()
-  })
-  ctx.restore()
+  paintHair(ctx, hair, look.hairStyle, seed)
 
   // Neck, shadowed under the jaw.
   ctx.save()
   ctx.beginPath()
-  ctx.moveTo(404, 780); ctx.lineTo(620, 780); ctx.bezierCurveTo(630, 900, 660, 960, 690, 1024); ctx.lineTo(334, 1024); ctx.bezierCurveTo(364, 960, 394, 900, 404, 780)
+  ctx.moveTo(414, 780); ctx.lineTo(610, 780); ctx.bezierCurveTo(614, 860, 626, 900, 660, 930); ctx.lineTo(364, 930); ctx.bezierCurveTo(398, 900, 410, 860, 414, 780)
   ctx.closePath()
   const ng = ctx.createLinearGradient(0, 800, 0, 1024)
   ng.addColorStop(0, rgba(skin.shadow)); ng.addColorStop(0.5, rgba(mixRGB(skin.base, skin.shadow, 0.45))); ng.addColorStop(1, rgba(skin.base))
   ctx.fillStyle = ng
   ctx.fill()
   ctx.clip()
-  blob(ctx, 512, 840, 190, 70, skin.deep, 0.5)
+  blob(ctx, 530, 800, 200, 80, skin.deep, 0.6)
+  blob(ctx, 560, 860, 120, 60, skin.shadow, 0.4)
   ctx.restore()
 
-  // Towel wrapped at the shoulders: fluffy terry with a pastel stripe.
-  ctx.save()
-  const towel = [150, 1024, 180, 968, 260, 944, 360, 958, 440, 986, 512, 996, 584, 986, 664, 958, 764, 944, 844, 968, 874, 1024]
-  ctx.beginPath()
-  ctx.moveTo(150, 1030)
-  for (let i = 2; i < towel.length; i += 2) ctx.lineTo(towel[i], towel[i + 1])
-  ctx.lineTo(874, 1030)
-  ctx.closePath()
-  ctx.fillStyle = '#fbf6f2'
-  ctx.fill()
-  ctx.clip()
-  terry(ctx, 150, 930, 724, 100, [240, 232, 228], seed + 3, 0.02)
-  ctx.fillStyle = rgba(band, 0.55)
-  ctx.fillRect(150, 1000, 724, 10)
-  blurred(ctx, 10, () => { ctx.strokeStyle = 'rgba(160,130,140,0.35)'; ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(180, 968); for (let i = 2; i < towel.length - 2; i += 2) ctx.lineTo(towel[i], towel[i + 1]); ctx.stroke() })
-  ctx.restore()
+  // A fluffy spa robe with a crossed collar, in the customer's colour.
+  {
+    const robe = shade(band, 0.25), fold = shade(band, -0.12)
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(60, 1030)
+    ctx.bezierCurveTo(90, 960, 200, 920, 330, 905)
+    ctx.lineTo(694, 905)
+    ctx.bezierCurveTo(824, 920, 934, 960, 964, 1030)
+    ctx.closePath()
+    const rg = ctx.createLinearGradient(0, 900, 0, 1024)
+    rg.addColorStop(0, rgba(shade(robe, 0.2))); rg.addColorStop(1, rgba(robe))
+    ctx.fillStyle = rg
+    ctx.fill()
+    ctx.clip()
+    terry(ctx, 60, 890, 904, 140, robe, seed + 3, 0.018)
+    // The skin of the chest showing in the V of the collar.
+    ctx.beginPath(); ctx.moveTo(420, 900); ctx.lineTo(604, 900); ctx.lineTo(512, 1030); ctx.closePath()
+    const cg = ctx.createLinearGradient(0, 900, 0, 1024)
+    cg.addColorStop(0, rgba(skin.shadow)); cg.addColorStop(1, rgba(mixRGB(skin.base, skin.shadow, 0.3)))
+    ctx.fillStyle = cg
+    ctx.fill()
+    // Two thick lapels crossing, each with a soft fold shadow.
+    for (const side of [-1, 1]) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.moveTo(512 - side * 190, 902)
+      ctx.lineTo(512 - side * 100, 902)
+      ctx.lineTo(512 + side * 40, 1030)
+      ctx.lineTo(512 - side * 60, 1030)
+      ctx.closePath()
+      const lg = ctx.createLinearGradient(512 - side * 150, 0, 512 + side * 20, 0)
+      lg.addColorStop(0, rgba(shade(robe, 0.3))); lg.addColorStop(1, rgba(robe))
+      ctx.fillStyle = lg
+      ctx.fill()
+      ctx.clip()
+      terry(ctx, 300, 890, 424, 140, robe, seed + 5 + side, 0.03)
+      ctx.restore()
+      blurred(ctx, 6, () => { ctx.strokeStyle = rgba(fold, 0.7); ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(512 - side * 100, 904); ctx.lineTo(512 + side * 40, 1030); ctx.stroke() })
+    }
+    ctx.restore()
+    blurred(ctx, 8, () => { ctx.strokeStyle = 'rgba(120,70,90,0.28)'; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(90, 1000); ctx.bezierCurveTo(200, 925, 330, 912, 420, 906); ctx.moveTo(604, 906); ctx.bezierCurveTo(694, 912, 824, 925, 934, 1000); ctx.stroke() })
+  }
 
   // Ears.
   for (const [i, e] of FACE.ears.entries()) {
     const side = i === 0 ? -1 : 1
     ctx.save()
     ctx.beginPath()
-    ctx.ellipse(e.x, e.y, 44, 80, side * 0.12, 0, Math.PI * 2)
+    ctx.ellipse(e.x + side * 12, e.y + 10, 34, 62, side * 0.12, 0, Math.PI * 2)
     const eg = ctx.createRadialGradient(e.x - side * 6, e.y, 10, e.x, e.y, 84)
     eg.addColorStop(0, rgba(skin.base)); eg.addColorStop(0.7, rgba(mixRGB(skin.base, skin.blush, 0.3))); eg.addColorStop(1, rgba(skin.shadow))
     ctx.fillStyle = eg
@@ -165,72 +156,124 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
       ctx.strokeStyle = rgba(skin.deep, 0.45)
       ctx.lineWidth = 7
       ctx.beginPath()
-      ctx.ellipse(e.x + side * 6, e.y + 4, 22, 52, side * 0.12, -Math.PI * 0.6, Math.PI * 0.8)
+      ctx.ellipse(e.x + side * 16, e.y + 14, 17, 40, side * 0.12, -Math.PI * 0.6, Math.PI * 0.8)
       ctx.stroke()
     })
     blob(ctx, e.x + side * 10, e.y + 10, 16, 26, skin.deep, 0.4)
+    blob(ctx, e.x, e.y - 20, 34, 40, skin.blush, 0.35)
     ctx.restore()
   }
 
-  // The face.
+  // Hair falls over the top of each ear.
+  for (const [i, e] of FACE.ears.entries()) {
+    const side = i === 0 ? -1 : 1
+    ctx.save()
+    const g = ctx.createLinearGradient(e.x, e.y - 90, e.x, e.y + 20)
+    g.addColorStop(0, rgba(hair.dark)); g.addColorStop(1, rgba(hair.base))
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.moveTo(e.x - side * 20, e.y - 110)
+    ctx.bezierCurveTo(e.x + side * 60, e.y - 90, e.x + side * 64, e.y - 20, e.x + side * 40, e.y + 26)
+    ctx.bezierCurveTo(e.x + side * 20, e.y - 10, e.x + side * 4, e.y - 50, e.x - side * 30, e.y - 60)
+    ctx.closePath()
+    ctx.fill()
+    ctx.strokeStyle = rgba(hair.light, 0.35); ctx.lineWidth = 1.5
+    for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(e.x - side * (14 - k * 4), e.y - 104 + k * 6); ctx.bezierCurveTo(e.x + side * (50 - k * 4), e.y - 80, e.x + side * (54 - k * 5), e.y - 20, e.x + side * (36 - k * 3), e.y + 16 - k * 4); ctx.stroke() }
+    ctx.restore()
+  }
+
+  // The face, lit by one warm key light from the top left.
   ctx.save()
   ctx.beginPath()
   smoothPath(ctx, FACE.outline)
-  const fg = ctx.createRadialGradient(492, 470, 40, 512, 540, 430)
-  fg.addColorStop(0, rgba(skin.light))
-  fg.addColorStop(0.45, rgba(skin.base))
-  fg.addColorStop(0.82, rgba(mixRGB(skin.base, skin.shadow, 0.5)))
-  fg.addColorStop(1, rgba(skin.shadow))
-  ctx.fillStyle = fg
+  ctx.fillStyle = rgba(skin.base)
   ctx.fill()
   ctx.clip()
-  // Form: a darker rim, and a warm subsurface band just inside it.
-  blurred(ctx, 34, () => { ctx.strokeStyle = rgba(skin.shadow, 0.75); ctx.lineWidth = 90; ctx.beginPath(); smoothPath(ctx, FACE.outline); ctx.stroke() })
-  blurred(ctx, 22, () => { ctx.strokeStyle = rgba(skin.blush, 0.28); ctx.lineWidth = 60; ctx.beginPath(); smoothPath(ctx, FACE.outline.map((v, i) => (i % 2 ? 520 + (v - 520) * 0.9 : 512 + (v - 512) * 0.9))); ctx.stroke() })
-  // Soft skin mottling.
+  // Key light and its falloff across the face.
+  blob(ctx, 420, 400, 460, 420, skin.light, 0.5)
+  blob(ctx, 760, 760, 420, 380, skin.shadow, 0.42)
+  blurred(ctx, 36, () => { ctx.strokeStyle = rgba(skin.shadow, 0.7); ctx.lineWidth = 96; ctx.beginPath(); smoothPath(ctx, FACE.outline); ctx.stroke() })
+  blob(ctx, 300, 470, 120, 200, skin.light, 0.35)
+  // A warm band where the light turns away (light scattering under the skin).
+  blurred(ctx, 20, () => { ctx.strokeStyle = rgba(mixRGB(skin.blush, skin.base, 0.3), 0.32); ctx.lineWidth = 54; ctx.beginPath(); smoothPath(ctx, FACE.outline.map((v, i) => (i % 2 ? 520 + (v - 520) * 0.88 : 512 + (v - 512) * 0.88))); ctx.stroke() })
   ctx.globalCompositeOperation = 'soft-light'
-  ctx.globalAlpha = 0.35
-  ctx.drawImage(fbm(S, 64, 4, seed + 11), 0, 0)
+  ctx.globalAlpha = 0.18
+  ctx.drawImage(fbm(S, 90, 3, seed + 11), 0, 0)
   ctx.globalAlpha = 1
   ctx.globalCompositeOperation = 'source-over'
+  // Temples and the sides of the forehead turn away, a little cooler; the cheeks warmer.
+  blob(ctx, 270, 440, 90, 120, [196, 170, 200], 0.14)
+  blob(ctx, 754, 440, 90, 120, [196, 170, 200], 0.14)
+  blob(ctx, 380, 680, 150, 110, [255, 160, 130], 0.1)
+  blob(ctx, 644, 680, 150, 110, [255, 160, 130], 0.1)
+  blob(ctx, 262, 430, 80, 140, skin.shadow, 0.3)
+  blob(ctx, 766, 430, 90, 150, skin.shadow, 0.45)
+  // Eye sockets (deeper on the far side), the brow bone catching the light, lids.
   for (const [i, e] of FACE.eyes.entries()) {
     const side = i === 0 ? -1 : 1
-    blob(ctx, e.x, e.y - 4, 104, 60, skin.shadow, 0.42)
-    blob(ctx, e.x + side * 10, e.y + 30, 70, 26, skin.shadow, 0.2)
-    blob(ctx, e.x, e.y - 24, 58, 18, skin.light, 0.5)
-    blob(ctx, e.x - side * 6, e.y - 66, 80, 22, skin.light, 0.34)
-    blob(ctx, e.x + side * 118, e.y - 80, 70, 110, skin.shadow, 0.24)
+    const far = side > 0 ? 1.3 : 1
+    blob(ctx, e.x + side * 6, e.y - 2, 100, 58, skin.shadow, 0.34 * far)
+    blob(ctx, e.x - side * 30, e.y - 4, 30, 26, skin.shadow, 0.3)
+    blob(ctx, e.x + side * 12, e.y + 34, 64, 20, skin.shadow, 0.16 * far)
+    blob(ctx, e.x - side * 8, e.y - 64, 84, 20, skin.light, side < 0 ? 0.55 : 0.3)
+    blob(ctx, e.x, e.y - 20, 54, 16, skin.light, 0.4)
   }
-  // Nose: bridge light, side shadows, the tip's ball, wings, nostrils, the shadow under it.
+  // Nose: a bridge with a thin highlight, soft sides (darker away from the light), a round tip,
+  // wings with a rim of light, soft nostrils and the shadow the nose casts down and right.
   const n = FACE.nose
-  blob(ctx, 512, 552, 20, 90, skin.light, 0.55)
-  blob(ctx, 474, 584, 22, 86, skin.shadow, 0.34)
-  blob(ctx, 550, 584, 22, 86, skin.shadow, 0.34)
-  blob(ctx, 512, n.y - 4, 44 + feat.nose * 12, 36 + feat.nose * 8, skin.shadow, 0.25)
-  blob(ctx, 512, n.y - 6, 40, 32, skin.blush, 0.18)
-  blob(ctx, 506, n.y - 14, 20, 14, skin.light, 0.85)
-  blob(ctx, 472, n.y + 16, 26, 22, skin.shadow, 0.45)
-  blob(ctx, 552, n.y + 16, 26, 22, skin.shadow, 0.45)
-  blob(ctx, 468, n.y + 8, 10, 8, skin.light, 0.5)
-  blob(ctx, 556, n.y + 8, 10, 8, skin.light, 0.5)
-  blurred(ctx, 2.5, () => {
-    ctx.fillStyle = rgba(skin.deep, 0.85)
-    ctx.beginPath(); ctx.ellipse(490, n.y + 30, 13, 6.5, 0.35, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.ellipse(534, n.y + 30, 13, 6.5, -0.35, 0, Math.PI * 2); ctx.fill()
+  blob(ctx, 480, 578, 20, 78, skin.shadow, 0.22)
+  blob(ctx, 548, 584, 26, 88, skin.shadow, 0.5)
+  blob(ctx, 505, 560, 10, 70, skin.light, 0.7)
+  blob(ctx, 512, n.y - 2, 44 + feat.nose * 12, 34 + feat.nose * 8, skin.shadow, 0.24)
+  blob(ctx, 512, n.y - 4, 40, 30, skin.blush, 0.28)
+  blob(ctx, 502, n.y - 14, 18, 12, skin.light, 0.95)
+  blob(ctx, 500, n.y - 17, 7, 5, [255, 255, 255], 0.55)
+  blob(ctx, 474, n.y + 16, 26, 22, skin.shadow, 0.4)
+  blob(ctx, 552, n.y + 16, 28, 22, skin.shadow, 0.6)
+  blob(ctx, 468, n.y + 6, 11, 8, skin.light, 0.55)
+  blob(ctx, 554, n.y + 6, 9, 7, skin.light, 0.3)
+  blurred(ctx, 3, () => {
+    ctx.fillStyle = rgba(mixRGB(skin.deep, [80, 30, 40], 0.3), 0.8)
+    ctx.beginPath(); ctx.ellipse(491, n.y + 30, 12, 6, 0.35, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.ellipse(533, n.y + 30, 12, 6, -0.35, 0, Math.PI * 2); ctx.fill()
   })
-  blob(ctx, 512, n.y + 50, 58, 14, skin.shadow, 0.4)
-  // Philtrum, chin, cheeks, forehead.
-  blob(ctx, 512, 712, 14, 26, skin.light, 0.35)
-  blob(ctx, 498, 712, 6, 24, skin.shadow, 0.25)
-  blob(ctx, 526, 712, 6, 24, skin.shadow, 0.25)
-  blob(ctx, 512, 818, 70, 16, skin.shadow, 0.35)
-  blob(ctx, 512, 866, 58, 30, skin.light, 0.4)
-  for (const x of [362, 662]) {
-    blob(ctx, x, 664, 118, 84, skin.blush, 0.24 + feat.blush * 0.26)
-    blob(ctx, x + (x < 512 ? 8 : -8), 604, 74, 26, skin.light, 0.34)
-  }
-  blob(ctx, 512, 392, 170, 64, skin.light, 0.42)
-  blob(ctx, 512, 320, 260, 40, skin.shadow, 0.3)
+  blob(ctx, 526, n.y + 52, 62, 16, skin.shadow, 0.55)
+  ctx.save()
+  ctx.lineCap = 'round'
+  blurred(ctx, 2.2, () => {
+    // The shadow side of the bridge, running down into the wing.
+    ctx.strokeStyle = rgba(skin.shadow, 0.22)
+    ctx.lineWidth = 7
+    ctx.beginPath(); ctx.moveTo(538, 540); ctx.bezierCurveTo(544, 560, 548, 596, 552, n.y + 2); ctx.stroke()
+    // Wings (alae): soft crescents around the nostrils.
+    ctx.strokeStyle = rgba(skin.deep, 0.45)
+    ctx.lineWidth = 3.4
+    ctx.beginPath(); ctx.moveTo(468, n.y + 2); ctx.bezierCurveTo(452, n.y + 12, 456, n.y + 34, 476, n.y + 38); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(556, n.y + 2); ctx.bezierCurveTo(572, n.y + 12, 568, n.y + 34, 548, n.y + 38); ctx.stroke()
+    // The underside of the tip between the nostrils.
+    ctx.strokeStyle = rgba(skin.deep, 0.3)
+    ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(494, n.y + 26); ctx.quadraticCurveTo(512, n.y + 34, 530, n.y + 26); ctx.stroke()
+  })
+  ctx.restore()
+  // Cheekbones: a lifted highlight (brighter on the lit side) with a soft hollow below.
+  blob(ctx, 372, 600, 80, 28, skin.light, 0.55)
+  blob(ctx, 650, 604, 70, 24, skin.light, 0.28)
+  blob(ctx, 350, 700, 70, 40, skin.shadow, 0.12)
+  blob(ctx, 676, 700, 70, 44, skin.shadow, 0.22)
+  // Blush on the cheeks and the nose tip.
+  for (const x of [362, 662]) blob(ctx, x, 664, 116, 80, skin.blush, 0.22 + feat.blush * 0.26)
+  // Philtrum ridges and the cupid's bow highlight, the shadow under the lower lip, the chin.
+  blob(ctx, 499, 700, 5, 22, skin.light, 0.45)
+  blob(ctx, 525, 700, 5, 22, skin.shadow, 0.3)
+  blob(ctx, 512, 704, 8, 20, skin.shadow, 0.14)
+  blob(ctx, 512, 722, 30, 5, skin.light, 0.6)
+  blob(ctx, 518, 800, 64, 14, skin.shadow, 0.45)
+  blob(ctx, 500, 852, 50, 28, skin.light, 0.55)
+  blob(ctx, 512, 902, 150, 24, skin.shadow, 0.35)
+  // Forehead: a broad soft highlight.
+  blob(ctx, 480, 392, 170, 64, skin.light, 0.3)
+  blob(ctx, 512, 322, 260, 40, skin.shadow, 0.28)
   if (look.freckles) {
     for (let i = 0; i < 70; i++) {
       const side = r() < 0.5 ? -1 : 1
@@ -239,6 +282,21 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
       ctx.beginPath(); ctx.arc(x, y, r.range(1.8, 4), 0, Math.PI * 2); ctx.fill()
     }
   }
+  // A warm rim of light along the far edge of the face.
+  blurred(ctx, 5, () => {
+    ctx.strokeStyle = rgba(mixRGB(skin.light, [255, 214, 190], 0.5), 0.55)
+    ctx.lineWidth = 7
+    ctx.beginPath()
+    const o = FACE.outline
+    let started = false
+    for (let k = 0; k < o.length / 2; k++) {
+      const x = o[k * 2], y = o[k * 2 + 1]
+      if (x < 600 || y < 380 || y > 860) { started = false; continue }
+      const px = 512 + (x - 512) * 0.975, py = 520 + (y - 520) * 0.975
+      if (!started) { ctx.moveTo(px, py); started = true } else ctx.lineTo(px, py)
+    }
+    ctx.stroke()
+  })
   // Fine lines with age: forehead, crow's feet, smile lines.
   if (profile.age > 0.05) {
     const a = profile.age
@@ -256,37 +314,45 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
       for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(512 + side * 52, 676); ctx.quadraticCurveTo(512 + side * 96, 716, 512 + side * 92, 780); ctx.stroke() }
     })
   }
-  // Peach fuzz catching the light along the edge of the face.
-  ctx.globalCompositeOperation = 'screen'
-  const out = FACE.outline
-  for (let i = 0; i < 700; i++) {
-    const k = r.int(0, out.length / 2 - 1)
-    const x = out[k * 2], y = out[k * 2 + 1]
-    const dx = x - 512, dy = y - 520, l = Math.hypot(dx, dy)
-    const inset = r.range(4, 26)
-    const px = x - (dx / l) * inset, py = y - (dy / l) * inset
-    ctx.strokeStyle = rgba(skin.light, r.range(0.12, 0.3))
-    ctx.lineWidth = 0.8
-    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + (dx / l) * 7 + r.range(-2, 2), py + (dy / l) * 7 + r.range(-2, 2)); ctx.stroke()
-  }
   ctx.restore()
   // A thin, warm contour: darker than the skin, never black, heavier on the shadow side.
   ctx.save()
   ctx.lineJoin = 'round'
-  ctx.strokeStyle = rgba(mixRGB(skin.deep, skin.shadow, 0.3), 0.55)
-  ctx.lineWidth = 3
-  ctx.beginPath(); smoothPath(ctx, FACE.outline); ctx.stroke()
-  ctx.strokeStyle = rgba(skin.deep, 0.35)
-  ctx.lineWidth = 2.5
-  ctx.beginPath(); smoothPath(ctx, FACE.outline.map((v, i) => (i % 2 === 0 ? v + 2 : v + 2))); ctx.stroke()
+  blurred(ctx, 1.2, () => {
+    ctx.strokeStyle = rgba(mixRGB(skin.deep, skin.shadow, 0.4), 0.38)
+    ctx.lineWidth = 2.2
+    ctx.beginPath(); smoothPath(ctx, FACE.outline); ctx.stroke()
+  })
   ctx.restore()
 
   // Hairline: soft shadow and wisps of hair over the top of the forehead.
   ctx.save()
   faceClip(ctx)
   blurred(ctx, 16, () => { ctx.fillStyle = rgba(skin.deep, 0.35); ctx.beginPath(); ctx.ellipse(512, 214, 380, 150, 0, 0, Math.PI * 2); ctx.fill() })
-  ctx.fillStyle = rgba(hair.base)
-  ctx.beginPath(); ctx.ellipse(512, 196, 372, 132, 0, 0, Math.PI * 2); ctx.fill()
+  {
+    const cg = ctx.createLinearGradient(0, 60, 0, 330)
+    cg.addColorStop(0, rgba(hair.dark)); cg.addColorStop(0.6, rgba(hair.base)); cg.addColorStop(1, rgba(mixRGB(hair.base, hair.dark, 0.4)))
+    ctx.fillStyle = cg
+    ctx.beginPath(); ctx.ellipse(512, 196, 372, 132, 0, 0, Math.PI * 2); ctx.fill()
+    // Strands swept back from the hairline to the crown.
+    for (let i = 0; i < 420; i++) {
+      const x = r.range(150, 874)
+      const y0 = 196 + 132 * Math.sqrt(Math.max(0, 1 - ((x - 512) / 372) ** 2))
+      const tx = 512 + (x - 512) * r.range(0.15, 0.4), ty = r.range(40, 90)
+      const tone = r() < 0.35 ? hair.light : r() < 0.5 ? hair.dark : shade(hair.base, 0.08)
+      ctx.strokeStyle = rgba(tone, r.range(0.15, 0.45))
+      ctx.lineWidth = r.range(1, 2.6)
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.quadraticCurveTo(x + (tx - x) * 0.3, (y0 + ty) / 2 + 20, tx, ty); ctx.stroke()
+    }
+    // The sheen band across the top of the head.
+    blurred(ctx, 12, () => {
+      ctx.globalCompositeOperation = 'screen'
+      ctx.strokeStyle = rgba(hair.light, 0.3)
+      ctx.lineWidth = 30
+      ctx.beginPath(); ctx.ellipse(512, 250, 330, 120, 0, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke()
+      ctx.globalCompositeOperation = 'source-over'
+    })
+  }
   for (let i = 0; i < 160; i++) {
     const x = r.range(180, 844)
     const y0 = 196 + 132 * Math.sqrt(Math.max(0, 1 - ((x - 512) / 372) ** 2)) - 8
@@ -297,37 +363,181 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   ctx.restore()
 
   paintHeadband(ctx, band, seed)
+  // Hair falls over the ends of the band, where it goes around the back of the head.
+  for (const side of [-1, 1]) {
+    const x = 512 + side * 318
+    ctx.save()
+    const g = ctx.createLinearGradient(x, 330, x, 560)
+    g.addColorStop(0, rgba(hair.base)); g.addColorStop(1, rgba(hair.dark))
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.moveTo(x - side * 30, 330)
+    ctx.bezierCurveTo(x + side * 30, 360, x + side * 50, 470, x + side * 44, 560)
+    ctx.lineTo(x + side * 90, 560)
+    ctx.bezierCurveTo(x + side * 96, 460, x + side * 70, 350, x + side * 20, 318)
+    ctx.closePath()
+    ctx.fill()
+    const r2 = makeRng(seed + 70 + side)
+    for (let k = 0; k < 18; k++) {
+      ctx.strokeStyle = rgba(r2() < 0.4 ? hair.light : hair.dark, r2.range(0.2, 0.45))
+      ctx.lineWidth = r2.range(1, 2.2)
+      const o = r2.range(0, 60)
+      ctx.beginPath(); ctx.moveTo(x - side * 20 + side * o * 0.5, 326); ctx.bezierCurveTo(x + side * (30 + o * 0.3), 370, x + side * (50 + o * 0.5), 470, x + side * (44 + o * 0.7), 558); ctx.stroke()
+    }
+    ctx.restore()
+  }
   return c
+}
+
+/**
+ * Hair spread on the pillow: locks that flow from the parting around the head and down to the shoulders,
+ * each a tapered band with its own shading and fine strands, and a glossy sheen band across the crown.
+ * The style changes the length, the volume and the wave.
+ */
+function paintHair(ctx: Ctx, hair: typeof HAIR[number], style: number, seed: number) {
+  const r = makeRng(seed + 900)
+  const length = [1.0, 0.92, 0.62, 0.8, 0.7, 1.05][style % 6]
+  const volume = [1.0, 1.08, 0.92, 1.2, 0.95, 1.0][style % 6]
+  const wave = [0.1, 0.5, 0.05, 1.1, 0.2, 0.3][style % 6]
+  const bottom = 520 + 520 * length
+  // The mass behind everything, a little darker.
+  ctx.save()
+  const mass = [512, 48, 700, 70, 856, 180, 930 * volume - 60 * (volume - 1) * 0, 380, 950, 600, 920, bottom - 140, 840, bottom, 640, bottom + 20, 384, bottom + 20, 184, bottom, 104, bottom - 140, 74, 600, 94 + 80 * (volume - 1) * 0, 380, 168, 180, 324, 70]
+  const scaleX = (v: number, i: number) => (i % 2 === 0 ? 512 + (v - 512) * volume : v)
+  ctx.beginPath()
+  smoothPath(ctx, mass.map(scaleX))
+  const hg = ctx.createRadialGradient(512, 360, 120, 512, 480, 600)
+  hg.addColorStop(0, rgba(mixRGB(hair.base, hair.dark, 0.25)))
+  hg.addColorStop(1, rgba(hair.dark))
+  ctx.fillStyle = hg
+  ctx.fill()
+  ctx.restore()
+  // Locks, outermost first, flowing from the parting around the head.
+  type Lock = { side: number; t: number }
+  const locks: Lock[] = []
+  for (let i = 0; i < 46; i++) locks.push({ side: i % 2 ? 1 : -1, t: r() })
+  locks.sort((a, b) => b.t - a.t)
+  for (const lock of locks) {
+    const s = lock.side
+    const spreadOut = 0.35 + lock.t * 0.65
+    const x0 = 512 + s * r.range(0, 40), y0 = 130 + r.range(-10, 20)
+    const x1 = 512 + s * (260 + 150 * spreadOut) * volume, y1 = 300 + lock.t * 120
+    const x2 = 512 + s * (330 + 140 * spreadOut) * volume, y2 = 520 + lock.t * 140
+    const x3 = 512 + s * (250 + 200 * spreadOut + r.range(-30, 30)) * volume, y3 = bottom - r.range(0, 80)
+    const width = r.range(34, 70) * volume
+    const at = (u: number) => {
+      const a = (1 - u) ** 3, b = 3 * (1 - u) ** 2 * u, c = 3 * (1 - u) * u * u, d = u ** 3
+      const w = Math.sin(u * Math.PI * 3 + lock.t * 6) * 18 * wave * u
+      return { x: a * x0 + b * x1 + c * x2 + d * x3 + w * s, y: a * y0 + b * y1 + c * y2 + d * y3 }
+    }
+    const left: [number, number][] = [], right: [number, number][] = []
+    for (let k = 0; k <= 24; k++) {
+      const u = k / 24, p = at(u), q = at(Math.min(1, u + 0.02))
+      const dx = q.x - p.x, dy = q.y - p.y, l = Math.hypot(dx, dy) || 1
+      const w = width * (0.25 + Math.sin(Math.PI * Math.min(1, u * 1.1 + 0.08)) * 0.75) * (u > 0.85 ? (1 - u) / 0.15 * 0.7 + 0.3 : 1)
+      left.push([p.x - (dy / l) * w / 2, p.y + (dx / l) * w / 2])
+      right.push([p.x + (dy / l) * w / 2, p.y - (dx / l) * w / 2])
+    }
+    ctx.beginPath()
+    ctx.moveTo(left[0][0], left[0][1])
+    for (const [x, y] of left) ctx.lineTo(x, y)
+    for (let k = right.length - 1; k >= 0; k--) ctx.lineTo(right[k][0], right[k][1])
+    ctx.closePath()
+    const mid = at(0.45)
+    const lg = ctx.createLinearGradient(mid.x - s * width, mid.y, mid.x + s * width, mid.y)
+    lg.addColorStop(0, rgba(hair.dark)); lg.addColorStop(0.45, rgba(hair.base)); lg.addColorStop(1, rgba(mixRGB(hair.base, hair.dark, 0.6)))
+    ctx.fillStyle = lg
+    ctx.fill()
+    // Fine strands inside the lock.
+    for (let k = 0; k < 14; k++) {
+      const off = r.range(-0.45, 0.45) * width
+      const tone = r() < 0.4 ? hair.light : r() < 0.5 ? hair.dark : shade(hair.base, 0.1)
+      ctx.strokeStyle = rgba(tone, r.range(0.18, 0.45))
+      ctx.lineWidth = r.range(0.8, 2)
+      ctx.beginPath()
+      for (let j = 0; j <= 20; j++) {
+        const u = j / 20, p = at(u), q = at(Math.min(1, u + 0.02))
+        const dx = q.x - p.x, dy = q.y - p.y, l = Math.hypot(dx, dy) || 1
+        const o = off * (0.3 + Math.sin(Math.PI * Math.min(1, u * 1.1 + 0.08)) * 0.7)
+        const x = p.x - (dy / l) * o, y = p.y + (dx / l) * o
+        if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+      }
+      ctx.stroke()
+    }
+  }
+  // The sheen: a bright band across the crown where the light catches the curve of the hair.
+  ctx.save()
+  ctx.beginPath()
+  smoothPath(ctx, mass.map(scaleX))
+  ctx.clip()
+  blurred(ctx, 10, () => {
+    ctx.globalCompositeOperation = 'screen'
+    for (let k = 0; k < 3; k++) {
+      ctx.strokeStyle = rgba(hair.light, 0.28 - k * 0.07)
+      ctx.lineWidth = 34 - k * 10
+      ctx.beginPath()
+      ctx.ellipse(512, 360, 350 * volume - k * 6, 250 - k * 4, 0, Math.PI * 1.08, Math.PI * 1.92)
+      ctx.stroke()
+    }
+  })
+  ctx.restore()
 }
 
 /** The spa headband: a terry band across the hairline with a cute knotted bow. */
 function paintHeadband(ctx: Ctx, band: RGB, seed: number) {
-  const light = shade(band, 0.35), dark = shade(band, -0.22)
-  ctx.save()
+  const r = makeRng(seed + 61)
+  const light = shade(band, 0.45), mid = shade(band, 0.15), dark = shade(band, -0.18)
+  // The band wraps around the head: it follows the hairline and tucks behind the ears at the sides.
+  const top = (t: number) => ({ x: 176 + 672 * t, y: (1 - t) ** 2 * 446 + 2 * (1 - t) * t * 196 + t * t * 446 })
+  const bot = (t: number) => ({ x: 186 + 652 * t, y: (1 - t) ** 2 * 474 + 2 * (1 - t) * t * 270 + t * t * 474 })
   const path = () => {
     ctx.beginPath()
-    ctx.moveTo(150, 348)
-    ctx.quadraticCurveTo(512, 140, 874, 348)
-    ctx.lineTo(852, 432)
-    ctx.quadraticCurveTo(512, 262, 172, 432)
+    for (let k = 0; k <= 40; k++) { const p = top(k / 40); if (k === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y) }
+    for (let k = 40; k >= 0; k--) { const p = bot(k / 40); ctx.lineTo(p.x, p.y) }
     ctx.closePath()
   }
-  blurred(ctx, 14, () => { ctx.fillStyle = 'rgba(90,50,60,0.35)'; ctx.translate(0, 14); path(); ctx.fill() })
+  // A soft shadow on the forehead under the band.
+  blurred(ctx, 12, () => { ctx.fillStyle = 'rgba(110,60,70,0.3)'; ctx.translate(0, 12); path(); ctx.fill() })
+  ctx.save()
   path()
-  const g = ctx.createLinearGradient(0, 200, 0, 420)
-  g.addColorStop(0, rgba(light)); g.addColorStop(0.55, rgba(band)); g.addColorStop(1, rgba(dark))
-  ctx.fillStyle = g
+  ctx.fillStyle = rgba(mid)
   ctx.fill()
   ctx.clip()
-  terry(ctx, 140, 150, 744, 300, band, seed + 7, 0.03)
-  blurred(ctx, 8, () => { ctx.strokeStyle = rgba(light, 0.8); ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(170, 360); ctx.quadraticCurveTo(512, 170, 854, 360); ctx.stroke() })
+  // Rounded like a rolled towel: light along the top, shade underneath.
+  for (let k = 0; k <= 40; k++) {
+    const t = k / 40, a = top(t), b = bot(t)
+    const g = ctx.createLinearGradient(a.x, a.y, b.x, b.y)
+    g.addColorStop(0, rgba(light)); g.addColorStop(0.35, rgba(shade(band, 0.3))); g.addColorStop(0.75, rgba(mid)); g.addColorStop(1, rgba(dark))
+    ctx.strokeStyle = g
+    ctx.lineWidth = 22
+    ctx.beginPath(); ctx.moveTo(a.x, a.y - 4); ctx.lineTo(b.x, b.y + 4); ctx.stroke()
+  }
+  terry(ctx, 150, 180, 724, 300, mid, seed + 7, 0.02)
+  // Soft gathers and folds across the band.
+  blurred(ctx, 3, () => {
+    for (let i = 0; i < 16; i++) {
+      const t = r.range(0.05, 0.95), a = top(t), b = bot(t)
+      const bend = r.range(-14, 14)
+      ctx.strokeStyle = i % 2 ? rgba(light, 0.55) : rgba(dark, 0.4)
+      ctx.lineWidth = r.range(3, 6)
+      ctx.beginPath(); ctx.moveTo(a.x + bend * 0.3, a.y + 6); ctx.quadraticCurveTo((a.x + b.x) / 2 + bend, (a.y + b.y) / 2, b.x + bend * 0.2, b.y - 6); ctx.stroke()
+    }
+  })
+  // Where it goes behind the head, it darkens into the hair.
+  for (const side of [0, 1]) {
+    const x = side ? 854 : 170
+    const g = ctx.createLinearGradient(x, 0, side ? x - 110 : x + 110, 0)
+    g.addColorStop(0, 'rgba(60,30,40,0.55)'); g.addColorStop(1, 'rgba(60,30,40,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(side ? x - 110 : x, 150, 110, 340)
+  }
   ctx.restore()
-  // The bow on top.
-  const bx = 512, by = 214
+  // A small knotted bow on top.
+  const bx = 512, by = 238
   for (const side of [-1, 1]) {
     ctx.save()
     ctx.translate(bx, by)
-    ctx.scale(side, 1)
+    ctx.scale(side * 0.62, 0.62)
     ctx.beginPath()
     ctx.moveTo(0, 0)
     ctx.bezierCurveTo(40, -90, 120, -86, 118, -30)
@@ -337,13 +547,14 @@ function paintHeadband(ctx: Ctx, band: RGB, seed: number) {
     ctx.fillStyle = bg
     ctx.fill()
     ctx.clip()
-    terry(ctx, 0, -100, 130, 130, band, seed + 9 + side, 0.03)
-    blob(ctx, 60, -50, 30, 20, light, 0.6)
+    terry(ctx, 0, -100, 130, 130, band, seed + 9 + side, 0.02)
+    blurred(ctx, 3, () => { ctx.strokeStyle = rgba(dark, 0.45); ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(10, -4); ctx.quadraticCurveTo(60, -40, 100, -44); ctx.stroke() })
+    blob(ctx, 64, -52, 26, 16, light, 0.7)
     ctx.restore()
   }
   ctx.beginPath()
-  ctx.ellipse(bx, by, 30, 26, 0, 0, Math.PI * 2)
-  const kg = ctx.createRadialGradient(bx - 8, by - 8, 4, bx, by, 32)
+  ctx.ellipse(bx, by, 20, 17, 0, 0, Math.PI * 2)
+  const kg = ctx.createRadialGradient(bx - 6, by - 6, 3, bx, by, 21)
   kg.addColorStop(0, rgba(light)); kg.addColorStop(1, rgba(dark))
   ctx.fillStyle = kg
   ctx.fill()
@@ -373,16 +584,11 @@ function paintHeight(seed: number) {
   // Pores: denser on the nose and cheeks; fine texture everywhere.
   ctx.save()
   faceClip(ctx)
-  ctx.globalCompositeOperation = 'overlay'
-  ctx.globalAlpha = 0.45
-  ctx.drawImage(fbm(S, 6, 2, seed + 21), 0, 0)
-  ctx.globalAlpha = 1
-  ctx.globalCompositeOperation = 'source-over'
-  for (let i = 0; i < 26000; i++) {
+  for (let i = 0; i < 18000; i++) {
     let x: number, y: number
     if (i % 3 === 0) { x = 512 + r.range(-80, 80); y = 560 + r.range(-40, 130) } else if (i % 3 === 1) { const side = r() < 0.5 ? -1 : 1; x = 512 + side * r.range(70, 230); y = r.range(560, 780) } else { x = r.range(220, 800); y = r.range(300, 920) }
-    ctx.fillStyle = `rgba(0,0,0,${r.range(0.18, 0.42)})`
-    ctx.beginPath(); ctx.arc(x, y, r.range(0.8, 1.9), 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = `rgba(0,0,0,${r.range(0.05, 0.12)})`
+    ctx.beginPath(); ctx.arc(x, y, r.range(0.9, 1.7), 0, Math.PI * 2); ctx.fill()
   }
   ctx.restore()
   return c
@@ -412,25 +618,67 @@ function specks(ctx: Ctx, k: number, count: number, color: RGB, rMin: number, rM
   }
 }
 
-/** A clump of cartoon grime with volume: contact shadow, dark core, lighter rim, a small highlight, specks. */
+/** A blob of cartoon grime: soft contact shadow, a dark core, a lighter rim and a small wet highlight. */
 function grimeClump(ctx: Ctx, x: number, y: number, r: number, body: RGB, seed: number) {
   const rr = makeRng(seed)
   const pts: number[] = []
-  const n = 9
-  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; const d = r * rr.range(0.7, 1.15); pts.push(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.85) }
-  blurred(ctx, r * 0.25, () => { ctx.fillStyle = rgba(shade(body, -0.55), 0.45); ctx.beginPath(); smoothPath(ctx, pts.map((v, i) => v + (i % 2 ? r * 0.18 : r * 0.12))); ctx.fill() })
+  const n = 10
+  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; const d = r * rr.range(0.72, 1.12); pts.push(x + Math.cos(a) * d, y + Math.sin(a) * d * rr.range(0.7, 0.95)) }
+  blurred(ctx, r * 0.3, () => { ctx.fillStyle = rgba(shade(body, -0.5), 0.32); ctx.beginPath(); smoothPath(ctx, pts.map((v, i) => v + (i % 2 ? r * 0.22 : r * 0.14))); ctx.fill() })
   ctx.save()
   ctx.beginPath(); smoothPath(ctx, pts)
-  const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r * 1.1)
-  g.addColorStop(0, rgba(shade(body, 0.28))); g.addColorStop(0.55, rgba(body)); g.addColorStop(1, rgba(shade(body, -0.35)))
+  const g = ctx.createRadialGradient(x + r * 0.1, y + r * 0.1, 0, x, y, r * 1.05)
+  g.addColorStop(0, rgba(shade(body, -0.38))); g.addColorStop(0.55, rgba(shade(body, -0.12))); g.addColorStop(0.85, rgba(body)); g.addColorStop(1, rgba(shade(body, 0.22)))
   ctx.fillStyle = g
   ctx.fill()
   ctx.clip()
-  for (let i = 0; i < r * 1.2; i++) { ctx.fillStyle = rgba(shade(body, rr.range(-0.45, 0.3)), rr.range(0.3, 0.8)); ctx.beginPath(); ctx.arc(x + rr.range(-r, r), y + rr.range(-r, r), rr.range(1, 3.2), 0, Math.PI * 2); ctx.fill() }
+  for (let i = 0; i < r * 0.8; i++) { ctx.fillStyle = rgba(shade(body, rr.range(-0.4, 0.15)), rr.range(0.2, 0.5)); ctx.beginPath(); ctx.arc(x + rr.range(-r, r), y + rr.range(-r, r), rr.range(1, 2.6), 0, Math.PI * 2); ctx.fill() }
   ctx.restore()
-  ctx.strokeStyle = rgba(shade(body, -0.45), 0.6); ctx.lineWidth = 1.6
+  ctx.strokeStyle = rgba(shade(body, -0.3), 0.45); ctx.lineWidth = 1.4
   ctx.beginPath(); smoothPath(ctx, pts); ctx.stroke()
-  blob(ctx, x - r * 0.32, y - r * 0.4, r * 0.28, r * 0.16, [255, 250, 236], 0.55)
+  ctx.fillStyle = 'rgba(255,252,240,0.7)'
+  ctx.beginPath(); ctx.ellipse(x - r * 0.35, y - r * 0.38, r * 0.2, r * 0.11, -0.6, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = 'rgba(255,252,240,0.45)'
+  ctx.beginPath(); ctx.arc(x - r * 0.08, y - r * 0.5, r * 0.06, 0, Math.PI * 2); ctx.fill()
+}
+
+/** A flat smear of grime: a soft-edged wipe with darker streaks along it. */
+function grimeSmear(ctx: Ctx, x: number, y: number, len: number, body: RGB, seed: number) {
+  const rr = makeRng(seed)
+  const a = rr.range(-0.8, 0.8)
+  const dx = Math.cos(a), dy = Math.sin(a)
+  blurred(ctx, 6, () => {
+    ctx.strokeStyle = rgba(body, 0.5)
+    ctx.lineCap = 'round'
+    ctx.lineWidth = len * 0.35
+    ctx.beginPath(); ctx.moveTo(x - dx * len / 2, y - dy * len / 2); ctx.quadraticCurveTo(x + dy * len * 0.15, y - dx * len * 0.15, x + dx * len / 2, y + dy * len / 2); ctx.stroke()
+  })
+  // A few soft darker streaks along the wipe direction (blurred, so they read as smears, not sticks).
+  blurred(ctx, 3, () => {
+    for (let k = 0; k < 3; k++) {
+      const off = rr.range(-0.1, 0.1) * len
+      ctx.strokeStyle = rgba(shade(body, rr.range(-0.2, -0.05)), rr.range(0.1, 0.2))
+      ctx.lineWidth = rr.range(6, 12)
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(x - dx * len * 0.3 - dy * off, y - dy * len * 0.3 + dx * off)
+      ctx.quadraticCurveTo(x + dy * len * 0.1, y - dx * len * 0.1, x + dx * len * 0.3 - dy * off, y + dy * len * 0.3 + dx * off)
+      ctx.stroke()
+    }
+  })
+}
+
+/** Soften a layer sheet's edges (where the skin region clips it) so it fades out instead of cutting off. */
+function feather(sheet: HTMLCanvasElement, px: number) {
+  const [m, mctx] = canvas(sheet.width, sheet.height)
+  mctx.filter = `blur(${px}px)`
+  mctx.drawImage(sheet, 0, 0)
+  const ctx = sheet.getContext('2d')!
+  ctx.save()
+  ctx.globalCompositeOperation = 'destination-in'
+  ctx.drawImage(m, 0, 0)
+  ctx.drawImage(m, 0, 0)
+  ctx.restore()
 }
 
 function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasElement> {
@@ -438,18 +686,19 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
   const r = makeRng(seed + 30)
   // Grime: cute and cartoony, never gross. A dusty veil with clumps that have real volume.
   layers.grime = clipped(S, (ctx) => {
-    ctx.drawImage(tintedByNoise(S, [150, 128, 96], fbm(S, 48, 4, seed + 31), 0.2, 0.62), 0, 0)
-    specks(ctx, 1, 1800, [104, 84, 62], 1.2, 3.6, 0.3, 0.75, seed + 32)
-    for (let i = 0; i < 70; i++) grimeClump(ctx, r.range(220, 800), r.range(300, 930), r.range(9, 26), [128, 104, 74], seed + 300 + i)
+    ctx.drawImage(tintedByNoise(S, [150, 124, 92], fbm(S, 70, 4, seed + 31), 0.05, 0.38), 0, 0)
+    for (let i = 0; i < 70; i++) grimeSmear(ctx, r.range(230, 790), r.range(310, 920), r.range(40, 110), [140, 112, 80], seed + 200 + i)
+    for (let i = 0; i < 90; i++) grimeClump(ctx, r.range(230, 790), r.range(310, 920), r.range(8, 24), [132, 104, 72], seed + 300 + i)
   }, faceClip)
-  // Ground-in grime (disaster cases): darker, heavier clumps.
+  // Ground-in grime (disaster cases): darker, heavier.
   layers.grime2 = clipped(S, (ctx) => {
-    ctx.drawImage(tintedByNoise(S, [96, 76, 56], fbm(S, 36, 4, seed + 35), 0.35, 0.8), 0, 0)
-    for (let i = 0; i < 90; i++) grimeClump(ctx, r.range(220, 800), r.range(300, 930), r.range(12, 34), [92, 72, 52], seed + 500 + i)
+    ctx.drawImage(tintedByNoise(S, [100, 80, 58], fbm(S, 50, 4, seed + 35), 0.2, 0.6), 0, 0)
+    for (let i = 0; i < 60; i++) grimeSmear(ctx, r.range(230, 790), r.range(310, 920), r.range(60, 140), [96, 74, 52], seed + 400 + i)
+    for (let i = 0; i < 90; i++) grimeClump(ctx, r.range(230, 790), r.range(310, 920), r.range(12, 30), [96, 74, 52], seed + 500 + i)
   }, faceClip)
   layers.flakes = clipped(S, (ctx) => {
-    ctx.drawImage(tintedByNoise(S, [250, 238, 228], fbm(S, 16, 3, seed + 36), 0.15, 0.45), 0, 0)
-    for (let i = 0; i < 900; i++) {
+    ctx.drawImage(tintedByNoise(S, [250, 238, 228], fbm(S, 24, 3, seed + 36), 0.05, 0.3), 0, 0)
+    for (let i = 0; i < 420; i++) {
       const x = r.range(220, 800), y = r.range(300, 930), s = r.range(2.5, 7)
       ctx.fillStyle = 'rgba(180,150,140,0.35)'
       ctx.beginPath(); ctx.moveTo(x + 1, y + 2); ctx.lineTo(x + s + 1, y + 1); ctx.lineTo(x + s * 0.6 + 1, y + s + 2); ctx.closePath(); ctx.fill()
@@ -458,14 +707,14 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
     }
   })
   layers.oil = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, [250, 232, 170], fbm(512, 32, 3, seed + 41), 0.12, 0.4), 0, 0)
+    ctx.drawImage(tintedByNoise(512, [250, 228, 170], fbm(512, 32, 3, seed + 41), 0.04, 0.22), 0, 0)
   })
   layers.redness = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, mixRGB(skin.blush, [232, 96, 104], 0.5), fbm(512, 20, 3, seed + 51), 0.25, 0.62), 0, 0)
+    ctx.drawImage(tintedByNoise(512, mixRGB(skin.blush, [232, 96, 104], 0.5), fbm(512, 40, 3, seed + 51), 0.1, 0.36), 0, 0)
     for (let i = 0; i < 90; i++) { ctx.fillStyle = rgba([220, 80, 96], r.range(0.15, 0.4)); ctx.beginPath(); ctx.arc(r.range(100, 412), r.range(150, 470), r.range(1, 2.5), 0, Math.PI * 2); ctx.fill() }
   })
   layers.marks = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, [226, 84, 96], fbm(512, 12, 2, seed + 61), 0.5, 0.78), 0, 0)
+    ctx.drawImage(tintedByNoise(512, [222, 92, 104], fbm(512, 12, 2, seed + 61), 0.32, 0.6), 0, 0)
   })
   layers.serum = clipped(512, (ctx) => {
     ctx.drawImage(tintedByNoise(512, [255, 214, 130], fbm(512, 40, 2, seed + 71), 0.28, 0.45), 0, 0)
@@ -486,7 +735,7 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
   })
   layers.mask = paintClay(false, seed)
   layers.foam = clipped(S, (ctx) => {
-    ctx.fillStyle = 'rgba(253,251,255,0.97)'
+    ctx.fillStyle = 'rgba(253,251,255,0.9)'
     ctx.fillRect(0, 0, S, S)
     const rf = makeRng(seed + 101)
     for (let i = 0; i < 5200; i++) {
@@ -499,14 +748,39 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
       ctx.beginPath(); ctx.arc(x - rr * 0.4, y - rr * 0.4, rr * 0.22, 0, Math.PI * 2); ctx.fill()
     }
   })
+  feather(layers.foam, 14)
+  feather(layers.cream, 8)
   return layers
 }
 
 /** The mint clay mask, wet (glossy, brush-streaked) or dry (paler, matte, cracked). */
+/** The peel mask's outline: the face, minus organic cut-outs around each eye and brow and around the lips. */
+function maskClip(ctx: Ctx) {
+  ctx.beginPath()
+  smoothPath(ctx, FACE.outline)
+  // Around each eye and brow together: a soft rounded window.
+  for (const [i, e] of FACE.eyes.entries()) {
+    const side = i === 0 ? -1 : 1
+    const b = FACE.brows[i]
+    const pts = [
+      e.x - side * 96, e.y + 6, e.x - side * 70, b.y - 22, e.x - side * 10, b.y - 34, e.x + side * 64, b.y - 30, e.x + side * 104, b.y + 4,
+      e.x + side * 100, e.y + 16, e.x + side * 60, e.y + 42, e.x - side * 8, e.y + 46, e.x - side * 62, e.y + 36,
+    ]
+    const path = side < 0 ? pts : pts.reduceRight<number[]>((acc, _, k, arr) => (k % 2 === 1 ? acc.concat([arr[k - 1], arr[k]]) : acc), [])
+    smoothPath(ctx, path)
+  }
+  // Around the lips: follows the cupid's bow.
+  const l = FACE.lips
+  smoothPath(ctx, [l.x - 104, l.y + 4, l.x - 60, l.y - 36, l.x, l.y - 30, l.x + 60, l.y - 36, l.x + 104, l.y + 4, l.x + 60, l.y + 50, l.x, l.y + 58, l.x - 60, l.y + 50])
+  ctx.moveTo(512 + 372, 196)
+  ctx.ellipse(512, 196, 372, 138, 0, 0, Math.PI * 2)
+  ctx.clip('evenodd')
+}
+
 function paintClay(dry: boolean, seed: number) {
-  return clipped(S, (ctx) => {
-    const base: RGB = dry ? [210, 238, 224] : [152, 216, 192]
-    ctx.fillStyle = rgba(base)
+  const sheet = clipped(S, (ctx) => {
+    const base: RGB = dry ? [206, 236, 222] : [112, 206, 164]
+    ctx.fillStyle = rgba(base, dry ? 1 : 0.9)
     ctx.fillRect(0, 0, S, S)
     const r = makeRng(seed + 111)
     // Brush streaks.
@@ -531,8 +805,31 @@ function paintClay(dry: boolean, seed: number) {
         ctx.stroke()
       }
       specks(ctx, 1, 1200, [236, 250, 244], 1, 2.5, 0.3, 0.7, seed + 113)
+    } else {
+      // Tiny air bubbles caught in the gel, and a sheen.
+      for (let i = 0; i < 160; i++) { const x = r.range(220, 800), y = r.range(320, 900), rr = r.range(1.5, 4.5); blob(ctx, x, y, rr, rr, [236, 255, 246], 0.7, 0.4); blob(ctx, x - rr * 0.3, y - rr * 0.3, rr * 0.35, rr * 0.3, [255, 255, 255], 0.95) }
+      blob(ctx, 420, 420, 200, 90, [230, 255, 244], 0.25)
     }
-  })
+  }, maskClip)
+  // Thickness at the edges: a darker rim just inside every cut edge, lighter on the top of each lip.
+  const [rim, rctx] = canvas(S)
+  rctx.drawImage(sheet, 0, 0)
+  rctx.globalCompositeOperation = 'source-in'
+  rctx.fillStyle = dry ? 'rgba(150,190,172,1)' : 'rgba(60,150,112,1)'
+  rctx.fillRect(0, 0, S, S)
+  const [inner, ictx] = canvas(S)
+  ictx.filter = 'blur(5px)'
+  ictx.drawImage(sheet, 0, 0)
+  rctx.globalCompositeOperation = 'destination-out'
+  rctx.drawImage(inner, 0, 0)
+  rctx.drawImage(inner, 0, 0)
+  const ctx = sheet.getContext('2d')!
+  ctx.globalAlpha = dry ? 0.5 : 0.75
+  ctx.globalCompositeOperation = 'source-atop'
+  ctx.drawImage(rim, 0, 0)
+  ctx.globalAlpha = 1
+  ctx.globalCompositeOperation = 'source-over'
+  return sheet
 }
 
 // ------------------------------------------------------------------ expressions
@@ -556,14 +853,14 @@ function drawEye(ctx: Ctx, ex: number, ey: number, side: number, state: EyeState
   if (state === 'open' || state === 'wide') { drawOpenEye(ctx, ex, ey, side, state === 'wide', lashColor, skin, feat); return }
   const lash = rgba(mixRGB(lashColor, [20, 10, 16], 0.5))
   const lashLen = 0.8 + feat.lashes * 0.5
-  const inner = { x: ex - side * 58, y: ey - 2 }
-  const outer = { x: ex + side * 62, y: ey - 8 }
+  const inner = { x: ex - side * 64, y: ey - 2 }
+  const outer = { x: ex + side * 68, y: ey - 9 }
   const sag = state === 'closed' ? 22 : state === 'squeeze' ? 12 : -22
   const cx = ex + side * 4, cy = ey + sag
   const point = (t: number) => ({ x: (1 - t) ** 2 * inner.x + 2 * (1 - t) * t * cx + t * t * outer.x, y: (1 - t) ** 2 * inner.y + 2 * (1 - t) * t * cy + t * t * outer.y })
   // The lid: lighter, rounded over the eyeball, with the crease above it.
-  blob(ctx, ex, ey - 4 + (state === 'happy' ? -8 : 0), 66, 30, skin.base, 0.9, 0.5)
-  blob(ctx, ex - side * 6, ey - 12 + (state === 'happy' ? -8 : 0), 44, 16, skin.light, 0.55)
+  blob(ctx, ex, ey - 4 + (state === 'happy' ? -8 : 0), 62, 26, mixRGB(skin.base, skin.shadow, 0.25), 0.55, 0.3)
+  blob(ctx, ex - side * 8, ey - 12 + (state === 'happy' ? -8 : 0), 40, 14, skin.light, 0.4)
   blurred(ctx, 1.5, () => {
     ctx.strokeStyle = rgba(skin.deep, state === 'squeeze' ? 0.55 : 0.32)
     ctx.lineWidth = state === 'squeeze' ? 3.5 : 2.5
@@ -609,7 +906,7 @@ function drawEye(ctx: Ctx, ex: number, ey: number, side: number, state: EyeState
 function drawOpenEye(ctx: Ctx, ex: number, ey: number, side: number, wide: boolean, lashColor: RGB, skin: SkinTone, feat: Feat) {
   const lash = rgba(mixRGB(lashColor, [20, 10, 16], 0.55))
   const lashLen = 0.8 + feat.lashes * 0.5
-  const w = 60, top = wide ? 30 : 24, bottom = wide ? 20 : 16
+  const w = 68, top = wide ? 37 : 31, bottom = wide ? 25 : 21
   const inner = { x: ex - side * w * 0.95, y: ey + 2 }, outer = { x: ex + side * w, y: ey - 5 }
   const upper = () => { ctx.moveTo(inner.x, inner.y); ctx.bezierCurveTo(ex - side * 34, ey - top - 6, ex + side * 30, ey - top - 4, outer.x, outer.y) }
   const lower = () => { ctx.bezierCurveTo(ex + side * 30, ey + bottom + 2, ex - side * 34, ey + bottom + 4, inner.x, inner.y) }
@@ -623,7 +920,7 @@ function drawOpenEye(ctx: Ctx, ex: number, ey: number, side: number, wide: boole
   ctx.fill()
   ctx.clip()
   // Iris: limbal ring, radial fibres, a lighter lower half, the pupil.
-  const ir = wide ? 21 : 23, ix = ex + side * 2, iy = ey - (wide ? 0 : 2)
+  const ir = wide ? 26 : 29, ix = ex + side * 2, iy = ey - (wide ? 0 : 3)
   const ig = ctx.createRadialGradient(ix, iy + 6, 2, ix, iy, ir)
   ig.addColorStop(0, rgba(shade(feat.iris, 0.35))); ig.addColorStop(0.55, rgba(feat.iris)); ig.addColorStop(0.9, rgba(shade(feat.iris, -0.35))); ig.addColorStop(1, rgba(shade(feat.iris, -0.6)))
   ctx.fillStyle = ig
@@ -631,7 +928,7 @@ function drawOpenEye(ctx: Ctx, ex: number, ey: number, side: number, wide: boole
   ctx.strokeStyle = rgba(shade(feat.iris, 0.45), 0.35); ctx.lineWidth = 1
   for (let i = 0; i < 28; i++) { const a = (i / 28) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(ix + Math.cos(a) * 8, iy + Math.sin(a) * 8); ctx.lineTo(ix + Math.cos(a) * (ir - 3), iy + Math.sin(a) * (ir - 3)); ctx.stroke() }
   ctx.fillStyle = '#1e1418'
-  ctx.beginPath(); ctx.arc(ix, iy, wide ? 7 : 8.5, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(ix, iy, wide ? 8 : 10.5, 0, Math.PI * 2); ctx.fill()
   // The upper lid casts a soft shadow on the eyeball.
   const shadowG = ctx.createLinearGradient(0, ey - top, 0, ey - top + 22)
   shadowG.addColorStop(0, 'rgba(90,50,60,0.45)'); shadowG.addColorStop(1, 'rgba(90,50,60,0)')
@@ -639,8 +936,8 @@ function drawOpenEye(ctx: Ctx, ex: number, ey: number, side: number, wide: boole
   ctx.fillRect(ex - w - 4, ey - top - 8, w * 2 + 8, 34)
   // Catchlights: a big one up-left, a small one down-right.
   ctx.fillStyle = 'rgba(255,255,255,0.95)'
-  ctx.beginPath(); ctx.ellipse(ix - 8, iy - 9, 6.5, 5, -0.5, 0, Math.PI * 2); ctx.fill()
-  ctx.beginPath(); ctx.arc(ix + 8, iy + 8, 2.6, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.ellipse(ix - 10, iy - 11, 8.5, 6.5, -0.5, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(ix + 10, iy + 10, 3.4, 0, Math.PI * 2); ctx.fill()
   ctx.restore()
   // Lids: a thick upper lash line with a little wing, a fine lower line, the crease above.
   ctx.lineCap = 'round'
@@ -681,7 +978,7 @@ function drawBrow(ctx: Ctx, bx: number, by: number, side: number, state: BrowSta
   const lum = (hair.base[0] + hair.base[1] + hair.base[2]) / 3
   const color = lum > 150 ? shade(hair.base, -0.35) : hair.base
   const dark = lum > 150 ? shade(hair.dark, -0.2) : hair.dark
-  const weight = 0.75 + feat.brow * 0.55
+  const weight = 0.58 + feat.brow * 0.4
   const innerY = state === 'worried' ? by - 8 : state === 'happy' ? by + 0 : by + 10
   const peakY = state === 'worried' ? by - 4 : state === 'happy' ? by - 24 : by - 14
   const outerY = state === 'worried' ? by + 14 : state === 'happy' ? by - 4 : by + 2
@@ -706,7 +1003,7 @@ function drawBrow(ctx: Ctx, bx: number, by: number, side: number, state: BrowSta
     const len = r.range(10, 20) * (1 - t * 0.4)
     const off = r.range(-1, 1) * (9 - t * 5) * weight
     const sx = p.x + (-dy / l) * off, sy = p.y + (dx / l) * off + 3
-    ctx.strokeStyle = rgba(r() < 0.5 ? dark : color, r.range(0.55, 0.9))
+    ctx.strokeStyle = rgba(r() < 0.5 ? dark : color, r.range(0.45, 0.75))
     ctx.lineWidth = r.range(1.2, 2.4)
     ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx + hx * len * 0.5, sy + hy * len * 0.5 - 2, sx + hx * len, sy + hy * len); ctx.stroke()
   }
@@ -717,8 +1014,8 @@ function mouthCrop(state: MouthState, skin: SkinTone, feat: Feat): Crop {
 }
 
 function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: SkinTone, feat: Feat) {
-  const full = 0.85 + feat.lips * 0.4
-  const lip = skin.lip, lipDark = shade(lip, -0.25), lipLight = shade(lip, 0.3)
+  const full = 1.05 + feat.lips * 0.3
+  const lip = mixRGB(skin.lip, [236, 118, 140], 0.5), lipDark = shade(lip, -0.18), lipLight = shade(lip, 0.35)
   const inside: RGB = [120, 40, 52]
   if (state === 'beam' || state === 'o') {
     const w = state === 'beam' ? 80 : 26, top = state === 'beam' ? my - 14 : my - 12, bottom = state === 'beam' ? my + 40 : my + 22
@@ -786,6 +1083,8 @@ function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: Sk
   ctx.lineWidth = state === 'wince' ? 3.5 : 2.6
   ctx.beginPath(); ctx.moveTo(L.x + 2, L.y); ctx.quadraticCurveTo(mx, my + lineSag + 4, R.x - 2, R.y); ctx.stroke()
   blob(ctx, mx + 6, my + lineSag + lowerH * 0.55, cw * 0.36, 5, lipLight, 0.75)
+  blob(ctx, mx - 6, my + lineSag + lowerH * 0.5, cw * 0.2, 3.5, [255, 255, 255], 0.85)
+  blob(ctx, mx + 22, my + lineSag + lowerH * 0.62, cw * 0.08, 2, [255, 255, 255], 0.7)
   blob(ctx, mx - 16, my - upperH + 6, 12, 3, lipLight, 0.5)
   for (const s of [-1, 1]) blob(ctx, mx + s * (cw + 4), my + corner, 8, 8, skin.deep, state === 'smile' ? 0.45 : 0.3)
   if (state === 'wince') { ctx.strokeStyle = rgba(skin.deep, 0.3); ctx.lineWidth = 1.5; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(mx + s * (cw + 6), my + 6); ctx.quadraticCurveTo(mx + s * (cw + 14), my + 16, mx + s * (cw + 10), my + 26); ctx.stroke() } }

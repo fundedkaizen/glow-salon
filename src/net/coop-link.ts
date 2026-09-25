@@ -1,71 +1,124 @@
-import type { GuestMessage, HostMessage } from '../core/coop/protocol.ts'
-
 /**
- * The browser side of the co-op relay (server/coop-relay.mjs): one WebSocket to /coop on the same server
- * that serves the game. The host opens a room and gets a five-letter code; guests join with it (the invite
- * link carries it as ?room=CODE). The relay numbers everyone (host 0, guests 1 to 3), forwards guests'
- * messages to the host with `from` set, and the host's messages to one guest (`to`) or all of them.
+ * The co-op connection: a WebSocket to the room relay (server/coop-relay.mjs, the same protocol as Dead
+ * Ink's). Players are numbered: the host 0, guests 1 to 3. Guests' messages reach the host marked with
+ * `from`; the host sends to one guest (`to`), all but one (`skip`), or everyone.
+ *
+ * The relay URL comes from VITE_COOP_URL at build time (production: wss://coop.kaizenbot.cloud/coop, shared
+ * by several games and kept apart by room codes), falling back to this page's own host at /coop (dev and
+ * preview, where the relay rides on the Vite server).
  */
-export type LinkEvents = {
-  onRoom: (code: string, role: 'host' | 'guest', id: number) => void
-  onPeer: (joined: boolean, id: number, hostLeft: boolean) => void
-  onHostMessage: (msg: HostMessage) => void
-  onGuestMessage: (msg: GuestMessage, from: number) => void
-  onError: (reason: string) => void
-  onClosed: () => void
+export type CoopRole = 'host' | 'guest'
+
+export type CoopStatus =
+  | { kind: 'idle' }
+  | { kind: 'connecting' }
+  | { kind: 'waiting'; code: string; link: string }
+  | { kind: 'paired'; code: string; link: string; role: CoopRole }
+  | { kind: 'alone'; code: string; link: string; role: CoopRole }
+  | { kind: 'error'; reason: string }
+
+export type CoopRoute = { to?: number; skip?: number }
+
+/** The largest frame this client sends; the relay's limit is 256 KB. */
+export const MAX_FRAME = 200_000
+
+export function relayUrl(): string {
+  const configured = (import.meta.env?.VITE_COOP_URL as string | undefined) || ''
+  if (configured) return configured
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${scheme}://${location.host}/coop`
 }
 
-export class CoopLink {
-  private ws: WebSocket
-  role: 'host' | 'guest' | null = null
-  id = -1
+/** The invite link for a room: this page with ?join=CODE. */
+export function inviteLink(code: string) {
+  const url = new URL(location.href)
+  url.search = ''
+  url.hash = ''
+  url.searchParams.set('join', code)
+  return url.toString()
+}
+
+export class CoopLink<Out extends { t: string }, In extends { t: string } = Out & { from?: number }> {
+  role: CoopRole | null = null
+  /** This player's number: the host 0, guests 1 to 3. */
+  id = 0
   code = ''
-  private ev: LinkEvents
-  private closedByUs = false
+  link = ''
+  /** Who else is connected: on the host its guests' numbers, on a guest 0 (the host) while it is there. */
+  readonly peers = new Set<number>()
+  private socket: WebSocket | null = null
+  private closed = false
+  private onMessage: (message: In) => void
+  private onStatus: (status: CoopStatus) => void
+  private onPeer: (id: number, joined: boolean) => void
 
-  private constructor(url: string, ev: LinkEvents) {
-    this.ev = ev
-    this.ws = new WebSocket(url)
-    this.ws.onmessage = e => this.receive(String(e.data))
-    this.ws.onerror = () => ev.onError('Could not reach the co-op server.')
-    this.ws.onclose = () => { if (!this.closedByUs) ev.onClosed() }
+  constructor(onMessage: (message: In) => void, onStatus: (status: CoopStatus) => void, onPeer: (id: number, joined: boolean) => void = () => {}) {
+    this.onMessage = onMessage
+    this.onStatus = onStatus
+    this.onPeer = onPeer
   }
 
-  private static url(room?: string) {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    return `${proto}://${location.host}/coop${room ? `?room=${encodeURIComponent(room)}` : ''}`
+  get paired() { return this.peers.size > 0 }
+  get active() { return !!this.socket && !this.closed }
+
+  /** Open a room as the host, or join `code` as a guest. */
+  open(code?: string) {
+    this.close()
+    this.closed = false
+    const socket = new WebSocket(`${relayUrl()}${code ? `?room=${encodeURIComponent(code)}` : ''}`)
+    this.socket = socket
+    this.onStatus({ kind: 'connecting' })
+    const timeout = setTimeout(() => {
+      if (this.socket !== socket || this.role) return
+      this.close()
+      this.onStatus({ kind: 'error', reason: 'Could not reach the co-op server. Check the connection and try again.' })
+    }, 6000)
+    socket.onmessage = event => {
+      let message: { t: string; [key: string]: unknown }
+      try { message = JSON.parse(String(event.data)) } catch { return }
+      if (message.t === 'room') {
+        clearTimeout(timeout)
+        this.role = message.you as CoopRole
+        this.id = Number(message.id ?? 0)
+        this.code = String(message.code)
+        this.link = inviteLink(this.code)
+        this.onStatus(this.role === 'host' ? { kind: 'waiting', code: this.code, link: this.link } : { kind: 'alone', code: this.code, link: this.link, role: 'guest' })
+      } else if (message.t === 'peer') {
+        const id = Number(message.id ?? 0)
+        if (message.joined) this.peers.add(id); else this.peers.delete(id)
+        this.onPeer(id, !!message.joined)
+        this.onStatus(this.paired ? { kind: 'paired', code: this.code, link: this.link, role: this.role! }
+          : message.hostLeft ? { kind: 'error', reason: 'Your friend closed their salon.' }
+          : this.role === 'host' ? { kind: 'waiting', code: this.code, link: this.link } : { kind: 'alone', code: this.code, link: this.link, role: 'guest' })
+      } else if (message.t === 'error') {
+        // The relay closes after an error; keep its reason rather than "the connection dropped".
+        this.closed = true
+        this.onStatus({ kind: 'error', reason: String(message.reason) })
+      } else this.onMessage(message as unknown as In)
+    }
+    socket.onclose = () => {
+      if (this.closed || this.socket !== socket) return
+      for (const id of [...this.peers]) { this.peers.delete(id); this.onPeer(id, false) }
+      this.onStatus({ kind: 'error', reason: 'The connection dropped.' })
+    }
+    socket.onerror = () => { if (this.socket === socket && !this.role) this.onStatus({ kind: 'error', reason: 'Could not reach the co-op server.' }) }
   }
 
-  static host(ev: LinkEvents) { return new CoopLink(CoopLink.url(), ev) }
-  static join(code: string, ev: LinkEvents) { return new CoopLink(CoopLink.url(code.trim().toUpperCase()), ev) }
-
-  /** The link friends open to join this room. */
-  inviteUrl() {
-    const u = new URL(location.href)
-    u.search = ''
-    u.searchParams.set('room', this.code)
-    return u.toString()
+  /** Send to the host (from a guest), or from the host to the guests `route` names (all of them by default). */
+  send(message: Out, route?: CoopRoute) {
+    if (this.socket?.readyState !== WebSocket.OPEN || !this.paired) return
+    const text = JSON.stringify(route ? { ...message, ...route } : message)
+    // The relay drops (and may be shared by other games): never send a frame near its 256 KB limit.
+    if (text.length > MAX_FRAME) { console.warn(`co-op: dropped a ${message.t} message of ${text.length} bytes`); return }
+    this.socket.send(text)
   }
 
-  private receive(text: string) {
-    let m: Record<string, unknown>
-    try { m = JSON.parse(text) } catch { return }
-    if (!m || typeof m !== 'object') return
-    if (m.t === 'room') { this.code = String(m.code); this.role = m.you === 'host' ? 'host' : 'guest'; this.id = Number(m.id); this.ev.onRoom(this.code, this.role, this.id); return }
-    if (m.t === 'error') { this.ev.onError(String(m.reason ?? 'Something went wrong.')); return }
-    if (m.t === 'peer') { this.ev.onPeer(!!m.joined, Number(m.id), !!m.hostLeft); return }
-    if (this.role === 'host' && typeof m.from === 'number') { const { from, ...rest } = m; this.ev.onGuestMessage(rest as unknown as GuestMessage, from as number); return }
-    if (this.role === 'guest') this.ev.onHostMessage(m as unknown as HostMessage)
+  close() {
+    this.closed = true
+    for (const id of [...this.peers]) { this.peers.delete(id); this.onPeer(id, false) }
+    this.role = null
+    this.id = 0
+    this.socket?.close()
+    this.socket = null
   }
-
-  /** A guest's message to the host. */
-  toHost(msg: GuestMessage) { this.raw(msg) }
-  /** A host's message to one guest, or to every guest. */
-  toGuest(msg: HostMessage, to?: number) { this.raw(to === undefined ? msg : { ...msg, to }) }
-
-  private raw(msg: unknown) { if (this.ws.readyState === 1) this.ws.send(JSON.stringify(msg)) }
-
-  get open() { return this.ws.readyState === 1 }
-
-  close() { this.closedByUs = true; this.ws.close() }
 }

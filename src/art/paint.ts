@@ -141,16 +141,32 @@ export function taper(ctx: Ctx, x0: number, y0: number, cx: number, cy: number, 
   ctx.fill()
 }
 
-/** Terry-cloth texture (towels, headbands): tiny loops as noisy dots. */
+/**
+ * Soft terry cloth (towels, robes, headbands): a fine, low-contrast pile, softened so it reads as fabric at
+ * any zoom rather than as grain, plus a few broad soft folds.
+ */
 export function terry(ctx: Ctx, x: number, y: number, w: number, h: number, base: RGB, seed: number, density = 0.012) {
   const r = makeRng(seed)
-  const count = Math.floor(w * h * density)
+  const [pile, pctx] = canvas(Math.max(1, Math.ceil(w)), Math.max(1, Math.ceil(h)))
+  const count = Math.floor(w * h * Math.min(density, 0.02))
   for (let i = 0; i < count; i++) {
-    const px = x + r() * w, py = y + r() * h
-    const rr = r.range(1.2, 3.2)
-    ctx.fillStyle = rgba(shade(base, r.range(-0.12, 0.14)), r.range(0.35, 0.8))
-    ctx.beginPath()
-    ctx.arc(px, py, rr, 0, Math.PI * 2)
-    ctx.fill()
+    pctx.fillStyle = rgba(shade(base, r.range(-0.05, 0.06)), r.range(0.25, 0.5))
+    pctx.beginPath()
+    pctx.arc(r() * w, r() * h, r.range(1.2, 2.6), 0, Math.PI * 2)
+    pctx.fill()
   }
+  ctx.save()
+  ctx.filter = 'blur(0.9px)'
+  ctx.drawImage(pile, x, y)
+  ctx.restore()
+  // Broad folds: soft light and shadow bands.
+  ctx.save()
+  ctx.filter = `blur(${Math.max(6, Math.min(w, h) * 0.08)}px)`
+  for (let i = 0; i < Math.max(2, Math.round((w + h) / 260)); i++) {
+    const fx = x + r() * w, fy = y + r() * h
+    ctx.strokeStyle = rgba(r() < 0.5 ? shade(base, 0.25) : shade(base, -0.12), 0.35)
+    ctx.lineWidth = Math.max(6, Math.min(w, h) * 0.06)
+    ctx.beginPath(); ctx.moveTo(fx - w * 0.2, fy); ctx.quadraticCurveTo(fx, fy + r.range(-30, 30), fx + w * 0.25, fy + r.range(-20, 20)); ctx.stroke()
+  }
+  ctx.restore()
 }
