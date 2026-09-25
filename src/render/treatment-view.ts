@@ -1874,9 +1874,12 @@ export class TreatmentView {
       before.mask = mask
       const divider = new Graphics()
       const labels = new Container()
+      // Just inside the top of what the reveal camera shows (a pedicure's view starts lower than a face's).
+      const viewTop = this.camGoal.y - ((this.view.h - this.view.top - this.view.bottom) / 2) / (this.fit * this.camGoal.zoom)
+      const labelY = Math.max(90, viewTop + 34)
       const label = (text: string, x: number) => {
         const tx = new Text({ text, style: { fontFamily: 'Fredoka, Nunito, sans-serif', fontSize: 34, fontWeight: '600', fill: 0xffffff, dropShadow: { color: 0x9a4a6a, blur: 6, distance: 0, alpha: 0.8 } } })
-        tx.anchor.set(0.5); tx.position.set(x, 90); labels.addChild(tx)
+        tx.anchor.set(0.5); tx.position.set(x, labelY); labels.addChild(tx)
       }
       label('Before', 256); label('After', 768)
       labels.alpha = 0
