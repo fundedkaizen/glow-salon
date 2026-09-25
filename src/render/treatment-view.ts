@@ -104,6 +104,7 @@ export class TreatmentView {
   private loopLevel = 0
   private flush = 0
   private peelShown = 0
+  private peelGrip: { x: number; y: number } | null = null
   private peelTension = 0
   private lampTimer = 0
   private myLamp: { x: number; y: number } | null = null
@@ -131,6 +132,9 @@ export class TreatmentView {
     const backdrop = new Sprite(this.assets.backdrop)
     backdrop.position.set(-BACKDROP_OFFSET, -BACKDROP_OFFSET)
     this.photoRoot.addChild(backdrop, this.artRoot)
+    // Squash and wobble around the middle of the face, not the sheet's corner.
+    this.artRoot.pivot.set(512, 540)
+    this.artRoot.position.set(512, 540)
     this.artRoot.addChild(this.surface.root, this.foam.root, this.featuresLayer)
     this.surface.insertBelow(treatment === 'facial' ? 'cream' : 'scrub', this.targetsLayer)
     this.world.addChild(this.photoRoot, this.overFx, this.flap, this.fx.root, this.revealLayer, this.toolLayer)
@@ -155,6 +159,9 @@ export class TreatmentView {
         done: () => { sfx.click(); if (this.result) this.opts.onFinish(this.result, this.foam.made) },
       },
     })
+    // Resumed after the mask dried: it is dry clay now.
+    const dryIndex = this.session.def.steps.findIndex(st => st.id === 'dry')
+    if (dryIndex >= 0 && this.session.status[dryIndex] === 'done') { this.surface.setLayerMix('mask', 1); this.surface.setLayerGloss('mask', 0.05) }
     // Steps this customer will never need drop off the tray up front.
     this.session.def.steps.forEach((s, i) => {
       const noTargets = s.need === 'targets' && s.targets !== 'patch' && !this.session.targets.some(t => t.kind === s.targets)
@@ -788,24 +795,46 @@ export class TreatmentView {
     g.clear()
     if (hi - lo < 20) return
     const wob = stuck ? Math.sin(this.time * 38) * this.peelTension * 10 : 0
-    const thick = 12 + this.peelShown * 30 + (stuck ? this.peelTension * 18 : 0)
-    const x0 = lo + 26, x1 = hi - 26
+    const thick = 10 + this.peelShown * 26 + (stuck ? this.peelTension * 16 : 0)
+    const x0 = lo + 22, x1 = hi - 22
     const front = (x: number) => lineY + peelCurve(x)
-    // The sheet being lifted: its underside faces us, darker toward the fold, flecked with the gunk it pulled out.
-    const hang = 18 + (this.down ? 22 : 8)
-    const lip = (x: number) => front(x) - hang - thick * 0.5 + Math.sin(x * 0.05 + this.time * 2) * 2 + wob
-    const pts: number[] = []
-    for (let x = x0; x <= x1; x += 16) pts.push(x, front(x))
-    for (let x = x1; x >= x0; x -= 16) pts.push(x, lip(x))
-    g.poly(pts).fill({ color: 0xb9dfcf, alpha: 0.97 })
-    const inner: number[] = []
-    for (let x = x0 + 8; x <= x1 - 8; x += 16) inner.push(x, front(x) - hang * 0.35)
-    for (let x = x1 - 8; x >= x0 + 8; x -= 16) inner.push(x, lip(x) + 4)
-    g.poly(inner).fill({ color: 0x9ccbb7, alpha: 0.6 })
-    for (let i = 0; i < 34; i++) {
-      const fx = x0 + 10 + ((i * 97) % Math.max(1, Math.floor(x1 - x0 - 20)))
-      const fy = front(fx) - 6 - ((i * 53) % Math.max(1, Math.floor(hang)))
-      g.circle(fx, fy, 1.6 + (i % 3) * 0.8).fill({ color: 0x6b5a48, alpha: 0.5 })
+    // Fresh skin behind the front: dewy, a little flushed.
+    if (this.peelShown > 0.02) {
+      for (let x = x0 + 30; x < x1 - 30; x += 70) this.surface.stamp(WET, x, front(x) + 30, 60, 0.12)
+      const skinU = this.surface.skin.uniforms.uniforms.uSkin
+      skinU[0] = Math.max(skinU[0], 0.35)
+    }
+    // The sheet curls up and back over itself: the matte, paler underside faces us.
+    const hang = 26 + (this.down ? 26 : 10) + this.peelShown * 20
+    const lip = (x: number) => front(x) - hang - thick * 0.4 + Math.sin(x * 0.045 + this.time * 2.2) * 2.5 + wob
+    const arc = (x: number, t: number) => front(x) + (lip(x) - front(x)) * t - Math.sin(Math.PI * t) * 10
+    // A soft shadow the curl casts on the face below the front.
+    for (let k = 0; k < 4; k++) {
+      const band: number[] = []
+      for (let x = x0; x <= x1; x += 16) band.push(x, front(x) + 2)
+      for (let x = x1; x >= x0; x -= 16) band.push(x, front(x) + 10 + k * 7)
+      g.poly(band).fill({ color: 0x6a3a4a, alpha: 0.07 })
+    }
+    // The underside, shaded from the fold (darker) to the lip (lighter).
+    for (let k = 0; k < 14; k++) {
+      const t0 = k / 14, t1 = (k + 1) / 14
+      const strip: number[] = []
+      for (let x = x0; x <= x1; x += 16) strip.push(x, arc(x, t0))
+      for (let x = x1; x >= x0; x -= 16) strip.push(x, arc(x, t1) - 0.5)
+      const shadeK = 0.78 + 0.22 * t1
+      const c = ((Math.round(0xd4 * shadeK) << 16) | (Math.round(0xee * shadeK) << 8) | Math.round(0xe2 * shadeK))
+      g.poly(strip).fill({ color: c, alpha: 0.98 })
+    }
+    // What it pulled out of the pores: dark specks and little creamy plugs, more the further it goes.
+    const count = Math.round(20 + this.peelShown * 50)
+    for (let i = 0; i < count; i++) {
+      const fx = x0 + 8 + ((i * 97 + 13) % Math.max(1, Math.floor(x1 - x0 - 16)))
+      const t = 0.15 + ((i * 37) % 70) / 100
+      const fy = arc(fx, t)
+      if (i % 3 === 0) {
+        g.ellipse(fx, fy, 1.8, 4.2).fill({ color: 0xf7ecc4, alpha: 0.95 })
+        g.circle(fx, fy - 3.4, 1.6).fill({ color: 0x5a4636, alpha: 0.9 })
+      } else g.circle(fx, fy, 1.2 + (i % 4) * 0.5).fill({ color: 0x5e4a3a, alpha: 0.55 })
     }
     // The rolled lip: a soft tube, light on top and shaded beneath, following the curve.
     const tube = (dy: number, w: number, color: number, alpha: number) => {
@@ -813,9 +842,11 @@ export class TreatmentView {
       for (let x = x0; x <= x1; x += 12) g.lineTo(x, lip(x) + dy)
       g.stroke({ width: w, color, alpha, cap: 'round' })
     }
-    tube(0, thick, 0xa9d9c4, 1)
-    tube(-thick * 0.22, thick * 0.35, 0xe8f8f0, 0.9)
-    tube(thick * 0.25, thick * 0.25, 0x7fb9a2, 0.7)
+    tube(0, thick, 0x9fd8bf, 1)
+    tube(-thick * 0.24, thick * 0.34, 0xe9fbf2, 0.95)
+    tube(thick * 0.26, thick * 0.24, 0x6fb497, 0.75)
+    // The fingers hold the lip where the pointer is.
+    this.peelGrip = { x: Math.max(x0 + 20, Math.min(x1 - 20, this.pos.x)), y: lip(this.pos.x) }
     // Before it is lifted: a curled corner at the chin to grab.
     if (!this.session.peel.unstuck) {
       const cy = PEEL_FROM - 12
@@ -831,6 +862,9 @@ export class TreatmentView {
     this.world.addChild(piece)
     g.clear(); g.visible = false
     this.flying.push({ g: piece, t: 0, vx: 60, vy: -1100, spin: 0.8 })
+    this.peelGrip = null
+    // The face gives a little wobble as the sheet lets go.
+    this.animate(0.5, t => { const k = Math.sin(t * Math.PI * 3) * (1 - t) * 0.012; this.artRoot.scale.set(1 - k, 1 + k) })
     for (let i = 0; i < 26; i++) this.fx.spawn({ texture: bits.flake(), x: 300 + Math.random() * 424, y: 300 + Math.random() * 200, vx: (Math.random() - 0.5) * 500, vy: -300 - Math.random() * 500, gravity: 1400, spin: (Math.random() - 0.5) * 12, life: 1, scale: 0.3 + Math.random() * 0.4, alpha: 1, alphaEnd: 0.5 })
     this.burstSparkles(512, 520, 18, 600)
   }
@@ -949,7 +983,7 @@ export class TreatmentView {
     if (step.id === 'dry') {
       const d = this.session.hold
       this.surface.setLayerMix('mask', d)
-      this.surface.setLayerGloss('mask', 0.55 - 0.5 * d)
+      this.surface.setLayerGloss('mask', 0.8 - 0.75 * d)
       if (holding && Math.random() < dt * 30) this.fx.spawn({ texture: bits.streak(), x: this.pos.x + (Math.random() - 0.5) * 200, y: this.pos.y - 150, vx: (Math.random() - 0.5) * 60, vy: 700, life: 0.4, scale: 0.6, alpha: 0.35, alphaEnd: 0, stretch: 2, tint: 0xffffff })
     }
     if (step.id === 'moisturize') skinU[3] = Math.min(0.9, this.session.progress())
@@ -1023,6 +1057,8 @@ export class TreatmentView {
     const base = step?.tool === 'towel' ? 1 : 0.9
     const pinch = step?.gesture === 'targets' && this.down ? 0.08 : 0
     this.tool.position.set(this.toolPos.x, this.toolPos.y)
+    // Peeling: the fingers pinch the rolled lip of the sheet instead of floating at the pointer.
+    if (step?.gesture === 'peel' && this.grabbing && this.peelGrip) { this.tool.position.set(this.peelGrip.x, this.peelGrip.y); rot = -0.2 }
     this.tool.rotation = rot
     this.tool.scale.set(base * (1 + this.press * 0.04 - pinch), base * (1 - this.press * 0.07))
     this.tool.alpha = this.down ? 1 : 0.85

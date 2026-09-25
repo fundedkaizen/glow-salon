@@ -329,8 +329,30 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
   ctx.save()
   faceClip(ctx)
   blurred(ctx, 16, () => { ctx.fillStyle = rgba(skin.deep, 0.35); ctx.beginPath(); ctx.ellipse(512, 214, 380, 150, 0, 0, Math.PI * 2); ctx.fill() })
-  ctx.fillStyle = rgba(hair.base)
-  ctx.beginPath(); ctx.ellipse(512, 196, 372, 132, 0, 0, Math.PI * 2); ctx.fill()
+  {
+    const cg = ctx.createLinearGradient(0, 60, 0, 330)
+    cg.addColorStop(0, rgba(hair.dark)); cg.addColorStop(0.6, rgba(hair.base)); cg.addColorStop(1, rgba(mixRGB(hair.base, hair.dark, 0.4)))
+    ctx.fillStyle = cg
+    ctx.beginPath(); ctx.ellipse(512, 196, 372, 132, 0, 0, Math.PI * 2); ctx.fill()
+    // Strands swept back from the hairline to the crown.
+    for (let i = 0; i < 420; i++) {
+      const x = r.range(150, 874)
+      const y0 = 196 + 132 * Math.sqrt(Math.max(0, 1 - ((x - 512) / 372) ** 2))
+      const tx = 512 + (x - 512) * r.range(0.15, 0.4), ty = r.range(40, 90)
+      const tone = r() < 0.35 ? hair.light : r() < 0.5 ? hair.dark : shade(hair.base, 0.08)
+      ctx.strokeStyle = rgba(tone, r.range(0.15, 0.45))
+      ctx.lineWidth = r.range(1, 2.6)
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.quadraticCurveTo(x + (tx - x) * 0.3, (y0 + ty) / 2 + 20, tx, ty); ctx.stroke()
+    }
+    // The sheen band across the top of the head.
+    blurred(ctx, 12, () => {
+      ctx.globalCompositeOperation = 'screen'
+      ctx.strokeStyle = rgba(hair.light, 0.3)
+      ctx.lineWidth = 30
+      ctx.beginPath(); ctx.ellipse(512, 250, 330, 120, 0, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke()
+      ctx.globalCompositeOperation = 'source-over'
+    })
+  }
   for (let i = 0; i < 160; i++) {
     const x = r.range(180, 844)
     const y0 = 196 + 132 * Math.sqrt(Math.max(0, 1 - ((x - 512) / 372) ** 2)) - 8
@@ -705,10 +727,33 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
 }
 
 /** The mint clay mask, wet (glossy, brush-streaked) or dry (paler, matte, cracked). */
+/** The peel mask's outline: the face, minus organic cut-outs around each eye and brow and around the lips. */
+function maskClip(ctx: Ctx) {
+  ctx.beginPath()
+  smoothPath(ctx, FACE.outline)
+  // Around each eye and brow together: a soft rounded window.
+  for (const [i, e] of FACE.eyes.entries()) {
+    const side = i === 0 ? -1 : 1
+    const b = FACE.brows[i]
+    const pts = [
+      e.x - side * 96, e.y + 6, e.x - side * 70, b.y - 22, e.x - side * 10, b.y - 34, e.x + side * 64, b.y - 30, e.x + side * 104, b.y + 4,
+      e.x + side * 100, e.y + 16, e.x + side * 60, e.y + 42, e.x - side * 8, e.y + 46, e.x - side * 62, e.y + 36,
+    ]
+    const path = side < 0 ? pts : pts.reduceRight<number[]>((acc, _, k, arr) => (k % 2 === 1 ? acc.concat([arr[k - 1], arr[k]]) : acc), [])
+    smoothPath(ctx, path)
+  }
+  // Around the lips: follows the cupid's bow.
+  const l = FACE.lips
+  smoothPath(ctx, [l.x - 104, l.y + 4, l.x - 60, l.y - 36, l.x, l.y - 30, l.x + 60, l.y - 36, l.x + 104, l.y + 4, l.x + 60, l.y + 50, l.x, l.y + 58, l.x - 60, l.y + 50])
+  ctx.moveTo(512 + 372, 196)
+  ctx.ellipse(512, 196, 372, 138, 0, 0, Math.PI * 2)
+  ctx.clip('evenodd')
+}
+
 function paintClay(dry: boolean, seed: number) {
-  return clipped(S, (ctx) => {
-    const base: RGB = dry ? [210, 238, 224] : [152, 216, 192]
-    ctx.fillStyle = rgba(base)
+  const sheet = clipped(S, (ctx) => {
+    const base: RGB = dry ? [206, 236, 222] : [112, 206, 164]
+    ctx.fillStyle = rgba(base, dry ? 1 : 0.9)
     ctx.fillRect(0, 0, S, S)
     const r = makeRng(seed + 111)
     // Brush streaks.
@@ -733,8 +778,31 @@ function paintClay(dry: boolean, seed: number) {
         ctx.stroke()
       }
       specks(ctx, 1, 1200, [236, 250, 244], 1, 2.5, 0.3, 0.7, seed + 113)
+    } else {
+      // Tiny air bubbles caught in the gel, and a sheen.
+      for (let i = 0; i < 160; i++) { const x = r.range(220, 800), y = r.range(320, 900), rr = r.range(1.5, 4.5); blob(ctx, x, y, rr, rr, [236, 255, 246], 0.7, 0.4); blob(ctx, x - rr * 0.3, y - rr * 0.3, rr * 0.35, rr * 0.3, [255, 255, 255], 0.95) }
+      blob(ctx, 420, 420, 200, 90, [230, 255, 244], 0.25)
     }
-  })
+  }, maskClip)
+  // Thickness at the edges: a darker rim just inside every cut edge, lighter on the top of each lip.
+  const [rim, rctx] = canvas(S)
+  rctx.drawImage(sheet, 0, 0)
+  rctx.globalCompositeOperation = 'source-in'
+  rctx.fillStyle = dry ? 'rgba(150,190,172,1)' : 'rgba(60,150,112,1)'
+  rctx.fillRect(0, 0, S, S)
+  const [inner, ictx] = canvas(S)
+  ictx.filter = 'blur(5px)'
+  ictx.drawImage(sheet, 0, 0)
+  rctx.globalCompositeOperation = 'destination-out'
+  rctx.drawImage(inner, 0, 0)
+  rctx.drawImage(inner, 0, 0)
+  const ctx = sheet.getContext('2d')!
+  ctx.globalAlpha = dry ? 0.5 : 0.75
+  ctx.globalCompositeOperation = 'source-atop'
+  ctx.drawImage(rim, 0, 0)
+  ctx.globalAlpha = 1
+  ctx.globalCompositeOperation = 'source-over'
+  return sheet
 }
 
 // ------------------------------------------------------------------ expressions
