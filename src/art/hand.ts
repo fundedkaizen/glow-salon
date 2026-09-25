@@ -54,7 +54,8 @@ function fillShapes(ctx: Ctx, shapes: Shape[], style: string) {
  */
 let WIDE = 1
 
-export function fingerOutline(f: Finger, bow = 0): number[] {
+/** A finger's painted frame: its centre line (bowed) and half-width at t (0 the knuckle, 1 the tip). */
+function fingerFrame(f: Finger, bow = BOW[f.name] ?? 0) {
   const d = fingerDir(f), n = { x: -d.y, y: d.x }
   const len = Math.hypot(f.tip.x - f.base.x, f.tip.y - f.base.y)
   const joints = f.name === 'thumb' ? [0.5] : [0.42, 0.72]
@@ -68,6 +69,13 @@ export function fingerOutline(f: Finger, bow = 0): number[] {
     const off = bow * Math.sin(Math.PI * t) * (1 - t)
     return { x: f.base.x + d.x * len * t + n.x * off, y: f.base.y + d.y * len * t + n.y * off }
   }
+  /** A point on the finger's side: side +1 along n, -1 against it. */
+  const edge = (t: number, side: number) => { const c = center(t), w = width(t); return { x: c.x + n.x * w * side, y: c.y + n.y * w * side } }
+  return { d, n, len, width, center, edge }
+}
+
+export function fingerOutline(f: Finger, bow = 0): number[] {
+  const { n, len, width, center } = fingerFrame(f, bow)
   const left: number[] = [], right: number[] = []
   const tEnd = 1 - f.r1 / len
   const t0 = f.name === 'thumb' ? -0.35 : -0.12
@@ -91,20 +99,92 @@ export function fingerOutline(f: Finger, bow = 0): number[] {
 
 const BOW: Record<string, number> = { thumb: -6, index: 5, middle: 2, ring: -4, pinky: -8 }
 
-/** The hand's silhouette as a white-on-transparent canvas, softened at the webbing. */
+type P = { x: number; y: number }
+type Frame = ReturnType<typeof fingerFrame>
+
+/** Which side of a finger (+1 along its n, -1 against) faces a point. */
+const sideToward = (fr: Frame, f: Finger, o: P) => Math.sign(fr.n.x * (o.x - f.base.x) + fr.n.y * (o.y - f.base.y)) || 1
+
+/**
+ * The webs of skin between neighbouring fingers: each a U whose sides run up the two fingers' facing sides and
+ * whose bottom dips between the knuckles. `top` is where it leaves each finger, `low` its lowest point.
+ */
+function webs(): { top: [P, P]; low: P; ctl: P; d: P }[] {
+  const out: { top: [P, P]; low: P; ctl: P; d: P }[] = []
+  for (let i = 1; i < HAND.fingers.length - 1; i++) {
+    const a = HAND.fingers[i], b = HAND.fingers[i + 1]
+    const fa = fingerFrame(a), fb = fingerFrame(b)
+    const A = fa.edge(0.2, sideToward(fa, a, b.base)), B = fb.edge(0.2, sideToward(fb, b, a.base))
+    const d = { x: (fa.d.x + fb.d.x) / 2, y: (fa.d.y + fb.d.y) / 2 }
+    const low = { x: (a.base.x + b.base.x) / 2 + d.x * 34, y: (a.base.y + b.base.y) / 2 + d.y * 34 }
+    // The quadratic that passes through `low` at its middle.
+    const ctl = { x: 2 * low.x - (A.x + B.x) / 2, y: 2 * low.y - (A.y + B.y) / 2 }
+    out.push({ top: [A, B], low, ctl, d })
+  }
+  return out
+}
+
+/** Between the thumb and the index finger: the web's concave curve, from the thumb's side to the index finger's. */
+function thumbWeb() {
+  const th = HAND.fingers[0], ix = HAND.fingers[1]
+  const thumb = fingerFrame(th), index = fingerFrame(ix)
+  const T = thumb.edge(0.34, sideToward(thumb, th, ix.base))
+  const I = index.edge(0.12, sideToward(index, ix, th.base))
+  // A curve that leaves each side along it (down the thumb, down the index finger), so the edges flow into it.
+  const c1 = { x: T.x - thumb.d.x * 70, y: T.y - thumb.d.y * 70 }, c2 = { x: I.x - index.d.x * 80, y: I.y - index.d.y * 80 }
+  const low = { x: 0.125 * T.x + 0.375 * c1.x + 0.375 * c2.x + 0.125 * I.x, y: 0.125 * T.y + 0.375 * c1.y + 0.375 * c2.y + 0.125 * I.y }
+  const path = (k: Ctx) => { k.moveTo(T.x, T.y); k.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, I.x, I.y) }
+  return { T, I, low, path }
+}
+
+/** The thenar pad: the fleshy base of the thumb, where it grows out of the side of the palm. */
+function thenar(): { x: number; y: number; rx: number; ry: number; rot: number } {
+  const f = HAND.fingers[0], fr = fingerFrame(f)
+  const c = fr.center(-0.1)
+  const inward = sideToward(fr, f, { x: 520, y: 760 })
+  return { x: c.x + fr.n.x * 12 * inward, y: c.y + fr.n.y * 12 * inward, rx: fr.len * 0.4, ry: f.r0 * 1.15 * WIDE, rot: Math.atan2(fr.d.y, fr.d.x) }
+}
+
+/**
+ * The hand's silhouette as one form (white on transparent): the palm, the thumb growing from its side over the
+ * thenar pad, the fingers, the webs between them and the concave web between the thumb and the index finger.
+ */
 function silhouette(): HTMLCanvasElement {
   const [c, ctx] = canvas(S)
   ctx.fillStyle = '#fff'
   // The palm, widened about its middle for a broader hand.
   ctx.beginPath(); smoothPath(ctx, HAND.palm.map((v, i) => (i % 2 ? v : 530 + (v - 530) * WIDE))); ctx.fill()
-  for (const f of HAND.fingers) { ctx.beginPath(); smoothPath(ctx, fingerOutline(f, BOW[f.name])); ctx.fill() }
-  // The web of skin between the thumb and the index finger.
-  ctx.beginPath(); ctx.moveTo(336, 800); ctx.quadraticCurveTo(330, 660, 410, 620); ctx.lineTo(420, 720); ctx.closePath(); ctx.fill()
-  // Webbing between the fingers, so they join the palm smoothly.
-  for (let i = 1; i < HAND.fingers.length - 1; i++) {
-    const a = HAND.fingers[i], b = HAND.fingers[i + 1]
-    ctx.beginPath(); ctx.ellipse((a.base.x + b.base.x) / 2, (a.base.y + b.base.y) / 2 + 26, 40, 34, 0, 0, Math.PI * 2); ctx.fill()
+  const th = thenar()
+  ctx.beginPath(); ctx.ellipse(th.x, th.y, th.rx, th.ry, th.rot, 0, Math.PI * 2); ctx.fill()
+  // The pinky's outer side runs smoothly down into the edge of the palm.
+  {
+    const pk = HAND.fingers[4], fr = fingerFrame(pk)
+    const P0 = fr.edge(0.18, sideToward(fr, pk, { x: 1024, y: pk.base.y })), P1 = { x: 530 + (716 - 530) * WIDE, y: 760 }
+    ctx.beginPath(); ctx.moveTo(P0.x, P0.y); ctx.quadraticCurveTo(P1.x + 4, (P0.y + P1.y) / 2, P1.x, P1.y); ctx.lineTo(pk.base.x - 40, 760); ctx.lineTo(pk.base.x, pk.base.y); ctx.closePath(); ctx.fill()
   }
+  for (const w of webs()) {
+    const [A, B] = w.top
+    ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.quadraticCurveTo(w.ctl.x, w.ctl.y, B.x, B.y)
+    ctx.lineTo(B.x - w.d.x * 90, B.y - w.d.y * 90); ctx.lineTo(A.x - w.d.x * 90, A.y - w.d.y * 90); ctx.closePath(); ctx.fill()
+  }
+  // The thumb web: take away the palm's corner outside its concave curve, then fill up to the curve.
+  const tw = thumbWeb()
+  ctx.globalCompositeOperation = 'destination-out'
+  ctx.beginPath(); tw.path(ctx)
+  // On up the index finger's side (refilled below), so no corner of the palm is left standing beside it.
+  const ixF = HAND.fingers[1], ixR = fingerFrame(ixF), up = ixR.edge(0.4, sideToward(ixR, ixF, HAND.fingers[0].base))
+  ctx.lineTo(up.x, up.y); ctx.lineTo(up.x - 160, up.y); ctx.lineTo(tw.T.x - 140, tw.T.y - 80); ctx.closePath(); ctx.fill()
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.beginPath(); tw.path(ctx); ctx.lineTo(tw.low.x + 70, tw.low.y + 30); ctx.closePath(); ctx.fill()
+  for (const f of HAND.fingers) { ctx.beginPath(); smoothPath(ctx, fingerOutline(f, BOW[f.name])); ctx.fill() }
+  // The fingers' flared bases must not poke past the thumb web: clear a band just outside its curve, then put the
+  // thumb (which the band crosses at its root) back.
+  const mx = (tw.T.x + tw.I.x) / 2 - tw.low.x, my = (tw.T.y + tw.I.y) / 2 - tw.low.y, ml = Math.hypot(mx, my) || 1
+  const ox = (mx / ml) * 40, oy = (my / ml) * 40
+  ctx.globalCompositeOperation = 'destination-out'
+  ctx.beginPath(); tw.path(ctx); ctx.lineTo(tw.I.x + ox, tw.I.y + oy); ctx.lineTo(tw.low.x + ox * 1.5, tw.low.y + oy * 1.5); ctx.lineTo(tw.T.x + ox, tw.T.y + oy); ctx.closePath(); ctx.fill()
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.beginPath(); smoothPath(ctx, fingerOutline(HAND.fingers[0], BOW.thumb)); ctx.fill()
   return c
 }
 
@@ -221,17 +301,37 @@ function paintHandArt(look: Look, seed: number, profile: HandProfile, masc: bool
   sctx.drawImage(fbm(S, 50, 4, seed + 1), 0, 0)
   sctx.globalAlpha = 1
   sctx.globalCompositeOperation = 'source-over'
-  blob(sctx, 540, 760, 200, 170, skin.light, 0.4)
-  // Fingers: rounded like cylinders, lit from the top left, warm at the tips.
+  // The back of the hand is a low dome: lit high on the left, turning away toward the little finger's side.
+  blob(sctx, 505, 730, 210, 175, skin.light, 0.4)
+  // The thenar pad, rounded under the same light, with the thumb's metacarpal ridge along it.
+  {
+    const tn = thenar()
+    sctx.save(); sctx.translate(tn.x, tn.y); sctx.rotate(tn.rot)
+    blob(sctx, -tn.rx * 0.1, -tn.ry * 0.25, tn.rx * 0.8, tn.ry * 0.55, skin.light, 0.3)
+    blob(sctx, tn.rx * 0.05, tn.ry * 0.55, tn.rx * 0.9, tn.ry * 0.45, skin.shadow, 0.22)
+    sctx.restore()
+  }
+  // Fingers: rounded like cylinders under the same light, warm at the tips. The shading fades out toward the
+  // knuckle, so each finger grows out of the back of the hand with no seam; the one silhouette rim (below)
+  // draws every edge.
+  const [fc, fctx] = canvas(S)
   for (const f of HAND.fingers) {
-    const d = fingerDir(f)
-    const n = { x: -d.y, y: d.x }
-    const mid = { x: (f.base.x + f.tip.x) / 2, y: (f.base.y + f.tip.y) / 2 }
-    const g = sctx.createLinearGradient(mid.x - n.x * f.r0, mid.y - n.y * f.r0, mid.x + n.x * f.r0, mid.y + n.y * f.r0)
-    g.addColorStop(0, rgba(skin.shadow, 0.55)); g.addColorStop(0.35, rgba(skin.light, 0.35)); g.addColorStop(0.65, rgba(skin.base, 0)); g.addColorStop(1, rgba(skin.shadow, 0.6))
-    sctx.fillStyle = g
-    sctx.beginPath(); smoothPath(sctx, fingerOutline(f, BOW[f.name])); sctx.fill()
-    blurred(sctx, 5, () => { sctx.strokeStyle = rgba(skin.shadow, 0.45); sctx.lineWidth = 8; sctx.beginPath(); smoothPath(sctx, fingerOutline(f, BOW[f.name])); sctx.stroke() })
+    const fr = fingerFrame(f)
+    const d = fr.d, n = fr.n
+    const mid = fr.center(0.5)
+    fctx.clearRect(0, 0, S, S)
+    const g = fctx.createLinearGradient(mid.x - n.x * f.r0, mid.y - n.y * f.r0, mid.x + n.x * f.r0, mid.y + n.y * f.r0)
+    g.addColorStop(0, rgba(skin.shadow, 0.5)); g.addColorStop(0.35, rgba(skin.light, 0.35)); g.addColorStop(0.65, rgba(skin.base, 0)); g.addColorStop(1, rgba(skin.shadow, 0.5))
+    fctx.fillStyle = g
+    fctx.beginPath(); smoothPath(fctx, fingerOutline(f, BOW[f.name])); fctx.fill()
+    // Fade in from the knuckle (the thumb from over its pad).
+    const from = fr.center(f.name === 'thumb' ? -0.1 : -0.06), to = fr.center(f.name === 'thumb' ? 0.32 : 0.24)
+    const fade = fctx.createLinearGradient(from.x, from.y, to.x, to.y)
+    fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)')
+    fctx.globalCompositeOperation = 'destination-in'
+    fctx.fillStyle = fade; fctx.fillRect(0, 0, S, S)
+    fctx.globalCompositeOperation = 'source-over'
+    sctx.drawImage(fc, 0, 0)
     blob(sctx, f.tip.x - d.x * 20, f.tip.y - d.y * 20, f.r1 * 1.1, f.r1 * 1.1, skin.blush, 0.3)
     // Knuckle creases: two joints on each finger (one on the thumb).
     const joints = f.name === 'thumb' ? [0.5] : [0.42, 0.7]
@@ -256,12 +356,19 @@ function paintHandArt(look: Look, seed: number, profile: HandProfile, masc: bool
       }
     }
   }
-  // Knuckles on the back of the hand, and faint tendons toward the wrist.
+  // Knuckles along the back of the hand: each a rounded rise, lit on top (the light is high on the left), turning
+  // into a soft shadow on its lower right; a shallow valley between each pair.
   for (const f of HAND.fingers.slice(1)) {
-    blob(sctx, f.base.x - 4, f.base.y + 18, 34, 24, skin.light, 0.55)
-    blob(sctx, f.base.x + 10, f.base.y + 36, 28, 16, skin.shadow, 0.2)
-    blurred(sctx, 6, () => { sctx.strokeStyle = rgba(skin.light, 0.25); sctx.lineWidth = 10; sctx.beginPath(); sctx.moveTo(f.base.x, f.base.y + 40); sctx.quadraticCurveTo(f.base.x * 0.7 + 512 * 0.3, 850, 512 + (f.base.x - 512) * 0.4, 1024); sctx.stroke() })
+    const fr = fingerFrame(f)
+    const k = fr.center(-0.05)
+    blob(sctx, k.x - 5, k.y + 2, f.r0 * 1.0, f.r0 * 0.66, skin.light, 0.45)
+    blob(sctx, k.x - 8, k.y - 2, f.r0 * 0.5, f.r0 * 0.3, mixRGB(skin.light, [255, 250, 246], 0.3), 0.14)
+    blob(sctx, k.x + 12, k.y + 24, f.r0 * 0.7, f.r0 * 0.32, skin.shadow, 0.16)
   }
+  softBatch(sctx, 12, c => {
+    c.fillStyle = rgba(aoOf(skin), 0.45)
+    for (const w of webs()) { c.beginPath(); c.ellipse(w.low.x - w.d.x * 40, w.low.y - w.d.y * 40, 13, 42, Math.atan2(w.d.y, w.d.x) + Math.PI / 2, 0, Math.PI * 2); c.fill() }
+  }, 'multiply')
   // Extensor tendons fanning from the knuckles to the wrist: a lit ridge with its shadow side to the right.
   // Extensor tendons: soft form shading that fans out from the wrist to each knuckle, bowing a little.
   const tendon = (f: typeof HAND.fingers[number], c: Ctx, dx: number) => {
@@ -310,10 +417,35 @@ function paintHandArt(look: Look, seed: number, profile: HandProfile, masc: bool
     sctx.stroke(lines)
     sctx.restore()
   }
-  // Darker where fingers meet, and around the whole edge.
-  for (let i = 1; i < HAND.fingers.length - 1; i++) {
-    const a = HAND.fingers[i], b = HAND.fingers[i + 1]
-    blob(sctx, (a.base.x + b.base.x) / 2, (a.base.y + b.base.y) / 2 - 10, 16, 40, skin.deep, 0.6)
+  // Webbing: the skin between the fingers curves down between them, with a soft shadow crease along its edge
+  // and deeper occlusion where the two fingers' sides meet it. The web between the thumb and the index finger too.
+  softBatch(sctx, 5, c => {
+    c.lineCap = 'round'
+    for (const w of webs()) {
+      const [A, B] = w.top
+      c.strokeStyle = rgba(aoOf(skin), 0.55); c.lineWidth = 9
+      c.beginPath(); c.moveTo(A.x, A.y); c.quadraticCurveTo(w.ctl.x, w.ctl.y, B.x, B.y); c.stroke()
+      c.fillStyle = rgba(aoOf(skin), 0.5)
+      c.beginPath(); c.ellipse(w.low.x + w.d.x * 6, w.low.y + w.d.y * 6, 14, 18, 0, 0, Math.PI * 2); c.fill()
+    }
+    const tw = thumbWeb()
+    c.strokeStyle = rgba(aoOf(skin), 0.45); c.lineWidth = 10
+    c.beginPath(); tw.path(c); c.stroke()
+  }, 'multiply')
+  // Just inside each web a faint lit rim, where the skin rolls over toward the gap.
+  softBatch(sctx, 4, c => {
+    c.strokeStyle = rgba(skin.light, 0.22); c.lineWidth = 5
+    for (const w of webs()) {
+      const [A, B] = w.top
+      c.beginPath(); c.moveTo(A.x - w.d.x * 12, A.y - w.d.y * 12); c.quadraticCurveTo(w.ctl.x - w.d.x * 12, w.ctl.y - w.d.y * 12, B.x - w.d.x * 12, B.y - w.d.y * 12); c.stroke()
+    }
+  })
+  // One light across the whole hand: brighter to the upper left, turning away toward the lower right.
+  {
+    const dl = sctx.createLinearGradient(230, 260, 800, 1000)
+    dl.addColorStop(0, rgba(skin.light, 0.22)); dl.addColorStop(0.45, rgba(skin.light, 0)); dl.addColorStop(0.55, rgba(skin.shadow, 0)); dl.addColorStop(1, rgba(skin.shadow, 0.28))
+    sctx.fillStyle = dl
+    sctx.fillRect(0, 0, S, S)
   }
   // Natural nails with depth: a pink bed darker toward the side walls with faint ridges along it, a pale
   // lunula, the free edge beyond the smile line (white, a little translucent, with the shadow of the
