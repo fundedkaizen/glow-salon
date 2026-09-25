@@ -8,6 +8,7 @@ import { sfx, Sfx } from './audio/sfx.ts'
 import { CoopLink } from './net/coop-link.ts'
 import { startGame } from './game/game.ts'
 import { warmCloseUps } from './render/warmup.ts'
+import { footPreview } from './render/foot-preview.ts'
 
 /**
  * Boot: one WebGL canvas for the salon and the close-ups, a DOM layer on top for the UI.
@@ -15,6 +16,7 @@ import { warmCloseUps } from './render/warmup.ts'
  * Checks and screenshots: `?view=facial` or `?view=nails` (with `&seed=`, `&step=`, `&tier=`, `&disaster`)
  * opens a close-up directly. Add `&coop=host` in one tab and `&coop=<CODE>` in another to try four hands
  * through the relay: the host leads, the guest helps (the magnifier lamp on extraction steps).
+ * `?view=feet` previews the pedicure art (see render/foot-preview.ts for its options).
  */
 async function boot() {
   const app = new Application()
@@ -27,7 +29,7 @@ async function boot() {
     // `&warm`: warm the close-ups first, as the title screen does, to measure a treatment opened from the game.
     if (params.has('warm')) { warmCloseUps(app.renderer); await new Promise(r => setTimeout(r, 1500)) }
     closeUp(app, ui, view, params)
-  }
+  } else if (view === 'feet') footPreview(app, debugLook(randomLook(makeRng(Number(params.get('seed') ?? 7))), params), params)
   else await startGame(app, ui)
   document.getElementById('boot')?.classList.add('done')
 }

@@ -11,6 +11,8 @@ import { ROBE, paintRobe, paintSteamTowel } from './props.ts'
 import { OUTFIT } from './palette.ts'
 import { hex } from './paint.ts'
 import { paintPimples } from './pimples.ts'
+import { FOOT_LAYERS, paintFoot } from './foot.ts'
+import type { FootAnatomy, FootProfile, FootView } from '../core/foot.ts'
 
 /**
  * The asset layer: everything a close-up needs, by body part. Today every sheet is painted in code
@@ -67,6 +69,76 @@ const HAND_STYLES: Record<string, LayerStyle> = {
   base: { gloss: 0.9, relief: 0.8, brush: 'paint' },
   color: { gloss: 0.85, relief: 1.4, brush: 'paint' },
   top: { gloss: 1, relief: 0.8, brush: 'paint' },
+}
+
+const FOOT_STYLES: Record<string, LayerStyle> = {
+  water: { gloss: 0.9, relief: 0.5, opacity: 0.92 },
+  wet: { gloss: 1, relief: 0.4, opacity: 0.9 },
+  dirt: { gloss: 0.03, relief: 0.8 },
+  hair: { gloss: 0.2, relief: 0.3 },
+  redness: { gloss: 0, relief: 0 },
+  swelling: { gloss: 0.5, relief: 1.2 },
+  fungus: { gloss: 0.12, relief: 1.8 },
+  oldPolish: { gloss: 0.3, relief: 0.4 },
+  cuticle: { gloss: 0.1, relief: 1.2 },
+  callus: { gloss: 0.05, relief: 1.8 },
+  dry: { gloss: 0, relief: 1.2 },
+  cracks: { gloss: 0.05, relief: 1.4 },
+  scrub: { gloss: 0.3, relief: 2.6 },
+  salt: { gloss: 0.5, relief: 2.4, brush: 'paint' },
+  cream: { gloss: 0.55, relief: 2.2, brush: 'paint' },
+  antifungal: { gloss: 0.5, relief: 2.4, brush: 'paint' },
+  antiseptic: { gloss: 0.3, relief: 0 },
+  oil: { gloss: 0.95, relief: 0.3 },
+  mask: { gloss: 0.7, relief: 3, brush: 'paint' },
+  base: { gloss: 0.9, relief: 0.8, brush: 'paint' },
+  color: { gloss: 0.85, relief: 1.4, brush: 'paint' },
+  top: { gloss: 1, relief: 0.8, brush: 'paint' },
+}
+
+/** A pedicure close-up's assets: the surface and backdrop, plus the foot's own extras. */
+export type FootAssets = PartAssets & {
+  view: FootView
+  anatomy: FootAnatomy
+  /** Overgrown toenail tips (top view; null where already short), anchored like the hand's tips. */
+  footTips: (CropTex | null)[]
+  spots: Record<'corn' | 'cornCore' | 'cornMark' | 'splinter' | 'splinterHalo' | 'splinterMark' | 'plaster', Texture>
+  shards: { clean: Texture[]; fungal: Texture[] }
+}
+
+/**
+ * The feet, one view at a time ('top' for toes and nails, 'sole' for the heel, ball and arch). `order` is the
+ * treatment's layer order (defaults to every layer of the view); `eager` as for assetsFor.
+ */
+export function footAssetsFor(look: Look, seed: number, profile: FootProfile, view: FootView, order = FOOT_LAYERS[view], eager?: Set<string>): FootAssets {
+  const art = paintFoot(look, seed, profile, view)
+  const layers: SurfaceArt['layers'] = {}
+  for (const id of order) {
+    const paint = art.layers[id]
+    if (!paint) continue
+    const make = () => ({ art: tex(paint()) })
+    const style = FOOT_STYLES[id] ?? { gloss: 0.2, relief: 0.5 }
+    layers[id] = !eager || eager.has(id) ? { ...make(), style } : { lazy: make, style }
+  }
+  const skin = view === 'top' ? art.skin : art.soleSkin
+  return {
+    surface: { base: tex(art.base), height: tex(art.height), bump: 3.2, sss: [0.95, 0.34, 0.27], layers, order },
+    backdrop: backdropTex(paintBackdrop(view === 'top' ? 'feet' : 'sole', look)),
+    skinRGB: skin.base,
+    view,
+    anatomy: art.anatomy,
+    footTips: art.tips.map(c => (c ? cropTex(c) : null)),
+    spots: Object.fromEntries(Object.entries(art.spots).map(([k, c]) => [k, tex(c)])) as FootAssets['spots'],
+    shards: { clean: art.shards.clean.map(tex), fungal: art.shards.fungal.map(tex) },
+  }
+}
+
+/** Free a pedicure close-up's textures. */
+export function destroyFootAssets(a: FootAssets) {
+  const all: Texture[] = [...Object.values(a.spots), ...a.shards.clean, ...a.shards.fungal]
+  for (const t of a.footTips) if (t) all.push(t.texture)
+  for (const t of new Set(all)) t.destroy(true)
+  destroyAssets(a)
 }
 
 const tex = (c: HTMLCanvasElement) => canvasTexture(c)
