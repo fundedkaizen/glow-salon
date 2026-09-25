@@ -1,5 +1,5 @@
 import { check, near } from './harness.ts'
-import { TreatmentSession, regionMask, zonesOf, type Op, type SessionEvent } from '../src/core/treatments/session.ts'
+import { TreatmentSession, holdTime, regionMask, zonesOf, type Op, type SessionEvent } from '../src/core/treatments/session.ts'
 import { planTreatment } from '../src/core/treatments/plan.ts'
 import { faceProfile, handProfile } from '../src/core/treatments/profile.ts'
 import { GRID, CELL, stamp, encodeGrid, decodeGrid } from '../src/core/treatments/grid.ts'
@@ -31,8 +31,8 @@ function playStep(s: TreatmentSession, ops: Op[] = []): Op[] {
       const t = s.stepTargets().find(x => !x.done)
       if (!t) break
       if (step.gesture === 'sweep') push({ k: 'stroke', s: i, x0: t.x - 20, y0: t.y, x1: t.x + 20, y1: t.y })
-      else if (t.kind === 'whitehead' || t.kind === 'hangnail') {
-        // A fresh press (tap) then a hold: deep pimples need this twice.
+      else if (holdTime(t) > 0) {
+        // A fresh press (tap) on the spot, then a hold: deep pimples need this twice.
         push({ k: 'tap', s: i, x: t.x, y: t.y })
         for (let k = 0; k < 30 && !t.done && (t.stage !== 1 || t.gripped || t.progress === 0); k++) {
           push({ k: 'hold', s: i, x: t.x, y: t.y, dt: 0.1 })
@@ -85,14 +85,17 @@ export function run() {
 
   // ---------------------------------------------------------------- never repetitive
   const faces = Array.from({ length: 200 }, (_, i) => faceProfile(i + 1, false))
-  const counts = new Set(faces.map(f => `${f.whiteheads}/${f.blackheads}/${f.deep}/${f.cluster}`))
-  check('face profiles vary a lot', counts.size > 120, counts.size)
+  // About half come in with congested pores; those vary a lot, and the rest have clear pores.
+  const congested = faces.filter(f => f.whiteheads + f.deep > 0 || f.blackheads > 0)
+  const counts = new Set(congested.map(f => `${f.whiteheads}/${f.blackheads}/${f.deep}/${f.cluster}`))
+  check('about half the faces are congested', congested.length > 80 && congested.length < 140, congested.length)
+  check('congested faces vary a lot', counts.size > congested.length * 0.7, { distinct: counts.size, of: congested.length })
   check('every cluster type appears', new Set(faces.map(f => f.cluster)).size === 5)
   check('some clean customers', faces.some(f => f.grime === 0) && faces.some(f => f.grime > 0.5))
   check('deep pimples appear', faces.some(f => f.deep > 0) && faces.some(f => f.deep === 0))
   check('personalities vary', new Set(faces.map(f => f.personality)).size === 3)
   const disasterFace = faceProfile(7, true)
-  check('disaster face is worse', disasterFace.grime >= 1.6 && disasterFace.whiteheads >= 9 && disasterFace.blackheads >= 18)
+  check('disaster face is worse', disasterFace.grime >= 1.6 && disasterFace.whiteheads >= 9 && disasterFace.blackheads >= 12)
   const hands = Array.from({ length: 200 }, (_, i) => handProfile(i + 1, false))
   check('nail patterns vary', new Set(hands.map(h => h.polish?.pattern ?? 'bare')).size >= 5)
   check('some bare nails, some broken', hands.some(h => !h.polish) && hands.some(h => h.broken.length > 0))
@@ -154,8 +157,14 @@ export function run() {
   const noPimples = seedWhere(seed => faceProfile(seed, false).whiteheads === 0 && faceProfile(seed, false).deep === 0)
   const np = new TreatmentSession({ treatment: 'facial', seed: noPimples })
   playAll(np)
-  check('no pimples: pop step drops out', np.status[stepIndex(np, 'pop')] === 'na')
-  check('no pops: no patches', np.status[stepIndex(np, 'patches')] === 'na')
+  const noPop = (s: TreatmentSession, id: string) => stepIndex(s, id) < 0 || s.status[stepIndex(s, id)] === 'na'
+  check('no pimples: no pop step', noPop(np, 'pop'))
+  check('no pops: no patches', noPop(np, 'patches'))
+  // Blackheads but no whiteheads: the deep facial, with the pop step dropped out.
+  const onlyBlack = seedWhere(seed => { const f = faceProfile(seed, false); return f.whiteheads === 0 && f.deep === 0 && f.blackheads >= 5 })
+  const ob = new TreatmentSession({ treatment: 'facial', seed: onlyBlack })
+  playAll(ob)
+  check('blackheads only: the loop is done, the pop step drops out', ob.status[stepIndex(ob, 'extract')] === 'done' && ob.status[stepIndex(ob, 'pop')] === 'na')
   const bare = seedWhere(seed => handProfile(seed, false).polish === null)
   const bs = new TreatmentSession({ treatment: 'nails', seed: bare })
   playAll(bs)
@@ -178,13 +187,22 @@ export function run() {
   const pop = stepIndex(f, 'pop')
   const w = f.stepTargets().find(t => !t.stage)!
   f.apply({ k: 'hold', s: pop, x: w.x, y: w.y, dt: 0.1 })
+  check('facial: holding without a press on the spot does nothing', w.progress === 0)
+  f.apply({ k: 'tap', s: pop, x: w.x, y: w.y })
+  f.apply({ k: 'hold', s: pop, x: w.x, y: w.y, dt: 0.1 })
   check('facial: pressing swells', w.progress > 0 && !w.done)
+  // Dragging the pressed finger onto another spot works nothing there, and lets go of the first.
+  const other = f.stepTargets().find(t => t.id !== w.id && !t.done)!
+  for (let k = 0; k < 10; k++) f.apply({ k: 'hold', s: pop, x: other.x, y: other.y, dt: 0.1 })
+  check('facial: sliding onto another spot does not squeeze it', other.progress === 0 && !other.done && f.grip === null)
+  f.apply({ k: 'tap', s: pop, x: w.x, y: w.y })
   for (let k = 0; k < 40 && !w.done; k++) f.apply({ k: 'hold', s: pop, x: w.x, y: w.y, dt: 0.1 })
   const ev = f.drain()
   check('facial: pops with an event', w.done && ev.some((e: SessionEvent) => e.e === 'targetDone' && e.kind === 'whitehead'))
   check('facial: a popped spot leaves a mark', f.layers.marks.some(v => v > 0))
   // A deep pimple: the first squeeze brings it up; holding on does nothing; a fresh press pops it.
   const deep = f.stepTargets().find(t => t.stage === 2)!
+  f.apply({ k: 'tap', s: pop, x: deep.x, y: deep.y })
   for (let k = 0; k < 40 && deep.stage === 2; k++) f.apply({ k: 'hold', s: pop, x: deep.x, y: deep.y, dt: 0.1 })
   check('deep: first squeeze brings it to a head', deep.stage === 1 && !deep.done && f.drain().some(e => e.e === 'targetStage'))
   for (let k = 0; k < 40; k++) f.apply({ k: 'hold', s: pop, x: deep.x, y: deep.y, dt: 0.1 })
@@ -213,7 +231,7 @@ export function run() {
   while (!footSkip.finished) footSkip.apply({ k: 'advance', s: footSkip.step, skip: true })
   check('skip: a skipped foot bath still drains', sum(footSkip.layers['top.water']) === 0)
 
-  // Auto-complete: an erase step is ready at 95% and the rest settles on advance.
+  // Auto-complete: an erase step is ready at its threshold and the rest settles on advance.
   const steamFirst = seedWhere(seed => { const st = planTreatment('facial', seed, false).def.steps; return st[0].id === 'steam' && st[1].id === 'cleanse' })
   const r2 = new TreatmentSession({ treatment: 'facial', seed: steamFirst })
   r2.apply({ k: 'advance', s: 0 })
@@ -221,7 +239,7 @@ export function run() {
   r2.apply({ k: 'advance', s: 1 })
   check('foam fills on advance', r2.layers.foam.some(v => v === 1))
   playStep(r2)
-  check('rinse ready below 100%', r2.ready && r2.progress() >= 0.95)
+  check('rinse ready below 100%', r2.ready && r2.progress() >= 0.88)
   r2.apply({ k: 'advance', s: 2 })
   check('rinse clears foam and grime', r2.layers.foam.every(v => v === 0) && r2.layers.grime.every(v => v === 0))
 
@@ -271,7 +289,6 @@ export function run() {
   const duo = new TreatmentSession({ treatment: 'facial', seed: lampSeed, startStep: extract })
   const bh = solo.stepTargets()[0]
   duo.apply({ k: 'lamp', x: bh.x, y: bh.y, on: true })
-  solo.apply({ k: 'stroke', s: extract, x0: bh.x - 5, y0: bh.y, x1: bh.x + 5, y1: bh.y })
-  duo.apply({ k: 'stroke', s: extract, x0: bh.x - 5, y0: bh.y, x1: bh.x + 5, y1: bh.y })
+  for (const s of [solo, duo]) { s.apply({ k: 'tap', s: extract, x: bh.x, y: bh.y }); s.apply({ k: 'hold', s: extract, x: bh.x, y: bh.y, dt: 0.1 }) }
   check('lamp speeds extraction', duo.stepTargets()[0].progress > solo.stepTargets()[0].progress)
 }

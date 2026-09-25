@@ -200,9 +200,10 @@ export function zonesOf(id: RegionId, mask = regionMask(id), key: string = id): 
   return zones
 }
 
-/** How long a whitehead or hangnail must be held, in seconds at tier 1. */
+/** How long a whitehead, a blackhead or a hangnail must be held, in seconds at tier 1. */
 export function holdTime(target: Target) {
   if (target.kind === 'whitehead') return 0.35 + 0.6 * target.size
+  if (target.kind === 'blackhead') return 0.28 + 0.3 * target.size
   if (target.kind === 'hangnail') return 0.32
   if (target.kind === 'corn') return 0.45 + 0.35 * target.size
   if (target.kind === 'ingrown') return 1.1
@@ -210,10 +211,10 @@ export function holdTime(target: Target) {
   return 0
 }
 
-/** How close a press must be to a target, in art pixels. */
+/** How close a press must be to a target, in art pixels: right on the spot for pimples and blackheads. */
 export function hitRadius(target: Target) {
-  if (target.kind === 'blackhead') return 18 + 10 * target.size
-  if (target.kind === 'whitehead') return 30 + 22 * target.size
+  if (target.kind === 'blackhead') return 15 + 7 * target.size
+  if (target.kind === 'whitehead') return 22 + 14 * target.size
   if (target.kind === 'drop') return 70
   if (target.kind === 'gem' || target.kind === 'tip') return 56
   if (target.kind === 'corn' || target.kind === 'splinter' || target.kind === 'ingrown') return 46
@@ -247,6 +248,8 @@ export class TreatmentSession {
   peel = { progress: 0, unstuck: false, released: false }
   choices: Record<number, number> = {}
   lamp: { x: number; y: number } | null = null
+  /** The target the current press is on (hold targets): each spot takes its own press, and sliding off lets go. */
+  grip: number | null = null
   elapsed = 0
   ready = false
   finished = false
@@ -552,6 +555,7 @@ export class TreatmentSession {
     const step = this.current
     if (!step) { this.finished = true; this.emit({ e: 'done' }); return }
     this.hold = 0
+    this.grip = null
     this.ready = false
     if (step.targets === 'patch' && !step.targetTag) this.makePatches()
     if (step.targetTag === 'eye') this.makeEyePatches()
@@ -750,10 +754,13 @@ export class TreatmentSession {
       return
     }
     if (step.gesture !== 'targets') return
-    const t = this.nearest(x, y)
+    // Only the spot this press landed on: a finger dragged across the face works nothing it slides onto.
+    const t = this.grip === null ? null : this.targets.find(o => o.id === this.grip && !o.done) ?? null
     if (!t) return
     const time = holdTime(t)
     if (time <= 0) return
+    // Sliding off the spot lets go; the next squeeze takes a fresh press.
+    if (dist(x, y, t.x, t.y) > hitRadius(t) * 1.4) { this.grip = null; t.gripped = false; return }
     // The second squeeze of a deep pimple needs a fresh press.
     if (t.stage === 1 && !t.gripped) return
     const lamp = this.lamp && dist(this.lamp.x, this.lamp.y, t.x, t.y) < 170 ? 1.6 : 1
@@ -765,6 +772,7 @@ export class TreatmentSession {
       t.stage = 1
       t.progress = 0
       t.gripped = false
+      this.grip = null
       t.size = Math.max(0.8, t.size * 0.85)
       this.emit({ e: 'targetStage', id: t.id, x: t.x, y: t.y, size: t.size })
       return
@@ -775,9 +783,10 @@ export class TreatmentSession {
   private tap(step: StepDef, x: number, y: number) {
     if (step.gesture !== 'targets') return
     const t = this.nearest(x, y)
-    if (!t) { this.emit({ e: 'miss', x, y }); return }
-    // A press on a pimple is a grip (the second squeeze of a deep one); taps finish tap targets.
-    if (holdTime(t) > 0) { t.gripped = true; return }
+    if (!t) { this.grip = null; this.emit({ e: 'miss', x, y }); return }
+    // A press on a pimple or a blackhead grips that one spot (and is the fresh grip a deep one's second
+    // squeeze needs); taps finish tap targets.
+    if (holdTime(t) > 0) { t.gripped = true; this.grip = t.id; return }
     t.progress = 1
     this.finishTarget(t, false)
   }
@@ -785,6 +794,7 @@ export class TreatmentSession {
   private finishTarget(t: Target, lamp: boolean) {
     t.done = true
     t.progress = 1
+    if (this.grip === t.id) this.grip = null
     if (lamp) this.lampAssists++
     if (t.kind === 'whitehead') { this.popped++; this.stampLayer('marks', t.x, t.y, 12 + 9 * t.size, 0.85, 'skin') }
     if (t.kind === 'blackhead') { this.extracted++; this.stampLayer('marks', t.x, t.y, 8 + 4 * t.size, 0.3, 'skin') }
@@ -901,7 +911,7 @@ export class TreatmentSession {
   snapshot(): SessionSnapshot {
     const layers: Record<string, string> = {}
     for (const [id, grid] of Object.entries(this.layers)) layers[id] = encodeGrid(grid)
-    return { step: this.step, layers, targets: this.targets.map(t => ({ ...t })), status: [...this.status], hold: this.hold, peel: { ...this.peel }, choices: { ...this.choices }, popped: this.popped, extracted: this.extracted, startSum: this.startSum, ready: this.ready, elapsed: this.elapsed }
+    return { step: this.step, layers, targets: this.targets.map(t => ({ ...t })), status: [...this.status], hold: this.hold, peel: { ...this.peel }, choices: { ...this.choices }, popped: this.popped, extracted: this.extracted, startSum: this.startSum, ready: this.ready, elapsed: this.elapsed, grip: this.grip }
   }
 
   restore(snap: SessionSnapshot) {
@@ -918,6 +928,7 @@ export class TreatmentSession {
     this.startSum = snap.startSum
     this.ready = snap.ready
     this.elapsed = snap.elapsed ?? this.elapsed
+    this.grip = snap.grip ?? null
     this.finished = this.step >= this.def.steps.length
     this.events.length = 0
   }
@@ -937,4 +948,6 @@ export type SessionSnapshot = {
   ready: boolean
   /** Seconds the treatment has run (a helper who takes over keeps counting from here). */
   elapsed?: number
+  /** The spot the current press is squeezing, if any. */
+  grip?: number | null
 }

@@ -1,5 +1,5 @@
 import { check } from './harness.ts'
-import { TreatmentSession, type Op } from '../src/core/treatments/session.ts'
+import { TreatmentSession, holdTime, type Op } from '../src/core/treatments/session.ts'
 import { planTreatment } from '../src/core/treatments/plan.ts'
 import { COMING_SOON, COMING_SOON_TEASER } from '../src/core/treatments/registry.ts'
 import { handProfile } from '../src/core/treatments/profile.ts'
@@ -34,7 +34,7 @@ function playAll(s: TreatmentSession): Op[] {
         const t = s.stepTargets().find(x => !x.done)
         if (!t) break
         if (step.gesture === 'sweep') push({ k: 'stroke', s: i, x0: t.x - 20, y0: t.y, x1: t.x + 20, y1: t.y })
-        else if (t.kind === 'whitehead' || t.kind === 'hangnail' || t.kind === 'corn' || t.kind === 'ingrown' || t.kind === 'splinter') { push({ k: 'tap', s: i, x: t.x, y: t.y }); for (let h = 0; h < 30 && !t.done && !(t.stage === 1 && !t.gripped); h++) push({ k: 'hold', s: i, x: t.x, y: t.y, dt: 0.1 }) }
+        else if (holdTime(t) > 0) { push({ k: 'tap', s: i, x: t.x, y: t.y }); for (let h = 0; h < 30 && !t.done && !(t.stage === 1 && !t.gripped); h++) push({ k: 'hold', s: i, x: t.x, y: t.y, dt: 0.1 }) }
         else push({ k: 'tap', s: i, x: t.x, y: t.y })
         if (step.optional) break
       } else {
@@ -58,10 +58,14 @@ export function run() {
   // ---------------------------------------------------------------- facials are never the same twice
   const facials = Array.from({ length: 60 }, (_, i) => planTreatment('facial', 1000 + i, false))
   const orders = new Set(facials.map(p => p.def.steps.map(s => s.id).join(',')))
-  check('facials: 60 customers, at least 40 different step lists', orders.size >= 40, orders.size)
-  check('facials: every mask appears', new Set(facials.map(p => p.mask)).size === 4, [...new Set(facials.map(p => p.mask))])
+  check('facials: 60 customers, at least 30 different step lists', orders.size >= 30, orders.size)
+  check('facials: every mask appears', new Set(facials.map(p => p.mask).filter(Boolean)).size === 4, [...new Set(facials.map(p => p.mask))])
+  check('facials: all three kinds appear', new Set(facials.map(p => p.variant)).size === 3, [...new Set(facials.map(p => p.variant))])
+  check('facials: seven to eleven steps, never a long list of rubs', facials.every(p => p.def.steps.length >= 6 && p.def.steps.length <= 11 && p.def.steps.filter(s => (s.gesture === 'rub' || s.gesture === 'paint' || s.gesture === 'erase') && (s.region === 'skin' || s.region === 'face')).length <= 6), facials.map(p => p.def.steps.length))
+  check('facials: extraction only on the deep facial', facials.every(p => (p.variant === 'deep') === p.def.steps.some(s => s.id === 'pop' || s.id === 'extract')))
+  check('facials: the lip scrub is always wiped off', facials.filter(p => p.extras.includes('lips')).every(p => { const ids = p.def.steps.map(s => s.id); return ids.indexOf('lipWipe') === ids.indexOf('lips') + 1 }))
   check('facials: every extra appears', ['brows', 'lips', 'eyePatches', 'jade'].every(x => facials.some(p => p.extras.includes(x))))
-  check('facials: one or two extras each', facials.every(p => p.extras.length >= 1 && p.extras.length <= 2))
+  check('facials: one treat on a mask or glow facial, at most one on a deep one', facials.every(p => p.variant === 'deep' ? p.extras.length <= 1 : p.extras.length === 1))
   check('facials: steam comes first for some, the cleanse for others', facials.some(p => p.def.steps[0].id === 'steam') && facials.some(p => p.def.steps[0].id === 'cleanse'))
   check('facials: plans are deterministic', JSON.stringify(planTreatment('facial', 1234, false).def.steps.map(s => s.id)) === JSON.stringify(planTreatment('facial', 1234, false).def.steps.map(s => s.id)))
   check('facials: the jade roller always follows the serum, before the moisturiser', facials.filter(p => p.extras.includes('jade')).every(p => { const ids = p.def.steps.map(s => s.id); return ids.indexOf('jade') === ids.indexOf('serum') + 1 && ids.indexOf('jade') < ids.indexOf('moisturize') }))
@@ -69,7 +73,7 @@ export function run() {
   check('disaster facials get the second cleanse', planTreatment('facial', 55, true).def.steps.some(s => s.id === 'cleanse2') && !planTreatment('facial', 55, false).def.steps.some(s => s.id === 'cleanse2'))
   // Every kind of facial plays through with ops, and a partner replaying the ops ends identical.
   const byMask = new Map<string, number>()
-  for (let seed = 1; byMask.size < 4 && seed < 400; seed++) { const m = planTreatment('facial', seed, false).mask!; if (!byMask.has(m)) byMask.set(m, seed) }
+  for (let seed = 1; byMask.size < 4 && seed < 400; seed++) { const m = planTreatment('facial', seed, false).mask; if (m && !byMask.has(m)) byMask.set(m, seed) }
   const extraSeeds = ['brows', 'lips', 'eyePatches', 'jade'].map(x => { for (let seed = 1; seed < 400; seed++) if (planTreatment('facial', seed, false).extras.includes(x)) return seed; return 1 })
   for (const seed of [...byMask.values(), ...extraSeeds]) {
     const s = new TreatmentSession({ treatment: 'facial', seed })

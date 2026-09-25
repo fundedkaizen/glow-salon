@@ -10,10 +10,11 @@ import type { StepDef, TreatmentDef, TreatmentId } from './types.ts'
 /**
  * Every customer's own treatment, built from the step library and their seed, so no two play the same:
  *
- * - Facials pick a mask from the skin (clay for oily skin, a sheet mask for dry or mature skin, a charcoal
- *   bubble mask for grime, now and then gold foil), add one or two little extras (brow tidy, lip scrub,
- *   under-eye patches, jade roller), and shuffle the steps whose order does not matter (steam before or after
- *   the cleanse, pimples before or after blackheads, toner and extras in any order).
+ * - Facials pick one of three from the face: the Deep Pore Facial for congested pores (steam, cleanse, every
+ *   whitehead and blackhead worked by hand, toner), the Mask Facial for clear skin (a mask from the skin: clay
+ *   for oily, a charcoal bubble mask for grime, a sheet mask for dry) and the Glow Facial for dry or mature
+ *   skin (a serum, then a sheet or gold foil mask). The mask facials add one little treat (brow tidy, lip
+ *   scrub and its wipe, under-eye patches, jade roller). Seven to nine steps, never a long list of rubs.
  * - Manicures pick classic (air dry) or gel (UV lamp twice), repair each broken nail, add one or two extras
  *   (hand scrub, cuticle oil, hand massage, gems) and shuffle what can be shuffled.
  * - Pedicures pick the Classic Pedicure, the Foot Clinic or the Spa Pedicure from the foot's problems (corns,
@@ -27,6 +28,14 @@ import type { StepDef, TreatmentDef, TreatmentId } from './types.ts'
  */
 export type MaskVariant = 'clay' | 'sheet' | 'bubble' | 'gold'
 export type PolishStyle = 'classic' | 'gel'
+export type FacialVariant = 'deep' | 'mask' | 'glow'
+
+/** The three facials, like the three pedicures: what they are called and how long a good, unhurried one takes. */
+export const FACIAL_VARIANTS: Record<FacialVariant, { label: string; par: number }> = {
+  deep: { label: 'Deep Pore Facial', par: 150 },
+  mask: { label: 'Mask Facial', par: 130 },
+  glow: { label: 'Glow Facial', par: 140 },
+}
 
 export type TreatmentPlan = {
   /** The treatment with this customer's step list. */
@@ -35,8 +44,8 @@ export type TreatmentPlan = {
   polish: PolishStyle | null
   /** The extras this customer gets, by step id. */
   extras: string[]
-  /** Pedicures: which of the three this customer booked. */
-  variant?: FootVariant
+  /** Pedicures and facials: which of the three this customer booked. */
+  variant?: FootVariant | FacialVariant
 }
 
 const MASKS: Record<MaskVariant, StepDef[]> = {
@@ -82,19 +91,40 @@ export function maskFor(face: FaceProfile, r: Rng): MaskVariant {
   ])
 }
 
+/** The facial a face calls for: congested pores get the deep clean; clear skin a mask, or a glow when dry or mature. */
+export function facialVariantFor(face: FaceProfile, r: Rng): FacialVariant {
+  if (face.whiteheads + face.deep > 0 || face.blackheads > 3) return 'deep'
+  return weighted(r, [['mask', 1], ['glow', 0.4 + face.flakes * 1.2 + face.age]])
+}
+
 function facialPlan(seed: number, disaster: boolean): TreatmentPlan {
   const r = makeRng((seed ^ 0x7a11c3) >>> 0)
   const face = faceProfile(seed, disaster)
-  const mask = maskFor(face, r)
-  const extras = extrasFrom(r, ['brows', 'lips', 'eyePatches', 'jade'] as const)
-  const has = (id: string) => extras.includes(id as never)
-  const prep = shuffled(r, [[F.steam], [F.cleanse, F.rinse]])
-  const deep = disaster ? [F.cleanse2, F.rinse2] : []
-  const extraction = [...shuffled(r, [[F.pop], [F.extract]]), F.antiseptic]
-  const finishing = shuffled(r, [[F.toner], ...(has('brows') ? [[F.brows]] : []), ...(has('lips') ? [[F.lips]] : [])])
-  const serum = has('jade') ? [F.serum, F.jade] : [F.serum]
-  const steps = [...prep, ...deep, ...extraction, ...MASKS[mask], ...finishing, ...serum, F.moisturize, ...(has('eyePatches') ? [F.eyePatches] : []), F.patches]
-  return { def: { ...FACIAL, steps }, mask, polish: null, extras: [...extras] }
+  const variant = facialVariantFor(face, r)
+  const clean = [F.cleanse, F.rinse, ...(disaster ? [F.cleanse2, F.rinse2] : [])]
+  const treatSteps = (x: string | null) => x === 'brows' ? [F.brows] : x === 'lips' ? [F.lips, F.lipWipe] : x === 'jade' ? [F.jade] : []
+  let steps: StepDef[]
+  let mask: MaskVariant | null = null
+  let extras: string[] = []
+  if (variant === 'deep') {
+    // Steam opens the pores, then every spot is worked by hand, one careful press at a time; the toner calms
+    // what the extraction left. Some get a little treat; only a rough day gets a mask on top.
+    mask = disaster ? 'clay' : null
+    const treat = r.chance(0.4) ? r.pick(['brows', 'lips', 'eyePatches'] as const) : null
+    extras = treat ? [treat] : []
+    steps = [...shuffled(r, [[F.steam], clean]), ...shuffled(r, [[F.pop], [F.extract]]), F.toner, ...(mask ? MASKS[mask] : []), ...treatSteps(treat), F.moisturize, ...(treat === 'eyePatches' ? [F.eyePatches] : []), F.patches]
+  } else {
+    // Clear pores: the mask is the star, with one little treat, and now and then the steam towel to begin. A
+    // glow (or the jade roller) follows the mask with serum drops, rolled in by the jade.
+    mask = variant === 'glow' ? (r.chance(0.35 + face.age * 0.3) ? 'gold' : 'sheet') : maskFor(face, r)
+    // The bubble mask already has three rounds over the whole face (brush, fizz, rinse), so no roller after it.
+    const extra = r.pick(mask === 'bubble' ? ['brows', 'lips', 'eyePatches'] as const : ['brows', 'lips', 'eyePatches', 'jade'] as const)
+    extras = [extra]
+    const serum = variant === 'glow' || extra === 'jade' ? [F.serum] : []
+    steps = [...(r.chance(0.35) ? [F.steam] : []), ...clean, ...MASKS[mask], ...serum, ...treatSteps(extra), F.moisturize, ...(extra === 'eyePatches' ? [F.eyePatches] : [])]
+  }
+  const v = FACIAL_VARIANTS[variant]
+  return { def: { ...FACIAL, name: v.label, parSeconds: v.par, steps }, mask, polish: null, extras, variant }
 }
 
 function nailsPlan(seed: number, disaster: boolean): TreatmentPlan {

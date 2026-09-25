@@ -66,16 +66,28 @@ export function faceProfile(seed: number, disaster: boolean): FaceProfile {
   const bad = disaster ? 1 : 0
   // Some customers come in nearly clean; a few are rough days.
   const clean = !disaster && r.chance(0.15)
+  // About half come in with congested pores (whiteheads, blackheads) and book the Deep Pore Facial; the rest
+  // have clear pores and come for a mask or a glow. Its own stream, so every other feature stays as it was.
+  const congested = disaster || makeRng(seed ^ 0xc0de).chance(0.55)
+  const grime = disaster ? r.range(1.6, 2) : clean ? 0 : r.range(0.35, 1.2)
+  const oil = disaster ? r.range(1, 1.5) : r.range(0, 1.1)
+  const redness = disaster ? r.range(0.9, 1.4) : r.range(0.1, 1)
+  const flakes = disaster ? r.range(0.6, 1) : r.chance(0.4) ? r.range(0.2, 0.8) : 0
+  const whiteheads = disaster ? r.int(9, 13) : r.chance(0.1) ? 0 : r.int(2, 8)
+  const deep = disaster ? r.int(2, 4) : r.chance(0.45) ? r.int(1, 2) : 0
+  const cluster = r.pick(['forehead', 'tzone', 'chin', 'cheeks', 'scattered'] as const)
+  // Each blackhead is its own careful press of the loop, so a nose has a handful, not a crowd.
+  const blackheads = disaster ? r.int(12, 16) : r.chance(0.1) ? r.int(0, 3) : r.int(5, 11)
   return {
     kind: 'face',
-    grime: disaster ? r.range(1.6, 2) : clean ? 0 : r.range(0.35, 1.2),
-    oil: disaster ? r.range(1, 1.5) : r.range(0, 1.1),
-    redness: disaster ? r.range(0.9, 1.4) : r.range(0.1, 1),
-    flakes: disaster ? r.range(0.6, 1) : r.chance(0.4) ? r.range(0.2, 0.8) : 0,
-    whiteheads: disaster ? r.int(9, 13) : r.chance(0.1) ? 0 : r.int(2, 8),
-    deep: disaster ? r.int(2, 4) : r.chance(0.45) ? r.int(1, 2) : 0,
-    cluster: r.pick(['forehead', 'tzone', 'chin', 'cheeks', 'scattered'] as const),
-    blackheads: disaster ? r.int(18, 24) : r.chance(0.1) ? r.int(0, 3) : r.int(6, 16),
+    grime,
+    oil,
+    redness,
+    flakes,
+    whiteheads: congested ? whiteheads : 0,
+    deep: congested ? deep : 0,
+    cluster,
+    blackheads: congested ? blackheads : 0,
     age: r.chance(0.35) ? r.range(0.3, 1) : r.range(0, 0.2),
     juicy: r.range(0.6, 1.4) + bad * 0.2,
     foamy: r.range(0.7, 1.3),

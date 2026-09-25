@@ -737,10 +737,10 @@ export class TreatmentView {
     }
   }
 
-  private nearestTarget(x: number, y: number) {
-    let best: Target | null = null, bd = Infinity
-    for (const t of this.session.stepTargets()) { if (t.done) continue; const d = Math.hypot(t.x - x, t.y - y); if (d < bd) { bd = d; best = t } }
-    return best && bd < 90 ? best : null
+  /** The spot the current press is squeezing. */
+  private gripped(): Target | null {
+    const id = this.session.grip
+    return id === null ? null : this.session.targets.find(t => t.id === id && !t.done) ?? null
   }
 
   /** Per-frame input: strokes, holds, the peel, the lamp. */
@@ -779,7 +779,8 @@ export class TreatmentView {
           level = 1
           break
         case 'targets': {
-          const t = this.nearestTarget(this.pos.x, this.pos.y)
+          // Squeeze the spot this press landed on (the session lets go if the finger slides off it).
+          const t = this.gripped()
           if (t && holdTime(t) > 0) { this.local({ k: 'hold', s, x: this.pos.x, y: this.pos.y, dt }); level = 0.5 }
           break
         }
@@ -1758,7 +1759,7 @@ export class TreatmentView {
   }
 
   private updateTargets(dt: number) {
-    const pressing = this.down && this.step?.gesture === 'targets' && !this.lampRole ? this.nearestTarget(this.pos.x, this.pos.y) : null
+    const pressing = this.down && this.step?.gesture === 'targets' && !this.lampRole ? this.gripped() : null
     for (const tv of this.targets.values()) {
       if (tv.gone) continue
       const t = tv.t
