@@ -13,10 +13,12 @@ export type Point = { x: number; y: number }
 // ---------------------------------------------------------------- face
 /** Face shape parameters, see faceOutline. */
 const FACE_SHAPES = [
-  { jaw: 0.3, pow: 2, cheek: 0.03, ry: 368 },
-  { jaw: 0.2, pow: 2, cheek: 0.05, ry: 368 },
-  { jaw: 0.3, pow: 2, cheek: 0.075, ry: 372 },
-  { jaw: 0.3, pow: 3.4, cheek: 0.035, ry: 374 },
+  // The shared oval: a soft chin, not a point.
+  { jaw: 0.3, pow: 2.6, cheek: 0.03, ry: 368 },
+  // Round and square faces are clearly fuller in the lower face (a smaller jaw factor keeps shape 0 inside them).
+  { jaw: 0.1, pow: 3.5, cheek: 0.05, ry: 368 },
+  { jaw: 0.3, pow: 2.6, cheek: 0.09, ry: 372 },
+  { jaw: 0.08, pow: 5, cheek: 0.03, ry: 374 },
 ]
 export const FACE = {
   cx: 512,

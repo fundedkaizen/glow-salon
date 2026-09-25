@@ -3,6 +3,7 @@ import { bits } from '../art/bits.ts'
 import { CURTAIN_SPOTS, decorPiece } from '../art/salon/decor-art.ts'
 import { fairyBulbs, paintBaseRug, paintDoorBell, paintFillerFrame, paintFloorLamp, paintLampGlow, paintMagazineTable, paintSoonScreen, paintSucculent, paintTeaCorner, paintWelcomeSign, paintAquarium, paintCandles, paintChandelier, paintCloudRug, paintDesk, paintFacialChair, paintFairyLights, paintNailDesk, paintNeonGlow, paintPedicureChair, paintPlant, paintSofa, paintStationGlow, paintWallArt, type Piece } from '../art/salon/furniture.ts'
 import { icons, treatmentIcon } from '../art/salon/icons.ts'
+import { paintGift } from '../art/salon/gift-art.ts'
 import { canvasTexture, DOOR_Y0, DOOR_Y1, OUTSIDE_W, paintFront, paintLight, paintOutside, paintRoom, paintVignette, WALL_T } from '../art/salon/room.ts'
 import { PLAYER_COLORS } from '../art/palette.ts'
 import { purr, softPop } from '../audio/salon-sfx.ts'
@@ -65,7 +66,7 @@ type PlayerView = { person: Person; tag: Container; x: number; y: number }
 type StaffView = { person: Person; tag: Container; x: number; y: number; path: Pt[]; goal: Pt; tea: Sprite; tool: Container; puff: number }
 
 const TAG_FONT = 'Nunito, system-ui, sans-serif'
-const HEAD_TOP = 132
+const HEAD_TOP = 131
 
 /** Players have no customisation yet: a look from their name, so each keeps theirs. */
 export function playerLook(id: number, name: string): Look {
@@ -442,7 +443,8 @@ export class FloorView {
       if (!p) continue
       const tex = cachedTex(`decor:${d.id}`, p)
       if (item.place === 'window') { for (const w of CURTAIN_SPOTS) add(this.wallLayer, spriteOf(p, tex), w.x, w.y) }
-      else if (item.place === 'wall') add(this.wallLayer, atLeast(spriteOf(p, tex), p), d.x, d.y)
+      // Wall pieces (shelves, frames) are long and thin: size them by their long side so they read on the wall.
+      else if (item.place === 'wall') add(this.wallLayer, atLeast(spriteOf(p, tex), p, 110), d.x, d.y)
       else if (item.place === 'rug') add(this.rugLayer, spriteOf(p, tex), d.x, d.y)
       else if (item.place === 'ceiling') add(this.ceilingLayer, atLeast(spriteOf(p, tex), p), d.x, 0)
       else if (item.place === 'table') {
@@ -491,7 +493,7 @@ export class FloorView {
       let v = this.customers.get(c.id)
       if (!v) {
         const persona = personaFor(c.plan, { rating: state.stats.ratingBefore, bias: state.ext?.today.bias })
-        const person = new Person(withFigure(c.plan.look, c.plan.name, persona.archetype, c.plan.seed), 'customer')
+        const person = new Person(withFigure(c.plan.look, c.plan.name, persona.archetype, c.plan.seed), 'customer', undefined, persona.archetype, c.plan.seed)
         const bubble = new Container()
         const bg = new Graphics()
         bg.roundRect(-19, -19, 38, 34, 15).fill({ color: 0xffffff }).stroke({ width: 1.4, color: 0xe9c2d0 })
@@ -774,6 +776,8 @@ export class FloorView {
       const atStation = (c.state === 'seated' || c.state === 'treating') && !moving
       const onSofa = c.state === 'waiting' && !moving && c.seat !== null && c.seat < SOFA_SEATS.length
       p.pose = moving ? 'walk' : atStation || onSofa ? 'sit' : 'stand'
+      // At a pedicure chair the feet hang down into the foot basin.
+      p.feetDown = atStation && c.plan.treatment === 'feet'
       if (atStation) p.facing = -1
       else if (onSofa) p.facing = c.seat! % 2 ? -1 : 1
       // Faces follow the mood; a treatment is bliss; paid customers beam.
@@ -1145,7 +1149,11 @@ const GIFT_ART: Record<string, string | (() => Piece)> = {
   iris: () => paintSucculent(), finn: 'zen-garden:paper-lantern',
 }
 function giftPiece(id: string): Piece {
-  const art = GIFT_ART[GIFT_BY_ID[id]?.regular ?? '']
+  const regular = GIFT_BY_ID[id]?.regular ?? ''
+  // Each regular's gift has its own painted piece; older stand-ins remain for any without one.
+  const own = cached(`giftArt:${regular}`, () => paintGift(regular) ?? cached('succulent', paintSucculent))
+  if (own) return own
+  const art = GIFT_ART[regular]
   if (typeof art === 'function') return cached(`gift:${id}`, art)
   return (art && decorPiece(art)) || cached('succulent', paintSucculent)
 }

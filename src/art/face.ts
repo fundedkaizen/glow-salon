@@ -103,7 +103,9 @@ function aoColor(skin: SkinTone): RGB {
 }
 
 /** Iris colours: brown, hazel, green, blue, grey. */
-const IRIS: RGB[] = [[112, 70, 44], [150, 110, 60], [96, 132, 84], [92, 136, 190], [120, 130, 146]]
+export const IRIS: RGB[] = [[112, 70, 44], [150, 110, 60], [96, 132, 84], [92, 136, 190], [120, 130, 146]]
+/** A customer's eye colour, from their seed (the floor sprite uses it too, so the two always agree). */
+export const irisForSeed = (seed: number): RGB => IRIS[makeRng(seed + 17).int(0, IRIS.length - 1)]
 
 /** Per-customer feature shape, from the profile (all 0 to 1). */
 type Feat = { brow: number; lips: number; lashes: number; blush: number; nose: number; iris: RGB; masc: boolean; age: number; stubble: number; bow: boolean; earShift: number }
@@ -118,10 +120,10 @@ export function paintFace(look: Look, seed: number, profile: FaceProfile, maskKi
   const fig: Figure = lookFigure(look)
   const fr = makeRng(seed + 23)
   // Face shape: oval, round, heart (wide cheekbones) or square (more often masculine).
-  const shape = fig.masc ? fr.pick([3, 3, 1, 0]) : fr.pick([0, 1, 2, 0])
+  const shape = fig.masc ? fr.pick([3, 3, 1]) : fr.pick([0, 1, 2, 1, 3])
   OUTLINE = faceOutline(shape)
   const feat: Feat = {
-    ...profile.features, iris: IRIS[makeRng(seed + 17).int(0, IRIS.length - 1)],
+    ...profile.features, iris: irisForSeed(seed),
     masc: fig.masc, age: fig.age, stubble: fig.masc && fig.age < 0.8 && fr() < 0.55 ? fr.range(0.4, 1) : 0,
     bow: !fig.masc && fig.age < 0.75 && fr() < 0.65, earShift: [0, 6, 13, 3][shape],
   }

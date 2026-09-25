@@ -172,6 +172,7 @@ export function paintBackdrop(kind: 'facial' | 'nails' | 'feet' | 'sole', look: 
     dctx.beginPath(); dctx.roundRect(-40, 330, BACKDROP + 80, BACKDROP, 60); dctx.fill()
     blob(dctx, 420, 620, 520, 260, [255, 255, 255], 0.55)
     dctx.fillStyle = 'rgba(200,160,176,0.35)'; dctx.fillRect(0, 330, BACKDROP, 10)
+    paintDeskProps(dctx, r)
     ctx.save(); ctx.filter = 'blur(3px)'; ctx.drawImage(desk, 0, 0); ctx.restore()
     // A soft folded towel under the hand, with rolled edges.
     const towel = shade(hex(OUTFIT[(look.outfit + 2) % OUTFIT.length]), 0.45)
@@ -203,6 +204,55 @@ export function paintBackdrop(kind: 'facial' | 'nails' | 'feet' | 'sole', look: 
   }
   vignette(ctx)
   return c
+}
+
+/**
+ * The nail desk either side of the towel, so the margins of a manicure read as a working desk: on the left a
+ * tiered caddy of polish bottles, a cup of files and orange sticks and folded mini towels; on the right a glass
+ * jar of cotton balls, a pump of hand cream, a little succulent and a few loose gems. Softly out of focus.
+ */
+function paintDeskProps(c: Ctx, r: ReturnType<typeof makeRng>) {
+  const shadow = (x: number, y: number, rx: number, ry: number) => blob(c, x + 8, y + 12, rx, ry, [150, 100, 120], 0.3)
+  const bottle = (x: number, y: number, col: number, s = 1) => {
+    const cc = hex(col)
+    c.fillStyle = rgba(cc); c.beginPath(); c.roundRect(x - 17 * s, y - 40 * s, 34 * s, 44 * s, 11 * s); c.fill()
+    c.fillStyle = rgba(shade(cc, -0.2)); c.beginPath(); c.roundRect(x - 17 * s, y - 8 * s, 34 * s, 12 * s, 6 * s); c.fill()
+    c.fillStyle = '#3c3048'; c.beginPath(); c.roundRect(x - 7 * s, y - 66 * s, 14 * s, 28 * s, 4 * s); c.fill()
+    blob(c, x - 8 * s, y - 26 * s, 5 * s, 11 * s, [255, 255, 255], 0.75)
+  }
+  // Left: the tiered caddy.
+  shadow(190, 930, 150, 50)
+  c.fillStyle = '#fff4f7'; c.beginPath(); c.roundRect(40, 780, 300, 180, 26); c.fill()
+  c.fillStyle = 'rgba(214,170,188,0.5)'; c.fillRect(40, 860, 300, 8)
+  const cols = [0xf4a6b8, 0xd83a56, 0xb79ce6, 0x94dcc0, 0xf6dd8a, 0x8ec5f2, 0xf5836b, 0x3b3a6e]
+  for (let i = 0; i < 5; i++) bottle(80 + i * 56, 848, cols[(i + r.int(0, 3)) % cols.length], 0.9)
+  for (let i = 0; i < 5; i++) bottle(80 + i * 56, 950, cols[(i + 4) % cols.length], 0.9)
+  // A cup of files and orange sticks.
+  shadow(200, 1210, 70, 26)
+  for (let i = 0; i < 6; i++) { c.strokeStyle = i % 2 ? '#f0c89a' : '#f4b6c8'; c.lineWidth = 10; c.lineCap = 'round'; c.beginPath(); c.moveTo(190 + i * 6, 1150); c.lineTo(150 + i * 18, 1040 - (i % 3) * 20); c.stroke() }
+  const cup = c.createLinearGradient(140, 0, 260, 0); cup.addColorStop(0, '#dff4ec'); cup.addColorStop(1, '#a9dcc8')
+  c.fillStyle = cup; c.beginPath(); c.roundRect(140, 1120, 120, 110, 18); c.fill()
+  // Folded mini towels.
+  shadow(180, 1420, 130, 40)
+  for (let k = 0; k < 3; k++) { c.fillStyle = ['#fce4ec', '#e8f6f0', '#efe8fb'][k]; c.beginPath(); c.roundRect(60, 1330 - k * 34, 240, 44, 18); c.fill(); c.strokeStyle = 'rgba(190,150,170,0.5)'; c.lineWidth = 3; c.stroke() }
+  // Right: a jar of cotton balls.
+  shadow(1400, 900, 90, 34)
+  c.fillStyle = 'rgba(236,244,250,0.8)'; c.beginPath(); c.roundRect(1320, 720, 160, 190, 40); c.fill()
+  for (let i = 0; i < 12; i++) blob(c, 1350 + r.range(0, 100), 760 + r.range(0, 130), 26, 24, [255, 255, 255], 0.95)
+  c.fillStyle = '#f7c6d4'; c.beginPath(); c.roundRect(1316, 700, 168, 34, 14); c.fill()
+  blob(c, 1340, 780, 12, 60, [255, 255, 255], 0.6)
+  // A pump bottle of hand cream.
+  shadow(1440, 1190, 70, 26)
+  c.fillStyle = '#fbe7b0'; c.beginPath(); c.roundRect(1390, 1040, 100, 160, 30); c.fill()
+  c.fillStyle = '#ffffff'; c.fillRect(1428, 990, 24, 56); c.fillRect(1428, 990, 60, 16)
+  c.fillStyle = 'rgba(233,138,168,0.8)'; c.beginPath(); c.roundRect(1405, 1100, 70, 40, 10); c.fill()
+  blob(c, 1410, 1100, 10, 50, [255, 255, 255], 0.6)
+  // A little succulent in a pot.
+  shadow(1420, 1440, 80, 28)
+  c.fillStyle = '#f2b7a0'; c.beginPath(); c.roundRect(1360, 1360, 120, 90, 20); c.fill()
+  for (let i = 0; i < 9; i++) { const a = -Math.PI / 2 + (i - 4) * 0.34; c.fillStyle = i % 2 ? '#8fd0a8' : '#a9dcb8'; c.beginPath(); c.ellipse(1420 + Math.cos(a) * 34, 1350 + Math.sin(a) * 30, 22, 44, a + Math.PI / 2, 0, Math.PI * 2); c.fill() }
+  // Loose gems.
+  for (let i = 0; i < 8; i++) { const x = 1300 + r.range(0, 240), y = 1560 + r.range(-80, 20); blob(c, x, y, 9, 9, hex([0xc8b4ff, 0xa8f0dc, 0xffc0da][i % 3]), 0.95); blob(c, x - 3, y - 3, 3, 3, [255, 255, 255], 1) }
 }
 
 /**

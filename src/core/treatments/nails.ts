@@ -20,7 +20,8 @@ const LIBRARY = {
   base: { id: 'base', label: 'Base coat', hint: 'Paint a clear base coat on every nail', tool: 'baseCoat', gesture: 'paint', sound: 'polish', layer: 'base', region: 'nails', radius: 36, rate: 0.24, camera: tips, reaction: 'neutral' },
   color: { id: 'color', label: 'Colour', hint: 'Pick a colour, then paint every nail', tool: 'polishBrush', gesture: 'paint', sound: 'polish', layer: 'color', region: 'nails', radius: 36, rate: 0.22, choice: 'polish', camera: tips, reaction: 'content' },
   top: { id: 'top', label: 'Top coat', hint: 'Seal it with a glossy top coat', tool: 'topCoat', gesture: 'paint', sound: 'polish', layer: 'top', region: 'nails', radius: 36, rate: 0.26, camera: tips, reaction: 'neutral' },
-  cure: { id: 'cure', label: 'UV lamp', hint: 'Hold under the lamp to set the polish', tool: 'uvLamp', gesture: 'hold', sound: 'uv', region: 'nails', holdSeconds: 3, camera: hand, reaction: 'content' },
+  // Its own camera: the lamp's hood and the fingertips sit below the step header.
+  cure: { id: 'cure', label: 'UV lamp', hint: 'Hold under the lamp to set the polish', tool: 'uvLamp', gesture: 'hold', sound: 'uv', region: 'nails', holdSeconds: 3, camera: { x: 480, y: 470, zoom: 0.86 }, reaction: 'content' },
   airDry: { id: 'airDry', label: 'Air dry', hint: 'Hold the little fan over the nails while they dry', tool: 'fan', gesture: 'hold', sound: 'fan', region: 'nails', holdSeconds: 2.6, passive: 0.5, camera: hand, reaction: 'content' },
   gems: { id: 'gems', label: 'Gems', hint: 'Tap a nail to add a gem, or finish', tool: 'gems', gesture: 'targets', sound: 'gem', targets: 'gem', region: 'nails', camera: tips, reaction: 'content', optional: true },
   oil: { id: 'oil', label: 'Cuticle oil', hint: 'A drop of oil on each cuticle, then rub it in', tool: 'dropper', gesture: 'paint', sound: 'oil', layer: 'wet', region: 'cuticles', radius: 34, rate: 0.3, camera: tips, reaction: 'content', complete: 0.85 },

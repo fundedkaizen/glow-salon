@@ -9,6 +9,7 @@ import { CoopLink } from './net/coop-link.ts'
 import { startGame } from './game/game.ts'
 import { warmCloseUps } from './render/warmup.ts'
 import { footPreview } from './render/foot-preview.ts'
+import { peoplePreview } from './render/people-preview.ts'
 
 /**
  * Boot: one WebGL canvas for the salon and the close-ups, a DOM layer on top for the UI.
@@ -17,6 +18,7 @@ import { footPreview } from './render/foot-preview.ts'
  * opens a close-up directly. Add `&coop=host` in one tab and `&coop=<CODE>` in another to try four hands
  * through the relay: the host leads, the guest helps (the magnifier lamp on extraction steps).
  * `?view=feet` previews the pedicure art (see render/foot-preview.ts for its options); `?view=pedicure` plays one.
+ * `?view=people` lines up the floor people at a large zoom (render/people-preview.ts).
  */
 async function boot() {
   const app = new Application()
@@ -30,6 +32,7 @@ async function boot() {
     if (params.has('warm')) { warmCloseUps(app.renderer); await new Promise(r => setTimeout(r, 1500)) }
     closeUp(app, ui, view === 'pedicure' ? 'feet' : view, params)
   } else if (view === 'feet') footPreview(app, debugLook(randomLook(makeRng(Number(params.get('seed') ?? 7))), params), params)
+  else if (view === 'people') peoplePreview(app, params)
   else await startGame(app, ui)
   document.getElementById('boot')?.classList.add('done')
 }
