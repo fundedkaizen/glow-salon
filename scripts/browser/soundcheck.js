@@ -14,6 +14,16 @@
     }
     return { peakDb: +db(peak).toFixed(1), rmsDb: +db(Math.sqrt(sum / n)).toFixed(1), ringsMs: Math.round((last / SR) * 1000) }
   }
+  /** Render `seconds`, calling fn(s, k) `rate` times a second at the right moments (k runs 0 to 1 over `span` s). */
+  async function renderHeld(seconds, fn, rate, span) {
+    const ctx = new OfflineAudioContext(2, Math.ceil(SR * seconds), SR)
+    const s = new window.__Sfx()
+    s.attach(ctx)
+    await s.loadAll()
+    const n = Math.floor(seconds * rate)
+    for (let i = 0; i < n; i++) ctx.suspend(i / rate).then(() => { fn(s, (i / rate) / span); ctx.resume() })
+    return ctx.startRendering()
+  }
   async function render(seconds, play) {
     const ctx = new OfflineAudioContext(2, Math.ceil(SR * seconds), SR)
     const s = new window.__Sfx()
@@ -29,12 +39,23 @@
     'stroke:foam': s => s.stroke('foam', 0.8), 'stroke:wipe': s => s.stroke('wipe', 0.8), 'stroke:brush': s => s.stroke('brush', 0.8), 'stroke:cream': s => s.stroke('cream', 0.8),
     'stroke:scrub': s => s.stroke('scrub', 0.8), 'stroke:buff': s => s.stroke('buff', 0.8), 'stroke:polish': s => s.stroke('polish', 0.8), 'stroke:rasp': s => s.stroke('rasp', 0.8),
     'toolUp:cream': s => s.toolUp('cream'), 'toolUp:tonerPad': s => s.toolUp('tonerPad'),
+    'stroke:comb': s => s.stroke('comb', 0.8), 'stroke:roll': s => s.stroke('roll', 0.8), 'stroke:oil': s => s.stroke('oil', 0.8), 'stroke:sheet': s => s.stroke('sheet', 0.8),
+    'clip(clipper)': s => { s.toolUp('clipper'); s.snip() }, 'nip(nipper)': s => { s.toolUp('nipper'); s.snip() }, tick: s => s.tick(), unlockChime: s => s.unlockChime(),
+  }
+  // Held sounds: called every frame for a while, as the game does. [name, seconds, (s, t0to1) => void, calls per second]
+  const HELD = {
+    // A whitehead squeezed for 1.2 s, then popped.
+    'squeeze held 1.2s': [1.6, (s, k) => { if (k <= 1) s.squeeze(k) }, 30, 1.2],
+    'squeeze held + pop': [1.8, (s, k) => { if (k < 1) s.squeeze(k); else if (k < 1.02) s.pop(0.9) }, 30, 1.2],
+    'stroke:rasp held': [1.5, s => s.stroke('rasp', 0.8), 30, 1.2],
+    'stroke:buff held': [1.8, s => s.stroke('buff', 0.8), 30, 1.5],
   }
   const LOOPS = ['foam', 'water', 'soak', 'steam', 'fan', 'hum', 'rasp', 'scrape']
   window.__soundcheck = async () => {
     const out = {}
     for (const [name, play] of Object.entries(SOUNDS)) out[name] = stats(await render(3, s => play(s)))
     for (const name of LOOPS) out['loop:' + name] = stats(await render(2.5, async (s) => { const v = s.loop(name); v.set(1) }))
+    for (const [name, [secs, fn, rate, span]] of Object.entries(HELD)) out[name] = stats(await renderHeld(secs, fn, rate, span))
     return JSON.stringify(out)
   }
   // All the sounds one after another, for a person to listen to.
