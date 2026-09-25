@@ -1,15 +1,15 @@
 import { Container, Graphics, Sprite, Text, type Application, type FederatedPointerEvent, type Texture } from 'pixi.js'
 import { bits } from '../art/bits.ts'
 import { CURTAIN_SPOTS, decorPiece } from '../art/salon/decor-art.ts'
-import { fairyBulbs, paintBaseRug, paintDoorBell, paintFillerFrame, paintFloorLamp, paintLampGlow, paintMagazineTable, paintSoonScreen, paintSucculent, paintTeaCorner, paintWelcomeSign, paintAquarium, paintCandles, paintChandelier, paintCloudRug, paintDesk, paintFacialChair, paintFairyLights, paintNailDesk, paintNeonGlow, paintPlant, paintSofa, paintStationGlow, paintWallArt, type Piece } from '../art/salon/furniture.ts'
-import { icons } from '../art/salon/icons.ts'
+import { fairyBulbs, paintBaseRug, paintDoorBell, paintFillerFrame, paintFloorLamp, paintLampGlow, paintMagazineTable, paintSoonScreen, paintSucculent, paintTeaCorner, paintWelcomeSign, paintAquarium, paintCandles, paintChandelier, paintCloudRug, paintDesk, paintFacialChair, paintFairyLights, paintNailDesk, paintNeonGlow, paintPedicureChair, paintPlant, paintSofa, paintStationGlow, paintWallArt, type Piece } from '../art/salon/furniture.ts'
+import { icons, treatmentIcon } from '../art/salon/icons.ts'
 import { canvasTexture, DOOR_Y0, DOOR_Y1, OUTSIDE_W, paintFront, paintLight, paintOutside, paintRoom, paintVignette, WALL_T } from '../art/salon/room.ts'
 import { PLAYER_COLORS } from '../art/palette.ts'
 import { purr, softPop } from '../audio/salon-sfx.ts'
 import { sfx } from '../audio/sfx.ts'
 import { randomLook, type Look } from '../core/customers.ts'
 import { DECOR_ITEM_BY_ID, DECOR_SLOTS, GIFT_BY_ID, GIFT_SLOTS, placeDecor } from '../core/decor.ts'
-import { canBuy, ITEM_BY_ID, ITEMS } from '../core/economy.ts'
+import { canBuy, ITEM_BY_ID, ITEMS, STATION_NAME } from '../core/economy.ts'
 import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA_SEATS, stationRect, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
 import { personaFor, storyBeat } from '../core/persona.ts'
 import { withFigure } from '../core/figure.ts'
@@ -345,7 +345,7 @@ export class FloorView {
       firstEmpty = false
     }
     if (unplaced && this.ghosts.length) {
-      const label = speech(`Tap a glowing spot for your new ${unplaced.kind === 'facial' ? 'facial chair' : 'nail desk'}`)
+      const label = speech(`Tap a glowing spot for your new ${STATION_NAME[unplaced.kind]}`)
       const first = SLOTS[this.ghosts[0].slot]
       add(this.uiLayer, label, first.x, first.y - 70)
       this.ghostLabel = label
@@ -369,6 +369,10 @@ export class FloorView {
       const p = SLOTS[st.slot]
       if (st.kind === 'facial') {
         const chair = cachedPair('facial', paintFacialChair)
+        add(this.sortLayer, spriteOf(chair.back), p.x, p.y, p.y - 1)
+        add(this.sortLayer, spriteOf(chair.front), p.x, p.y, p.y + 3)
+      } else if (st.kind === 'feet') {
+        const chair = cachedPair('feet', paintPedicureChair)
         add(this.sortLayer, spriteOf(chair.back), p.x, p.y, p.y - 1)
         add(this.sortLayer, spriteOf(chair.front), p.x, p.y, p.y + 3)
       } else {
@@ -493,7 +497,7 @@ export class FloorView {
         bg.roundRect(-19, -19, 38, 34, 15).fill({ color: 0xffffff }).stroke({ width: 1.4, color: 0xe9c2d0 })
         bg.poly([-5, 14, 5, 14, 0, 21]).fill({ color: 0xffffff })
         const ring = new Graphics()
-        const iconSprite = new Sprite(c.plan.treatment === 'nails' ? icons.nails() : icons.facial())
+        const iconSprite = new Sprite(treatmentIcon(c.plan.treatment))
         iconSprite.anchor.set(0.5); iconSprite.scale.set(0.82); iconSprite.y = -2
         bubble.addChild(bg, ring, iconSprite)
         bubble.scale.set(0)
@@ -882,16 +886,17 @@ export class FloorView {
       if (working && st) {
         const c = state.customers.find(x => x.id === st.customer)
         const icon = v.tool.children[1] as Sprite
-        const nails = c?.plan.treatment === 'nails'
-        icon.texture = nails ? icons.nails() : icons.facial()
+        const nails = c?.plan.treatment === 'nails', feet = c?.plan.treatment === 'feet'
+        icon.texture = treatmentIcon(c?.plan.treatment ?? 'facial')
         v.tool.position.set(v.x - 40, v.y - 96 + Math.sin(this.t * 2.6) * 2.5)
         v.tool.rotation = Math.sin(this.t * 3) * 0.06
         v.puff -= dt
         if (v.puff <= 0 && c) {
           v.puff = 0.35 + Math.random() * 0.3
           const at = SLOTS[st.slot]
-          const x = at.x + (nails ? -20 : 14) + (Math.random() - 0.5) * 26, y = at.y + (nails ? -12 : -58) + (Math.random() - 0.5) * 16
+          const x = at.x + (nails ? -20 : feet ? 10 : 14) + (Math.random() - 0.5) * 26, y = at.y + (nails ? -12 : feet ? 24 : -58) + (Math.random() - 0.5) * 16
           if (nails) this.burst(x, y, 'sparkle', 1)
+          else if (feet) this.fx.spawn({ texture: bits.bubble(), x, y, vx: (Math.random() - 0.5) * 10, vy: -16 - Math.random() * 12, life: 1, scale: 0.05, scaleEnd: 0.12, alpha: 0.9, alphaEnd: 0 })
           else this.fx.spawn({ texture: bits.glow(), x, y, vx: (Math.random() - 0.5) * 16, vy: -18 - Math.random() * 14, life: 1.1, scale: 0.12, scaleEnd: 0.32, alpha: 0.85, alphaEnd: 0, tint: 0xffffff })
         }
       }

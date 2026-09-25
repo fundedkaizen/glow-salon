@@ -391,7 +391,7 @@ export class TreatmentView {
     const a = f.assets[t.view === 'sole' ? 'sole' : 'top']
     if (t.kind === 'tip') {
       const toe = a.anatomy.shape.toes[t.n ?? 0]
-      const tip = f.assets.top.footTips[t.n ?? 0]
+      const tip = (this.polishLeft(t.n ?? 0) ? f.assets.top.footTips : f.assets.top.footTipsBare)[t.n ?? 0]
       const nl = toeNail(toe)
       root.position.set(nl.tip.x, nl.tip.y)
       if (tip) {
@@ -415,6 +415,27 @@ export class TreatmentView {
     } else if (t.kind === 'patch') {
       const r = sprite(bits.ring(), 0.55)
       r.tint = 0xf49ac0; r.visible = false
+    }
+  }
+
+  /** Feet: is there old polish left on this toenail (its middle, in the session's grid)? */
+  private polishLeft(toe: number) {
+    const grid = this.session.layers['top.oldPolish']
+    const f = this.feet
+    if (!grid || !f) return false
+    const nl = toeNail(f.assets.top.anatomy.shape.toes[toe])
+    const x = (nl.base.x + nl.tip.x) / 2, y = (nl.base.y + nl.tip.y) / 2
+    return grid[Math.floor(y / CELL) * GRID + Math.floor(x / CELL)] > 0.3
+  }
+
+  /** The remover took the old polish off: the overgrown tips lose theirs too. */
+  private barePolishTips() {
+    const f = this.feet
+    if (!f) return
+    for (const tv of this.targets.values()) {
+      if (tv.t.kind !== 'tip' || tv.gone || !tv.parts[0]) continue
+      const bare = f.assets.top.footTipsBare[tv.t.n ?? 0]
+      if (bare) tv.parts[0].texture = bare.texture
     }
   }
 
@@ -779,6 +800,7 @@ export class TreatmentView {
           sf.resolve(local, e.to, e.to === 1 ? this.session.layers[e.layer] : undefined)
           if ((e.layer === 'foam' || /\.(scrub|salt)$/.test(e.layer)) && e.to === 0) this.foam.washAll()
           this.feet?.dirty.delete(e.layer)
+          if (e.layer === 'top.oldPolish' && e.to === 0) this.barePolishTips()
           break
         }
         case 'fade':
@@ -961,7 +983,14 @@ export class TreatmentView {
     if (fungal && big) this.flinch(0.6)
     const nl = toeNail(f.assets.top.anatomy.shape.toes[n])
     const drop = (g: Container, vx: number, vy: number, spin: number, rest: number) => { f.debrisLayer.addChild(g); f.debris.push({ s: g, vx, vy, spin, rest, landed: false, fade: -1 }) }
-    // The clipped edge itself.
+    // The clipped edge itself: only the part past the toe (the rest of the art fades into the nail plate).
+    const tipSprite = tv.parts[0], sliver = f.assets.top.footClippings[n]
+    if (tipSprite && sliver) {
+      tipSprite.texture = sliver.texture
+      tipSprite.anchor.set(0.5, 1 - sliver.y / sliver.texture.height)
+      const polish = this.session.foot?.polish
+      if (polish && !fungal && this.polishLeft(n)) tipSprite.tint = POLISH_COLORS[polish.color % POLISH_COLORS.length].hex
+    }
     tv.root.removeFromParent()
     drop(tv.root, nl.dir.x * 60 + (Math.random() - 0.5) * 80, -160 - Math.random() * 80, (Math.random() - 0.5) * 7, Math.min(1010, e.y + 70 + Math.random() * 60))
     const pool = fungal ? f.assets.top.shards.fungal : f.assets.top.shards.clean
@@ -969,7 +998,7 @@ export class TreatmentView {
     for (let i = 0; i < count; i++) {
       const sh = new Sprite(pool[Math.floor(Math.random() * pool.length)])
       sh.anchor.set(0.5)
-      sh.scale.set((fungal ? 0.5 : 0.42) * (big ? 1.15 : 0.85) * (0.8 + Math.random() * 0.4))
+      sh.scale.set((fungal ? 0.72 : 0.6) * (big ? 1.15 : 0.85) * (0.8 + Math.random() * 0.4))
       sh.rotation = Math.random() * Math.PI * 2
       const holder = new Container()
       holder.addChild(sh)

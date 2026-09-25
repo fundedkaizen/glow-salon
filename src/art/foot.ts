@@ -27,6 +27,10 @@ export type FootArt = {
   layers: Record<string, () => HTMLCanvasElement>
   /** Top view: the overgrown free edge of each toenail (null where it is already short). */
   tips: (Crop | null)[]
+  /** The same without the old polish (after the remover). */
+  tipsBare: (Crop | null)[]
+  /** What the clipper takes off each overgrown toenail: a curved sliver, its cut edge at (x, y). */
+  clippings: (Crop | null)[]
   /** Spot art, each centred on its canvas. */
   spots: Record<'corn' | 'cornCore' | 'cornMark' | 'splinter' | 'splinterHalo' | 'splinterMark' | 'plaster', HTMLCanvasElement>
   /** Clipped bits of nail for the particles: clean and fungal. */
@@ -173,6 +177,8 @@ export function paintFoot(look: Look, seed: number, profile: FootProfile, view: 
   return {
     view, base, height, layers,
     tips: view === 'top' ? paintTips(a, profile) : [],
+    tipsBare: view === 'top' ? paintTips(a, profile, true) : [],
+    clippings: view === 'top' ? paintClippings(a, profile) : [],
     spots: paintSpots(view === 'top' ? skin : sole),
     shards: paintShards(seed),
     skin, soleSkin: sole, anatomy: a,
@@ -986,72 +992,113 @@ function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil
     }),
     // Fungus: thick, yellow, crumbling nails. The plate is broken into pieces by dark cracks (each piece a little
     // raised, lit on its upper edge), stained brown toward the base, chalky and missing chunks at the free edge.
+    // Fungal nails, each its own: thickened yellow-brown patches that spread back from the free edge (further on
+    // the big toe, a corner on a barely touched one), healthier pink showing through in islands, longitudinal
+    // ridges and streaks down the sides, a few cracks on the bad ones, and chalky crumbs at a ragged free edge.
     fungus: () => sheet(nailMask(a, 2), l => {
       toes.forEach((t, i) => {
         const k = p.fungus[i]
         if (!k) return
-        const nl = toeNail(t), hw = nl.halfWidth, dir = nl.dir, nx = -dir.y, ny = dir.x
-        const len = Math.hypot(nl.tip.x - nl.base.x, nl.tip.y - nl.base.y)
-        const along = (u: number, side = 0) => ({ x: nl.base.x + (nl.tip.x - nl.base.x) * u + nx * side * hw, y: nl.base.y + (nl.tip.y - nl.base.y) * u + ny * side * hw })
-        const r = makeRng(seed + 700 + i)
+        const nl = toeNail(t), hw = nl.halfWidth
+        const L = Math.hypot(nl.tip.x - nl.base.x, nl.tip.y - nl.base.y)
+        const r = makeRng(seed + 700 + i * 31)
         const outline = nailOutline(nl, a.shape.nailShape, i)
+        const sc = hw / 30
         l.save()
         l.beginPath(); smoothPath(l, outline); l.clip()
-        // The gaps between the pieces.
-        l.fillStyle = rgba([112, 74, 30], 0.55 + 0.45 * k)
-        l.fillRect(0, 0, S, S)
-        // The pieces: Voronoi cells around scattered points, each inset a little to open the crack.
-        const n = i === 0 ? Math.round(5 + 13 * k) : Math.round(2 + 4 * k)
-        const pts = Array.from({ length: n }, () => along(r.range(0.02, 1.05), r.range(-1, 1)))
-        const gap = (i === 0 ? 1.4 : 0.9) + 1.4 * k
-        for (const [pi, c] of pts.entries()) {
-          const poly: number[] = []
-          for (let j = 0; j < 20; j++) {
-            const ang = (j / 20) * Math.PI * 2, dx = Math.cos(ang), dy = Math.sin(ang)
-            let reach = hw * 3
-            for (const [qi, q] of pts.entries()) {
-              if (qi === pi) continue
-              const vx = q.x - c.x, vy = q.y - c.y, dot = vx * dx + vy * dy
-              if (dot > 1e-3) reach = Math.min(reach, (vx * vx + vy * vy) / (2 * dot))
-            }
-            reach = Math.max(0, reach - gap)
-            poly.push(c.x + dx * reach, c.y + dy * reach)
-          }
-          const tone: RGB = mixRGB(mixRGB([236, 202, 108], [214, 166, 72], r()), [250, 234, 180], 0.25 * (1 - k))
-          const gg = l.createLinearGradient(c.x - hw * 0.4, c.y - hw * 0.4, c.x + hw * 0.4, c.y + hw * 0.4)
-          gg.addColorStop(0, rgba(mixRGB(tone, [255, 246, 214], 0.45))); gg.addColorStop(0.55, rgba(tone)); gg.addColorStop(1, rgba(shade(tone, -0.18)))
-          l.fillStyle = gg
-          l.beginPath(); smoothPath(l, poly); l.fill()
-          // Its raised, lit upper edge.
-          l.strokeStyle = 'rgba(255,248,222,0.55)'; l.lineWidth = i === 0 ? 1.6 : 1
-          l.beginPath(); for (let j = 11; j <= 17; j++) { const x = poly[j * 2], y = poly[j * 2 + 1]; if (j === 11) l.moveTo(x, y); else l.lineTo(x, y) } l.stroke()
+        // Nail-local frame: x across (-hw..hw), y from the cuticle (0) to the free edge (L).
+        l.translate(nl.base.x, nl.base.y); l.rotate(Math.atan2(-nl.dir.x, nl.dir.y))
+        const extent = 0.22 + 0.72 * k
+        // The front of the infection: wavy, and further back in streaks (often down the sides).
+        const streaks = Array.from({ length: 1 + Math.round(2 * k) }, () => ({ x: r.range(-0.95, 0.95) * hw, w: r.range(0.12, 0.3) * hw, reach: r.range(0.1, 0.3) * L }))
+        const front = (x: number) => {
+          let y = L * (1 - extent) + Math.sin(x / hw * 3.1 + r() * 0.2 + i) * L * 0.05
+          for (const st of streaks) y -= st.reach * Math.exp(-(((x - st.x) / st.w) ** 2))
+          // A small, early patch sits in one corner of the free edge.
+          if (k < 0.45) y += (x / hw + 1) * L * 0.18 * (1 - k * 2)
+          return Math.max(L * 0.05, y)
         }
-        // Brown stain from the base, mottling, and chalky crumbs toward the free edge.
-        const b0 = along(0.02), b1 = along(0.6)
-        const bg = l.createLinearGradient(b0.x, b0.y, b1.x, b1.y)
-        bg.addColorStop(0, rgba([150, 96, 40], 0.45 * k)); bg.addColorStop(1, rgba([150, 96, 40], 0))
-        l.fillStyle = bg
-        l.fillRect(0, 0, S, S)
+        const poly: number[] = []
+        for (let q = 0; q <= 24; q++) { const x = -hw * 1.1 + (q / 24) * hw * 2.2; poly.push(x, front(x)) }
+        poly.push(hw * 1.1, L * 1.2, -hw * 1.1, L * 1.2)
+        const zone = new Path2D()
+        zone.moveTo(poly[0], poly[1]); for (let q = 2; q < poly.length; q += 2) zone.lineTo(poly[q], poly[q + 1]); zone.closePath()
+        // Thick keratin: translucent yellow at the soft front, opaque ochre toward the free edge.
+        const yel: RGB = mixRGB([246, 216, 124], [236, 194, 98], r())
+        const brown: RGB = mixRGB([214, 160, 78], [188, 134, 58], k)
+        const g = l.createLinearGradient(0, L * (1 - extent), 0, L * 1.05)
+        g.addColorStop(0, rgba(yel, 0.3 + 0.25 * k)); g.addColorStop(0.35, rgba(yel, 0.78 + 0.18 * k)); g.addColorStop(1, rgba(brown, 0.96))
+        l.fillStyle = g
+        l.filter = `blur(${Math.max(1.5, hw * 0.06)}px)`
+        l.fill(zone)
+        l.filter = 'none'
+        l.save()
+        l.clip(zone)
+        // Mottled thickness, stretched along the nail (it grows in lengthwise streaks).
+        l.save()
         l.globalCompositeOperation = 'multiply'
-        l.globalAlpha = 0.35 * k
-        l.drawImage(fbm(256, 8, 3, seed + i * 3), along(0.5).x - 128, along(0.5).y - 128)
-        l.globalAlpha = 1
-        l.globalCompositeOperation = 'source-over'
-        dots(l, [255, 248, 222], Math.round(30 * k * (hw / 16)), () => { const q = along(r.range(0.7, 1.05), r.range(-1, 1)); return { x: q.x, y: q.y, r: r.range(0.8, hw * 0.08 + 1), a: r.range(0.5, 0.95) } }, 2)
-        // Missing chunks at the crumbling free edge.
+        l.globalAlpha = 0.16 + 0.16 * k
+        l.scale(0.5, 2.2)
+        l.drawImage(fbm(128, 6, 3, seed + 90 + i), -hw * 2.4, -8, hw * 4.8, L * 0.62)
+        l.restore()
+        // Healthier islands: the pink nail shows through.
         l.globalCompositeOperation = 'destination-out'
-        for (let c2 = 0; c2 < Math.round(1 + 3 * k); c2++) {
-          const q = along(r.range(0.92, 1.08), r.range(-0.9, 0.9)), rr = hw * r.range(0.12, 0.28)
+        for (let q = 0; q < Math.round(3 - 2 * k + r() * 2); q++) {
+          const cx = r.range(-0.7, 0.7) * hw, cy = r.range(0.25, 0.8) * L
+          const blobG = l.createRadialGradient(cx, cy, 0, cx, cy, hw * r.range(0.25, 0.45))
+          blobG.addColorStop(0, `rgba(0,0,0,${0.75 - 0.4 * k})`); blobG.addColorStop(1, 'rgba(0,0,0,0)')
+          l.fillStyle = blobG
+          l.beginPath(); l.ellipse(cx, cy, hw * r.range(0.2, 0.4), L * r.range(0.12, 0.25), 0, 0, Math.PI * 2); l.fill()
+        }
+        l.globalCompositeOperation = 'source-over'
+        // Brown streaks down the sides.
+        for (const side of [-1, 1]) {
+          if (r() > 0.4 + 0.5 * k) continue
+          const sg = l.createLinearGradient(side * hw, 0, side * hw * 0.55, 0)
+          sg.addColorStop(0, rgba([140, 92, 40], 0.55 * k)); sg.addColorStop(1, rgba([140, 92, 40], 0))
+          l.fillStyle = sg; l.fillRect(side > 0 ? hw * 0.5 : -hw * 1.1, 0, hw * 0.6, L * 1.2)
+        }
+        l.restore()
+        // Longitudinal ridges: uneven lines from the front to the edge, each with a lit side.
+        for (let q = 0; q < 3 + Math.round(4 * k); q++) {
+          const x0 = r.range(-0.85, 0.85) * hw, y0 = Math.max(front(x0) + L * r.range(0.12, 0.25), L * 0.3), bend = r.range(-0.08, 0.08) * hw
+          l.strokeStyle = rgba([150, 100, 40], r.range(0.18, 0.36) * (0.5 + k * 0.5)); l.lineWidth = r.range(0.8, 1.6) * sc + 0.4
+          l.beginPath(); l.moveTo(x0, y0); l.quadraticCurveTo(x0 + bend, (y0 + L) / 2, x0 + bend * 0.5, L * 1.02); l.stroke()
+          l.strokeStyle = 'rgba(255,244,210,0.28)'; l.lineWidth = 0.8 * sc + 0.3
+          l.beginPath(); l.moveTo(x0 - 1.4 * sc, y0 + 2); l.quadraticCurveTo(x0 + bend - 1.4 * sc, (y0 + L) / 2, x0 + bend * 0.5 - 1.4 * sc, L * 1.0); l.stroke()
+        }
+        // A few cracks on the worse ones: short and jagged, from the free edge back.
+        for (let q = 0; q < (k > 0.5 ? 1 + Math.round(2 * (k - 0.5) * 2) : 0); q++) {
+          let x = r.range(-0.6, 0.6) * hw, y = L * r.range(0.95, 1.02)
+          const steps = r.int(3, 5)
+          l.beginPath(); l.moveTo(x, y)
+          for (let j = 0; j < steps; j++) { x += r.range(-0.12, 0.12) * hw; y -= L * r.range(0.05, 0.1); l.lineTo(x, y) }
+          l.strokeStyle = rgba([92, 58, 24], 0.7); l.lineWidth = 1.3 * sc + 0.4; l.stroke()
+          l.strokeStyle = 'rgba(255,240,200,0.4)'; l.lineWidth = 0.7 * sc + 0.2; l.stroke()
+        }
+        // Chalky crumbs along the free edge, more the thicker it is.
+        const crumbs = Math.round((10 + 30 * k) * Math.max(0.6, sc))
+        for (let q = 0; q < crumbs; q++) {
+          const cx = r.range(-0.95, 0.95) * hw, cy = L * r.range(0.86, 1.04), rr = r.range(0.8, 2.6) * (0.6 + sc * 0.6)
+          l.fillStyle = rgba(mixRGB([252, 244, 214], [232, 208, 144], r()), r.range(0.65, 0.95))
           l.beginPath()
-          for (let j = 0; j < 7; j++) { const aa = (j / 7) * Math.PI * 2, d = rr * r.range(0.6, 1.2); if (j === 0) l.moveTo(q.x + Math.cos(aa) * d, q.y + Math.sin(aa) * d); else l.lineTo(q.x + Math.cos(aa) * d, q.y + Math.sin(aa) * d) }
+          const n = r.int(4, 6)
+          for (let j = 0; j < n; j++) { const aa = (j / n) * Math.PI * 2, d = rr * r.range(0.6, 1.2); if (j === 0) l.moveTo(cx + Math.cos(aa) * d, cy + Math.sin(aa) * d); else l.lineTo(cx + Math.cos(aa) * d, cy + Math.sin(aa) * d) }
+          l.closePath(); l.fill()
+        }
+        // The ragged free edge: bites out of it.
+        l.globalCompositeOperation = 'destination-out'
+        for (let q = 0; q < Math.round(1 + 3 * k); q++) {
+          const cx = r.range(-0.85, 0.85) * hw, cy = L * r.range(1.0, 1.1), rr = hw * r.range(0.1, 0.22)
+          l.beginPath()
+          for (let j = 0; j < 7; j++) { const aa = (j / 7) * Math.PI * 2, d = rr * r.range(0.6, 1.2); if (j === 0) l.moveTo(cx + Math.cos(aa) * d, cy + Math.sin(aa) * d); else l.lineTo(cx + Math.cos(aa) * d, cy + Math.sin(aa) * d) }
           l.closePath(); l.fill()
         }
         l.globalCompositeOperation = 'source-over'
         l.restore()
         // Thick: a dark line under the lifted free edge.
-        const e = along(1.0)
-        softBatch(l, 1.2, c => { c.strokeStyle = rgba([90, 56, 24], 0.55 * k); c.lineWidth = Math.max(2, hw * 0.14); c.beginPath(); c.ellipse(e.x, e.y, hw * 0.9, hw * 0.28, Math.atan2(dir.y, dir.x) + Math.PI / 2, Math.PI * 0.08, Math.PI * 0.92); c.stroke() })
-        void len
+        const e = { x: nl.tip.x, y: nl.tip.y }
+        softBatch(l, 1.2, c => { c.strokeStyle = rgba([90, 56, 24], 0.5 * k); c.lineWidth = Math.max(2, hw * 0.12); c.beginPath(); c.ellipse(e.x, e.y, hw * 0.9, hw * 0.28, Math.atan2(nl.dir.y, nl.dir.x) + Math.PI / 2, Math.PI * 0.08, Math.PI * 0.92); c.stroke() })
       })
     }),
     // Calluses where shoes rub: yellowish, rough, thick skin on the inner side of the big toe and its joint, and
@@ -1448,7 +1495,7 @@ function soleLayers(sole: SkinTone, seed: number, a: FootAnatomy, sil: HTMLCanva
  * translucent (fungal ones thick, yellow and ragged), drawn pointing up with the nail's tip point at (0, 0);
  * `y` is how far above the crop's bottom that point sits, as for the hand's tips.
  */
-function paintTips(a: FootAnatomy, p: FootProfile): (Crop | null)[] {
+function paintTips(a: FootAnatomy, p: FootProfile, bare = false): (Crop | null)[] {
   return a.shape.toes.map((t, i) => {
     const len = p.grown[i]
     if (len < 4) return null
@@ -1479,9 +1526,10 @@ function paintTips(a: FootAnatomy, p: FootProfile): (Crop | null)[] {
     blurred(ctx, 3, () => { ctx.save(); ctx.translate(2, 4); outline(); ctx.fillStyle = 'rgba(90,60,70,0.25)'; ctx.fill(); ctx.restore() })
     outline()
     // The free edge is polished like the rest of the nail when there is old polish on it.
-    const body: RGB = p.polish && fung <= 0.3 ? shade(hex(POLISH_COLORS[p.polish.color % POLISH_COLORS.length].hex), -0.05) : fung ? mixRGB([236, 212, 140], [208, 160, 72], fung) : [246, 238, 220]
+    const polished = !!p.polish && fung <= 0.3 && !bare
+    const body: RGB = polished ? shade(hex(POLISH_COLORS[p.polish!.color % POLISH_COLORS.length].hex), -0.05) : fung ? mixRGB([236, 212, 140], [208, 160, 72], fung) : [246, 238, 220]
     const g = ctx.createLinearGradient(0, ov, 0, -len)
-    g.addColorStop(0, rgba(body, 0)); g.addColorStop(Math.min(0.9, ov / (ov + len)), rgba(body, 0.5)); g.addColorStop(Math.min(0.95, ov / (ov + len) + 0.12), rgba(body, p.polish || fung ? 0.96 : 0.86)); g.addColorStop(1, rgba(shade(body, -0.04), p.polish || fung ? 0.96 : 0.82))
+    g.addColorStop(0, rgba(body, 0)); g.addColorStop(Math.min(0.9, ov / (ov + len)), rgba(body, 0.5)); g.addColorStop(Math.min(0.95, ov / (ov + len) + 0.12), rgba(body, polished || fung ? 0.96 : 0.86)); g.addColorStop(1, rgba(shade(body, -0.04), polished || fung ? 0.96 : 0.82))
     ctx.fillStyle = g
     ctx.fill()
     ctx.save()
@@ -1504,6 +1552,56 @@ function paintTips(a: FootAnatomy, p: FootProfile): (Crop | null)[] {
     ctx.restore()
     blurred(ctx, 1, () => { ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-hw * 0.55, -len * 0.1); ctx.quadraticCurveTo(-hw * 0.65, -len * 0.6, -hw * 0.2, -len * 0.85); ctx.stroke() })
     return { canvas: c, x: 0, y: 6 + ov }
+  })
+}
+
+/**
+ * What the clipper takes off an overgrown toenail: the free edge as a curved sliver, a crescent between the cut
+ * (arched a little, following the toe) and the rounded free edge, thin at its ends. Healthy ones are translucent
+ * ivory with a lit rim; fungal ones thick, opaque, yellow-brown, ridged and crumbly. Drawn pointing up with the
+ * middle of the cut at (x, y) from the crop's bottom left, like the tips.
+ */
+function paintClippings(a: FootAnatomy, p: FootProfile): (Crop | null)[] {
+  return a.shape.toes.map((t, i) => {
+    const len = p.grown[i]
+    if (len < 4) return null
+    const nl = toeNail(t), hw = nl.halfWidth * 0.86
+    const fung = p.fungus[i]
+    const W = Math.ceil(hw * 2 + 16), H = Math.ceil(len + 20)
+    const [c, ctx] = canvas(W, H)
+    ctx.translate(W / 2, H - 8)
+    const r = makeRng(Math.round(len * 100) + i * 7 + 3)
+    const cut = (x: number) => -hw * 0.3 * (1 - (x / hw) ** 2)
+    const edge = (x: number) => -len + (1 - Math.sqrt(Math.max(0, 1 - (x / hw) ** 2))) * hw * 0.5 - (fung ? r.range(0, len * 0.08) : 0)
+    const xs: number[] = []
+    for (let q = 0; q <= 20; q++) { const x = -hw + (q / 20) * hw * 2; if (edge(x) < cut(x) - 0.6) xs.push(x) }
+    if (xs.length < 3) return null
+    const top = xs.map(x => [x, edge(x)] as [number, number])
+    const bottom = [...xs].reverse().map(x => [x, cut(x)] as [number, number])
+    const path = () => { ctx.beginPath(); ctx.moveTo(top[0][0], top[0][1]); for (const [x, y] of top) ctx.lineTo(x, y); for (const [x, y] of bottom) ctx.lineTo(x, y); ctx.closePath() }
+    const col: RGB = fung ? mixRGB([232, 196, 110], [186, 134, 60], Math.min(1, fung)) : [247, 239, 224]
+    path()
+    const g = ctx.createLinearGradient(0, -len, 0, 0)
+    g.addColorStop(0, rgba(shade(col, 0.2), fung ? 1 : 0.9)); g.addColorStop(1, rgba(shade(col, -0.1), fung ? 0.97 : 0.8))
+    ctx.fillStyle = g
+    ctx.fill()
+    ctx.save(); path(); ctx.clip()
+    // Curved across: lit on the left, shaded on the right.
+    const sg = ctx.createLinearGradient(-hw, 0, hw, 0)
+    sg.addColorStop(0, 'rgba(255,255,255,0.3)'); sg.addColorStop(0.45, 'rgba(255,255,255,0)'); sg.addColorStop(1, 'rgba(110,80,50,0.25)')
+    ctx.fillStyle = sg; ctx.fillRect(-hw, -len - 4, hw * 2, len + 8)
+    if (fung) {
+      ctx.strokeStyle = 'rgba(120,80,30,0.45)'; ctx.lineWidth = 0.9
+      for (let q = 0; q < 4; q++) { const x = r.range(-0.7, 0.7) * hw; ctx.beginPath(); ctx.moveTo(x, cut(x)); ctx.lineTo(x + r.range(-2, 2), edge(x)); ctx.stroke() }
+      dots(ctx, [252, 242, 206], 10, () => { const x = r.range(-0.9, 0.9) * hw; return { x, y: edge(x) + r.range(0, 3), r: r.range(0.6, 1.6), a: 0.85 } }, 1)
+    }
+    ctx.restore()
+    // The cut face along the inside, and the lit rim of the free edge.
+    ctx.strokeStyle = rgba(shade(col, -0.35), fung ? 0.7 : 0.45); ctx.lineWidth = 1
+    ctx.beginPath(); bottom.forEach(([x, y], q) => (q ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke()
+    ctx.strokeStyle = fung ? 'rgba(255,238,196,0.65)' : 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round'
+    ctx.beginPath(); top.slice(2, -2).forEach(([x, y], q) => (q ? ctx.lineTo(x, y + 1) : ctx.moveTo(x, y + 1))); ctx.stroke()
+    return { canvas: c, x: 0, y: 8 }
   })
 }
 
@@ -1569,27 +1667,44 @@ function paintSpots(skin: SkinTone): FootArt['spots'] {
   }
 }
 
-/** Clipped bits of nail: thin ivory crescents, and chunky yellow crumbs from fungal nails. */
+/**
+ * Clipped bits of nail: thin, translucent ivory crescents, and thicker yellow-brown fungal slivers with a crumbly
+ * outer edge. Each is a curved sliver with its own alpha: lit along its outer rim, a darker cut face on the inside.
+ */
 function paintShards(seed: number): FootArt['shards'] {
   const r = makeRng(seed + 999)
   const piece = (fungal: boolean) => {
-    const [c, ctx] = canvas(48)
-    const col: RGB = fungal ? mixRGB([232, 196, 110], [206, 160, 80], r()) : [246, 238, 222]
-    ctx.translate(24, 24)
-    ctx.rotate(r.range(0, Math.PI * 2))
-    ctx.beginPath()
-    if (fungal) {
-      const n = r.int(5, 7)
-      for (let k = 0; k < n; k++) { const aa = (k / n) * Math.PI * 2, d = r.range(7, 15); if (k === 0) ctx.moveTo(Math.cos(aa) * d, Math.sin(aa) * d); else ctx.lineTo(Math.cos(aa) * d, Math.sin(aa) * d * 0.8) }
-      ctx.closePath()
-    } else { ctx.arc(0, 6, 16, Math.PI * 1.15, Math.PI * 1.85); ctx.arc(0, 10, 14, Math.PI * 1.8, Math.PI * 1.2, true); ctx.closePath() }
-    const g = ctx.createLinearGradient(-12, -12, 12, 12)
-    g.addColorStop(0, rgba(shade(col, 0.3))); g.addColorStop(1, rgba(shade(col, -0.2)))
+    const [c, ctx] = canvas(64)
+    ctx.translate(32, 38)
+    ctx.rotate(r.range(-0.5, 0.5))
+    const R = r.range(15, 22), span = r.range(1.6, 2.4), thick = fungal ? r.range(4.5, 7.5) : r.range(2.4, 3.8)
+    const a0 = -Math.PI / 2 - span / 2, a1 = -Math.PI / 2 + span / 2
+    const col: RGB = fungal ? mixRGB([230, 190, 104], [190, 138, 64], r()) : [248, 240, 226]
+    // The outer rim, notched on a crumbling fungal sliver.
+    const outer: [number, number][] = []
+    for (let q = 0; q <= 16; q++) { const aa = a0 + (q / 16) * span, rr = R + (fungal && q % 3 === 1 ? -r.range(0.5, 2) : 0); outer.push([Math.cos(aa) * rr, Math.sin(aa) * rr]) }
+    const inner: [number, number][] = []
+    for (let q = 16; q >= 0; q--) { const aa = a0 + (q / 16) * span, taper = Math.sin((q / 16) * Math.PI); inner.push([Math.cos(aa) * (R - thick * (0.35 + 0.65 * taper)), Math.sin(aa) * (R - thick * (0.35 + 0.65 * taper))]) }
+    const path = () => { ctx.beginPath(); ctx.moveTo(outer[0][0], outer[0][1]); for (const [x, y] of outer) ctx.lineTo(x, y); for (const [x, y] of inner) ctx.lineTo(x, y); ctx.closePath() }
+    // A soft shadow for depth when it lies on the towel.
+    blurred(ctx, 2, () => { ctx.save(); ctx.translate(1.2, 2.2); path(); ctx.fillStyle = 'rgba(90,60,70,0.28)'; ctx.fill(); ctx.restore() })
+    path()
+    const g = ctx.createLinearGradient(0, -R, 0, -R + thick * 2)
+    g.addColorStop(0, rgba(shade(col, 0.25), fungal ? 1 : 0.92)); g.addColorStop(1, rgba(shade(col, -0.12), fungal ? 0.96 : 0.78))
     ctx.fillStyle = g
     ctx.fill()
-    ctx.strokeStyle = rgba(shade(col, -0.4), 0.7); ctx.lineWidth = 1
-    ctx.stroke()
-    if (fungal) { ctx.strokeStyle = rgba([120, 80, 30], 0.6); ctx.beginPath(); ctx.moveTo(-6, -2); ctx.lineTo(3, 4); ctx.stroke() }
+    // The cut face: a thin darker edge along the inside.
+    ctx.strokeStyle = rgba(shade(col, -0.35), fungal ? 0.7 : 0.45); ctx.lineWidth = 0.9
+    ctx.beginPath(); ctx.moveTo(inner[0][0], inner[0][1]); for (const [x, y] of inner) ctx.lineTo(x, y); ctx.stroke()
+    // The lit rim.
+    ctx.strokeStyle = fungal ? 'rgba(255,240,196,0.7)' : 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.1; ctx.lineCap = 'round'
+    ctx.beginPath(); for (let q = 2; q <= 12; q++) { const [x, y] = outer[q]; if (q === 2) ctx.moveTo(x * 0.97, y * 0.97); else ctx.lineTo(x * 0.97, y * 0.97) } ctx.stroke()
+    if (fungal) {
+      // Ridges along the sliver and a crumb or two.
+      ctx.strokeStyle = 'rgba(120,80,30,0.45)'; ctx.lineWidth = 0.8
+      for (const f of [0.35, 0.65]) { ctx.beginPath(); for (let q = 2; q <= 14; q++) { const aa = a0 + (q / 16) * span, rr = R - thick * f; if (q === 2) ctx.moveTo(Math.cos(aa) * rr, Math.sin(aa) * rr); else ctx.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr) } ctx.stroke() }
+      dots(ctx, [250, 238, 200], 5, () => { const aa = r.range(a0, a1); return { x: Math.cos(aa) * (R + 1.5), y: Math.sin(aa) * (R + 1.5), r: r.range(0.6, 1.4), a: 0.8 } }, 1)
+    }
     return c
   }
   return { clean: Array.from({ length: 5 }, () => piece(false)), fungal: Array.from({ length: 6 }, () => piece(true)) }

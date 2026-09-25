@@ -234,7 +234,7 @@ function avatar(look: Look | null, name: string): string {
 export function reviewCard(r: GoogleReview): HTMLElement {
   const el = h('div', 'gs-review')
   const pic = avatar(r.look ?? null, r.name)
-  const what = r.treatment === 'nails' ? 'Manicure' : 'Facial'
+  const what = r.treatment === 'nails' ? 'Manicure' : r.treatment === 'feet' ? 'Pedicure' : 'Facial'
   el.innerHTML = `${pic ? `<img src="${pic}" alt="">` : ''}<div class="gs-review-main"><div class="gs-review-top"><b>${esc(r.name)}</b>${r.regular ? '<span class="gs-badge-reg">Regular</span>' : ''}<span>${r.archetype ? esc(labelOf(r.archetype)) + ' · ' : ''}${what}</span></div><div class="gs-review-stars">${starsHtml(r.stars)}<small>today</small></div><p>${esc(r.text)}</p><div class="gs-review-foot"><span>Helpful</span><span>Share</span>${r.staff ? `<span>Treated by ${esc(r.staff)}</span>` : ''}</div></div>`
   return el
 }

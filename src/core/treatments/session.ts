@@ -408,7 +408,7 @@ export class TreatmentSession {
         if (p.dirt <= 0) break
         // Grime over the foot, thicker in the toe creases and the clefts.
         blobs(Math.round(10 + 16 * p.dirt), () => ({ x: r.range(200, 840), y: r.range(200, 880) }), 50, 110, 0.35 * p.dirt, 0.9 * p.dirt + 0.1)
-        blobs(Math.round(8 * p.dirt) + 3, () => { const t = r.pick(toes); return alongToe(t, r.range(0.05, 0.7), r.range(-0.8, 0.8)) }, 26, 50, 0.5, 1)
+        blobs(Math.round(8 * p.dirt) + 3, () => { const t = r.pick(toes); return alongToe(t, r.range(0.05, 0.7), r.range(-0.8, 0.8)) }, 40, 76, 0.25, 0.55)
         break
       }
       case 'sole.dirt': {

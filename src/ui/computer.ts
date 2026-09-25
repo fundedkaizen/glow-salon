@@ -1,10 +1,10 @@
 import { decorPiece } from '../art/salon/decor-art.ts'
-import { paintAquarium, paintCandles, paintChandelier, paintCloudRug, paintFacialChair, paintFairyLights, paintNailDesk, paintNeonGlow, paintPlant, paintWallArt, type Piece } from '../art/salon/furniture.ts'
+import { paintAquarium, paintCandles, paintChandelier, paintCloudRug, paintFacialChair, paintFairyLights, paintNailDesk, paintNeonGlow, paintPedicureChair, paintPlant, paintWallArt, type Piece } from '../art/salon/furniture.ts'
 import { portrait } from '../art/salon/people.ts'
 import { RES } from '../art/salon/room.ts'
 import { sfx } from '../audio/sfx.ts'
 import { DECOR_SETS, DECOR_ITEM_BY_ID, completeSets, GIFT_BY_ID, placeDecor, SET_BONUS, SET_EFFECT_TEXT } from '../core/decor.ts'
-import { AMBIENCE_GOAL, ambiencePoints, canBuy, CONFIRM_PRICE, ITEM_BY_ID, ITEMS, type Item, type ShopTab } from '../core/economy.ts'
+import { AMBIENCE_GOAL, ambiencePoints, canBuy, CONFIRM_PRICE, ITEM_BY_ID, ITEMS, STATION_NAME, type Item, type ShopTab } from '../core/economy.ts'
 import { CAMPAIGNS, canRunCampaign, CAMPAIGN_BY_ID } from '../core/marketing.ts'
 import type { Action, Pending, Player, Station } from '../core/salon.ts'
 import type { SalonExt } from '../core/salon-ext.ts'
@@ -100,7 +100,12 @@ function itemArt(item: Item): string {
     const make = STARTER_ART[item.id]
     if (make) return img(previewOf(item.id, make))
   }
-  if (item.effect.kind === 'station') return img(previewOf(`st-${item.effect.station}`, () => (item.effect.kind === 'station' && item.effect.station === 'nails' ? paintNailDesk().front : paintFacialChair().back)))
+  if (item.effect.kind === 'station') {
+    const kind = item.effect.station
+    return img(previewOf(`st-${kind}`, () => (kind === 'nails' ? paintNailDesk().front : kind === 'feet' ? paintPedicureChair().back : paintFacialChair().back)))
+  }
+  // The foot spa shows its chair and basin.
+  if (item.id === 'treat-feet') return img(previewOf('st-feet', () => paintPedicureChair().back))
   const icon = SHOP_ICON[item.id]
   if (icon) return ICON[icon]
   if (item.tab === 'tools') return ICON.tools
@@ -327,8 +332,8 @@ export class Computer {
     this.main.append(cgrid)
   }
 
-  private skills(sk: { facial: number; nails: number }) {
-    return `<div class="gs-skill">Facials ${starsRow(sk.facial)}</div><div class="gs-skill">Nails ${starsRow(sk.nails)}</div>`
+  private skills(sk: { facial: number; nails: number; feet?: number }) {
+    return `<div class="gs-skill">Facials ${starsRow(sk.facial)}</div><div class="gs-skill">Nails ${starsRow(sk.nails)}</div><div class="gs-skill">Feet ${starsRow(sk.feet ?? 1)}</div>`
   }
 
   private traits(ids: string[]) {
@@ -357,7 +362,7 @@ export class Computer {
     info.append(row)
     info.insertAdjacentHTML('beforeend', `${this.traits(m.traits)}${this.skills(m.skills)}${lvl}`)
     const sel = h('select', 'gs-select') as HTMLSelectElement
-    sel.innerHTML = `<option value="">Anywhere they are skilled</option>` + s.stations.map((st, i) => `<option value="${st.id}">${st.kind === 'facial' ? 'Facial chair' : 'Nail desk'} ${i + 1}</option>`).join('')
+    sel.innerHTML = `<option value="">Anywhere they are skilled</option>` + s.stations.map((st, i) => `<option value="${st.id}">${STATION_NAME[st.kind].replace(/^./, c => c.toUpperCase())} ${i + 1}</option>`).join('')
     sel.value = m.station ?? ''
     sel.onchange = () => { sfx.click(); this.hooks.onAction({ a: 'assignStaff', id: m.id, station: sel.value || null }) }
     const where = h('div', 'gs-skill', 'Works at ')

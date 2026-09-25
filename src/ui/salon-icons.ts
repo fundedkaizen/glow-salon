@@ -49,6 +49,7 @@ export const SHOP_ICON: Record<string, keyof typeof ICON> = {
   flyers: 'flyer', social: 'phone', radio: 'radio', magazine: 'magazine', loyalty: 'card', influencer: 'camera', billboard: 'billboard',
   'facial-kit-2': 'facialKit', 'facial-kit-3': 'facialKit', 'facial-kit-4': 'diamond', 'nail-kit-2': 'nailKit', 'nail-kit-3': 'nailKit', 'nail-kit-4': 'diamond',
   'treat-nails': 'polish',
+  'foot-kit-2': 'nailKit', 'foot-kit-3': 'nailKit', 'foot-kit-4': 'diamond',
 }
 
 export type IconName = keyof typeof ICON

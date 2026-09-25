@@ -4,7 +4,7 @@ import { heart } from './people.ts'
 import { canvasTexture, worldCanvas } from './room.ts'
 
 /**
- * Little painted icons for the floor's bubbles: what a customer came for (a facial or a manicure), a cup of
+ * Little painted icons for the floor's bubbles: what a customer came for (a facial, a manicure or a pedicure), a cup of
  * tea for a staff break, a heart. Each is 32 x 32 world units.
  */
 const cache = new Map<string, Texture>()
@@ -34,6 +34,17 @@ export const icons = {
     ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.roundRect(10, 15, 3, 10, 1.5); ctx.fill()
     blob(ctx, 21, 25, 2, 1.2, [255, 255, 255], 0.5)
   }),
+  feet: () => icon('feet', ctx => {
+    // A little bare foot with painted toenails, over a bubble of bath water.
+    ctx.fillStyle = '#bfeef0'; ctx.beginPath(); ctx.ellipse(16, 25, 12, 5, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; for (const [x, y, r] of [[7, 22, 1.4], [25, 23, 1.2], [21, 27, 1]]) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill() }
+    ctx.fillStyle = '#fbd9c4'
+    ctx.beginPath(); ctx.moveTo(10, 25); ctx.bezierCurveTo(8, 17, 9, 11, 13, 8); ctx.lineTo(23, 9); ctx.bezierCurveTo(25, 13, 24, 19, 21, 25); ctx.closePath(); ctx.fill()
+    ctx.strokeStyle = 'rgba(180,110,90,0.6)'; ctx.lineWidth = 1; ctx.stroke()
+    const toes: [number, number, number][] = [[12.5, 7.2, 3.1], [16.6, 5.8, 2.3], [19.6, 6, 2.1], [22.2, 7, 1.9], [24.3, 8.8, 1.7]]
+    for (const [x, y, r] of toes) { ctx.fillStyle = '#fbd9c4'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(180,110,90,0.55)'; ctx.stroke(); ctx.fillStyle = '#f07aa0'; ctx.beginPath(); ctx.arc(x, y - r * 0.2, r * 0.55, 0, Math.PI * 2); ctx.fill() }
+    blob(ctx, 14, 15, 3, 5, [255, 255, 255], 0.45)
+  }),
   tea: () => icon('tea', ctx => {
     ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.roundRect(7, 13, 16, 13, [2, 2, 7, 7]); ctx.fill()
     ctx.strokeStyle = 'rgba(160,120,140,0.7)'; ctx.lineWidth = 1; ctx.stroke()
@@ -44,3 +55,6 @@ export const icons = {
   }),
   heart: () => icon('heart', ctx => heart(ctx, 16, 17, 8, '#f07aa0')),
 }
+
+/** The icon for what a customer came for. */
+export const treatmentIcon = (t: string) => (t === 'nails' ? icons.nails() : t === 'feet' ? icons.feet() : icons.facial())

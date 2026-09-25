@@ -115,6 +115,9 @@ export type FootAssets = PartAssets & {
   anatomy: FootAnatomy
   /** Overgrown toenail tips (top view; null where already short), anchored like the hand's tips. */
   footTips: (CropTex | null)[]
+  /** The tips without old polish (after the remover), and the slivers the clipper takes off. */
+  footTipsBare: (CropTex | null)[]
+  footClippings: (CropTex | null)[]
   spots: Record<'corn' | 'cornCore' | 'cornMark' | 'splinter' | 'splinterHalo' | 'splinterMark' | 'plaster', Texture>
   shards: { clean: Texture[]; fungal: Texture[] }
 }
@@ -141,6 +144,8 @@ export function footAssetsFor(look: Look, seed: number, profile: FootProfile, vi
     view,
     anatomy: art.anatomy,
     footTips: art.tips.map(c => (c ? cropTex(c) : null)),
+    footTipsBare: art.tipsBare.map(c => (c ? cropTex(c) : null)),
+    footClippings: art.clippings.map(c => (c ? cropTex(c) : null)),
     spots: Object.fromEntries(Object.entries(art.spots).map(([k, c]) => [k, tex(c)])) as FootAssets['spots'],
     shards: { clean: art.shards.clean.map(tex), fungal: art.shards.fungal.map(tex) },
   }
@@ -149,7 +154,7 @@ export function footAssetsFor(look: Look, seed: number, profile: FootProfile, vi
 /** Free a pedicure close-up's textures. */
 export function destroyFootAssets(a: FootAssets) {
   const all: Texture[] = [...Object.values(a.spots), ...a.shards.clean, ...a.shards.fungal]
-  for (const t of a.footTips) if (t) all.push(t.texture)
+  for (const t of [...a.footTips, ...a.footTipsBare, ...a.footClippings]) if (t) all.push(t.texture)
   for (const t of new Set(all)) t.destroy(true)
   destroyAssets(a)
 }

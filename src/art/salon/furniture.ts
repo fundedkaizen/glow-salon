@@ -269,6 +269,84 @@ export function paintNailDesk(): { back: Piece; front: Piece } {
   return { back, front }
 }
 
+/**
+ * The pedicure chair: a plush mint throne raised on a little platform, with a rolled towel headrest, and in
+ * front of it a round ceramic foot basin of warm water with bubbles, where the customer's feet go. A shelf of
+ * rolled towels and foot creams stands beside it. Back: the platform, the chair and the shelf; front: the arm
+ * rests and the basin (over the customer's legs, so their feet are in the water).
+ */
+export function paintPedicureChair(): { back: Piece; front: Piece } {
+  const mint: RGB = [158, 222, 204]
+  const back = piece(200, 170, 100, 118, ctx => {
+    const cx = 100 + 10
+    floorShadow(ctx, cx, 156, 70, 10, 0.34)
+    // The platform: a low white step with a mint trim.
+    box(ctx, cx - 58, 116, 116, 34, 12, [252, 248, 250], 8)
+    ctx.fillStyle = rgba(shade(mint, 0.1)); ctx.beginPath(); ctx.roundRect(cx - 56, 136, 112, 4, 2); ctx.fill()
+    // A shelf of rolled towels and foot creams on the left.
+    const sx = cx - 88
+    ctx.fillStyle = '#efe3e8'; ctx.fillRect(sx + 3, 70, 3, 78); ctx.fillRect(sx + 25, 70, 3, 78)
+    box(ctx, sx, 68, 32, 8, 4, [255, 248, 250], 3)
+    box(ctx, sx, 106, 32, 8, 4, [255, 248, 250], 3)
+    const rolls: RGB[] = [[255, 255, 255], [247, 205, 218], [205, 236, 226]]
+    rolls.forEach((c, i) => { const rx = sx + 7 + i * 9; ctx.fillStyle = rgba(c); ctx.beginPath(); ctx.arc(rx, 62, 5, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = rgba(shade(c, -0.25), 0.8); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(rx, 62, 2.4, 0, Math.PI * 2); ctx.stroke() })
+    const pots: RGB[] = [[246, 214, 150], [196, 180, 240]]
+    pots.forEach((c, i) => { ctx.fillStyle = rgba(c); ctx.beginPath(); ctx.roundRect(sx + 5 + i * 13, 94, 10, 13, 3); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(sx + 7 + i * 13, 96, 1.6, 8); ctx.fillStyle = '#fff'; ctx.fillRect(sx + 5 + i * 13, 92, 10, 3) })
+    for (const wx of [sx + 4, sx + 28]) { ctx.fillStyle = '#c9b6c0'; ctx.beginPath(); ctx.arc(wx, 150, 2.5, 0, Math.PI * 2); ctx.fill() }
+    // The backrest: tall and rounded, tufted, a little reclined.
+    const bg = ctx.createLinearGradient(cx - 44, 20, cx + 44, 110)
+    bg.addColorStop(0, rgba(shade(mint, 0.3))); bg.addColorStop(0.55, rgba(mint)); bg.addColorStop(1, rgba(shade(mint, -0.14)))
+    ctx.fillStyle = bg
+    ctx.beginPath(); ctx.roundRect(cx - 42, 20, 84, 94, [36, 36, 12, 12]); ctx.fill()
+    ctx.strokeStyle = rgba(shade(mint, -0.4), 0.55); ctx.lineWidth = 1.2; ctx.stroke()
+    // Channel tufting: soft vertical grooves.
+    ctx.strokeStyle = rgba(shade(mint, -0.18), 0.55); ctx.lineWidth = 1.4
+    for (const tx of [-21, -7, 7, 21]) { ctx.beginPath(); ctx.moveTo(cx + tx, 40); ctx.quadraticCurveTo(cx + tx * 1.05, 70, cx + tx, 106); ctx.stroke() }
+    blob(ctx, cx - 18, 46, 14, 22, [255, 255, 255], 0.28)
+    // The rolled towel headrest, white with a pink stripe.
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.roundRect(cx - 28, 22, 56, 15, 7.5); ctx.fill()
+    ctx.strokeStyle = 'rgba(200,170,185,0.8)'; ctx.lineWidth = 1; ctx.stroke()
+    ctx.fillStyle = 'rgba(244,166,184,0.8)'; ctx.fillRect(cx - 26, 27, 52, 2.4)
+    // A gold trim along the top.
+    ctx.strokeStyle = '#e8c06a'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(cx - 32, 22); ctx.quadraticCurveTo(cx, 12, cx + 32, 22); ctx.stroke()
+    // Seat.
+    cushion(ctx, cx - 44, 102, 88, 24, shade(mint, 0.12), 10)
+  })
+  const front = piece(200, 170, 100, 118, ctx => {
+    const cx = 110
+    // Arm rests at the customer's sides.
+    for (const ax of [cx - 52, cx + 34]) {
+      const ag = ctx.createLinearGradient(ax, 0, ax + 18, 0)
+      ag.addColorStop(0, rgba(shade(mint, 0.26))); ag.addColorStop(1, rgba(shade(mint, -0.14)))
+      ctx.fillStyle = ag
+      ctx.beginPath(); ctx.roundRect(ax, 90, 18, 38, 9); ctx.fill()
+      ctx.strokeStyle = rgba(shade(mint, -0.4), 0.55); ctx.lineWidth = 1.2; ctx.stroke()
+      ctx.fillStyle = '#e8c06a'; ctx.beginPath(); ctx.ellipse(ax + 9, 92, 6, 2, 0, 0, Math.PI * 2); ctx.fill()
+    }
+    // The foot basin in front: a round ceramic bowl of warm water, bubbles on top.
+    const by = 142
+    floorShadow(ctx, cx, by + 16, 34, 6, 0.3)
+    const bowl = ctx.createLinearGradient(cx - 34, 0, cx + 34, 0)
+    bowl.addColorStop(0, '#ffffff'); bowl.addColorStop(0.6, '#f4eef2'); bowl.addColorStop(1, '#dcd0d8')
+    ctx.fillStyle = bowl
+    ctx.beginPath(); ctx.moveTo(cx - 34, by); ctx.bezierCurveTo(cx - 32, by + 20, cx + 32, by + 20, cx + 34, by); ctx.closePath(); ctx.fill()
+    ctx.strokeStyle = 'rgba(170,140,160,0.6)'; ctx.lineWidth = 1.1; ctx.stroke()
+    ctx.fillStyle = '#fdfbfc'; ctx.beginPath(); ctx.ellipse(cx, by, 34, 9, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = 'rgba(170,140,160,0.55)'; ctx.stroke()
+    const water = ctx.createLinearGradient(cx - 30, by - 7, cx + 30, by + 7)
+    water.addColorStop(0, '#b8ecef'); water.addColorStop(1, '#7ccfdc')
+    ctx.fillStyle = water; ctx.beginPath(); ctx.ellipse(cx, by + 0.5, 29, 6.8, 0, 0, Math.PI * 2); ctx.fill()
+    const r = makeRng(31)
+    for (let i = 0; i < 16; i++) { const a = r() * Math.PI * 2, d = r() * 0.9; const x = cx + Math.cos(a) * 26 * d, y = by + 0.5 + Math.sin(a) * 5.6 * d; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(x, y, 0.8 + r() * 1.8, 0, Math.PI * 2); ctx.fill() }
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(cx - 12, by - 2, 9, 1.6, -0.1, 0, Math.PI * 2); ctx.fill()
+    // A folded towel draped on the rim.
+    ctx.fillStyle = '#fbe3ea'; ctx.beginPath(); ctx.roundRect(cx + 18, by - 6, 20, 14, 4); ctx.fill()
+    ctx.strokeStyle = 'rgba(210,160,180,0.7)'; ctx.lineWidth = 1; ctx.stroke()
+  })
+  return { back, front }
+}
+
 // ------------------------------------------------------------------ starter decor
 
 export function paintPlant(scale = 1): Piece {

@@ -306,8 +306,9 @@ export function footProfile(seed: number, disaster: boolean): FootProfile {
   const top = a.shape.toes, sole = a.shape.soleToes
   const sev = (lo: number, hi: number, chance: number) => (disaster ? r.range(Math.max(lo, 0.7), 1) : r.chance(chance) ? r.range(lo, hi) : 0)
   // Fungus spreads from the big toe: n nails, the big toe worst.
-  const fungusNails = disaster ? r.int(3, 5) : r.chance(0.35) ? r.int(1, 3) : 0
-  const fungus = top.map((_, i) => (i < fungusNails ? Math.max(0.35, (disaster ? r.range(0.75, 1) : r.range(0.45, 1)) * (i === 0 ? 1 : r.range(0.6, 1))) : 0))
+  // The small toes catch it later and lighter: some barely touched, some still healthy.
+  const fungusNails = disaster ? r.int(2, 5) : r.chance(0.35) ? r.int(1, 3) : 0
+  const fungus = top.map((_, i) => (i < fungusNails ? Math.max(0.2, (disaster ? r.range(0.75, 1) : r.range(0.45, 1)) * (i === 0 ? 1 : r.range(0.3, 0.9))) : 0))
   const cornCount = disaster ? r.int(2, 3) : r.chance(0.4) ? r.int(1, 2) : 0
   const cornToes = shuffle([1, 2, 3, 4, 4], r).slice(0, cornCount)
   const corns: FootSpot[] = cornToes.map((ti, k) => {
