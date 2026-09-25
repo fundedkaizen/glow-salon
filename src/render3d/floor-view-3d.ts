@@ -772,7 +772,8 @@ export class FloorView3D {
   private updateProgress(state: FloorState, dt: number) {
     const ui = this.progress
     if (!ui) return
-    ui.visible = this.root.visible
+    // Hidden under the close-ups and the day's receipt.
+    ui.visible = this.root.visible && state.phase !== 'receipt'
     const lp = levelProgress(this.earned(state))
     ui.setLevel(lp.level, lp.next.name, lp.have, lp.need)
     this.barT -= dt
