@@ -192,6 +192,22 @@ export const bits = {
     blob(ctx, 50, 48, 24, 12, [255, 255, 255], 0.55)
     ctx.restore()
   }),
+  // An under-eye gel patch: a soft pink crescent of jelly, glittery, with a wet highlight along its top.
+  eyePatch: () => make('eyePatch', 200, 112, ctx => {
+    const path = () => { ctx.beginPath(); ctx.moveTo(14, 30); ctx.quadraticCurveTo(100, 92, 186, 30); ctx.quadraticCurveTo(190, 58, 168, 76); ctx.quadraticCurveTo(100, 118, 32, 76); ctx.quadraticCurveTo(10, 58, 14, 30); ctx.closePath() }
+    ctx.save(); ctx.filter = 'blur(4px)'; ctx.translate(3, 6); path(); ctx.fillStyle = 'rgba(150,70,100,0.25)'; ctx.fill(); ctx.restore()
+    path()
+    const g = ctx.createLinearGradient(0, 30, 0, 100)
+    g.addColorStop(0, 'rgba(255,214,228,0.92)'); g.addColorStop(1, 'rgba(244,150,184,0.9)')
+    ctx.fillStyle = g
+    ctx.fill()
+    ctx.save(); path(); ctx.clip()
+    for (let i = 0; i < 70; i++) { const x = 20 + ((i * 53) % 160), y = 40 + ((i * 37) % 52); ctx.fillStyle = i % 3 ? 'rgba(255,255,255,0.85)' : 'rgba(255,226,160,0.9)'; ctx.fillRect(x, y, 2, 2) }
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 5; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(34, 44); ctx.quadraticCurveTo(100, 84, 166, 44); ctx.stroke()
+    ctx.restore()
+    ctx.strokeStyle = 'rgba(226,120,160,0.6)'; ctx.lineWidth = 1.5; path(); ctx.stroke()
+  }),
   gem: () => make('gem', 64, 64, ctx => {
     const pts = [32, 4, 56, 22, 32, 60, 8, 22]
     ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.closePath()

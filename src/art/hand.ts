@@ -14,7 +14,9 @@ import type { Crop } from './face.ts'
  * hand (skin, knuckles, natural nails), its height map, the layer sheets (old polish, cuticles, scrub,
  * base, colour, top coat...) and the overgrown nail tips that get clipped.
  */
-export type HandArt = { base: HTMLCanvasElement; height: HTMLCanvasElement; layers: Record<string, HTMLCanvasElement>; tips: Crop[]; skin: SkinTone }
+export type HandArt = { base: HTMLCanvasElement; height: HTMLCanvasElement; layers: Record<string, HTMLCanvasElement>; tips: Crop[]; skin: SkinTone
+  /** Other looks for a layer during particular steps (step id to layer and painter): golden cuticle oil on 'wet'. */
+  variants: Record<string, { layer: string; paint: () => HTMLCanvasElement }> }
 
 const S = 1024
 
@@ -474,7 +476,32 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
         l.fillRect(x, y, r.range(2, 4.5), r.range(2, 4.5))
       }
     }),
-    base: layer(nails, l => { l.fillStyle = 'rgba(255,250,252,0.28)'; l.fillRect(0, 0, S, S) }),
+    base: layer(nails, l => {
+      l.fillStyle = 'rgba(255,250,252,0.28)'; l.fillRect(0, 0, S, S)
+      // A broken nail comes out mended: the missing corner filled with smooth repair gel the colour of the nail,
+      // a fine silk wrap over the tip half, and a clean gloss over the whole plate.
+      for (const i of profile.broken) {
+        const nl = nailOf(HAND.fingers[i]), hw = nl.halfWidth, nx = -nl.dir.y, ny = nl.dir.x
+        const at = (u: number, sd = 0) => ({ x: nl.base.x + (nl.tip.x - nl.base.x) * u + nx * sd * hw, y: nl.base.y + (nl.tip.y - nl.base.y) * u + ny * sd * hw })
+        l.save()
+        l.beginPath(); shapePath(l, SHAPES.nailShapes[i]); l.clip()
+        const bed = mixRGB(skin.base, [240, 170, 176], 0.55)
+        const a0 = at(0.45), a1 = at(1.05)
+        const g = l.createLinearGradient(a0.x, a0.y, a1.x, a1.y)
+        g.addColorStop(0, rgba(bed, 0)); g.addColorStop(0.35, rgba(mixRGB(bed, [255, 240, 240], 0.25), 0.9)); g.addColorStop(0.78, rgba(mixRGB(bed, [255, 240, 240], 0.3), 0.95)); g.addColorStop(0.86, rgba([250, 242, 228], 0.95)); g.addColorStop(1, rgba([248, 238, 222], 0.95))
+        l.fillStyle = g
+        l.fillRect(0, 0, S, S)
+        // The silk: a faint criss-cross weave.
+        l.strokeStyle = 'rgba(255,255,255,0.22)'; l.lineWidth = 0.8
+        for (let k = -8; k <= 8; k++) {
+          const p0 = at(0.5, k * 0.25 - 1), p1 = at(1.05, k * 0.25 + 1), q0 = at(0.5, k * 0.25 + 1), q1 = at(1.05, k * 0.25 - 1)
+          l.beginPath(); l.moveTo(p0.x, p0.y); l.lineTo(p1.x, p1.y); l.moveTo(q0.x, q0.y); l.lineTo(q1.x, q1.y); l.stroke()
+        }
+        const s0 = at(0.2, -0.38), s1 = at(0.85, -0.34)
+        blurred(l, 2, () => { l.strokeStyle = 'rgba(255,255,255,0.7)'; l.lineWidth = 5; l.lineCap = 'round'; l.beginPath(); l.moveTo(s0.x, s0.y); l.lineTo(s1.x, s1.y); l.stroke() })
+        l.restore()
+      }
+    }),
     color: layer(nails, l => {
       // Painted at 90% grey: the layer shader maps that back to the chosen colour, keeps pure white as a
       // white highlight, and anything darker shades the polish (its thicker, darker edge).
@@ -551,7 +578,25 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
     // y: how far above the canvas bottom the nail's tip point sits (the view anchors there).
     return { canvas: c, x: 0, y: 6 + ov }
   })
-  return { base, height: packed, layers, tips, skin }
+  // Cuticle oil: a golden film pooled along each cuticle, with round glossy drops.
+  const variants: HandArt['variants'] = {
+    oil: { layer: 'wet', paint: () => layer(handMask, l => {
+      const ro = rng2(seed + 191)
+      l.drawImage(tintedByNoise(S, [236, 184, 72], fbm(S, 30, 3, seed + 192), 0.35, 0.6), 0, 0)
+      for (const f of HAND.fingers) {
+        const nl = nailOf(f)
+        for (let k = 0; k < 4; k++) {
+          const u = ro.range(-0.1, 0.3), sd = ro.range(-0.9, 0.9), rr = ro.range(3, 7)
+          const x = nl.base.x + (nl.tip.x - nl.base.x) * u - nl.dir.y * sd * nl.halfWidth, y = nl.base.y + (nl.tip.y - nl.base.y) * u + nl.dir.x * sd * nl.halfWidth
+          const g = l.createRadialGradient(x - rr * 0.3, y - rr * 0.3, rr * 0.1, x, y, rr)
+          g.addColorStop(0, 'rgba(255,236,170,0.9)'); g.addColorStop(0.7, 'rgba(232,170,60,0.7)'); g.addColorStop(1, 'rgba(200,130,30,0)')
+          l.fillStyle = g; l.beginPath(); l.arc(x, y, rr, 0, Math.PI * 2); l.fill()
+          blob(l, x - rr * 0.35, y - rr * 0.4, rr * 0.3, rr * 0.22, [255, 255, 255], 0.95)
+        }
+      }
+    }) },
+  }
+  return { base, height: packed, layers, tips, skin, variants }
 }
 
 

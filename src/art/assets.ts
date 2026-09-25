@@ -4,7 +4,7 @@ import type { Look } from '../core/customers.ts'
 import type { TreatmentId } from '../core/treatments/types.ts'
 import type { Profile } from '../core/treatments/profile.ts'
 import type { LayerStyle, SurfaceArt } from '../render/surface.ts'
-import { paintFace, type Crop } from './face.ts'
+import { paintFace, type Crop, type MaskKind, type MouthParams } from './face.ts'
 import { paintHand } from './hand.ts'
 import { paintBackdrop } from './backdrop.ts'
 import { ROBE, paintRobe, paintSteamTowel } from './props.ts'
@@ -30,6 +30,10 @@ export type PartAssets = {
   backdrop: Texture
   /** Face only: expression overlays by feature and state. */
   features?: { eyes: Record<string, CropTex>; brows: Record<string, CropTex>; mouth: Record<string, CropTex> }
+  /** Facial only: the mouth drawn live from blended shape parameters (see face.ts MOUTH_PARAMS). */
+  liveMouth?: { texture: Texture; x: number; y: number; draw: (p: MouthParams, scrub?: number) => void }
+  /** A layer's other look during a step (step id to layer and texture): the hand's golden cuticle oil. */
+  variants?: Record<string, { layer: string; get: () => Texture; made: Texture | null }>
   /** Hand only: the overgrown free edge of each nail, clipped off one by one. */
   tips?: CropTex[]
   /** Facial only: the robe over the shoulders, in art space (it reaches past the sheet). */
@@ -55,6 +59,14 @@ const FACE_STYLES: Record<string, LayerStyle> = {
   cream: { gloss: 0.55, relief: 2.2, brush: 'paint' },
   mask: { gloss: 0.8, relief: 3.8, brush: 'paint' },
   foam: { gloss: 0.3, relief: 2.6 },
+}
+
+/** Each face mask's material: a thick glossy clay, a thin wet sheet, a matte charcoal paste, shiny gold leaf. */
+const MASK_STYLES: Record<MaskKind, LayerStyle> = {
+  clay: FACE_STYLES.mask,
+  sheet: { gloss: 0.95, relief: 0.9, brush: 'paint' },
+  bubble: { gloss: 0.15, relief: 3.2, brush: 'paint' },
+  gold: { gloss: 1, relief: 1.6, brush: 'paint' },
 }
 
 const HAND_STYLES: Record<string, LayerStyle> = {
@@ -168,21 +180,22 @@ const toTex = <K extends string>(r: Record<K, Crop>) => Object.fromEntries(Objec
  * `eager`: the layers that start with something on them (painted now); the others are painted when first
  * needed (the surface does it in the frames after opening), so a close-up opens fast.
  */
-export function assetsFor(treatment: TreatmentId, look: Look, seed: number, order: string[], profile: Profile, eager?: Set<string>): PartAssets {
+export function assetsFor(treatment: TreatmentId, look: Look, seed: number, order: string[], profile: Profile, eager?: Set<string>, maskKind: MaskKind = 'clay'): PartAssets {
   if (treatment === 'facial' && profile.kind === 'face') {
-    const art = paintFace(look, seed, profile)
+    const art = paintFace(look, seed, profile, maskKind)
     const layers: SurfaceArt['layers'] = {}
     for (const id of order) {
       const paint = art.layers[id]
       if (!paint) continue
       const make = () => ({ art: tex(paint()), art2: id === 'mask' ? tex(art.maskDry()) : undefined })
-      const style = FACE_STYLES[id] ?? { gloss: 0.2, relief: 0.5 }
+      const style = (id === 'mask' ? MASK_STYLES[maskKind] : FACE_STYLES[id]) ?? { gloss: 0.2, relief: 0.5 }
       layers[id] = !eager || eager.has(id) ? { ...make(), style } : { lazy: make, style }
     }
     return {
       surface: { base: tex(art.base), height: tex(art.height), bump: 2.4, sss: [0.95, 0.32, 0.26], layers, order },
       backdrop: facialBackdrop(),
       features: { eyes: toTex(art.eyes), brows: toTex(art.brows), mouth: toTex(art.mouth) },
+      liveMouth: (() => { const m = art.liveMouth, texture = tex(m.canvas); return { texture, x: m.x, y: m.y, draw: (p: MouthParams, scrub?: number) => { m.draw(p, scrub); texture.source.update() } } })(),
       towel: lazyTex(() => paintSteamTowel(seed)),
       robe: { texture: tex(paintRobe(hex(OUTFIT[look.outfit % OUTFIT.length]), art.skin, seed)), x: ROBE.x, y: ROBE.y },
       pimples: Object.fromEntries(Object.entries(paintPimples(art.skin)).map(([k, c]) => [k, tex(c)])) as PartAssets['pimples'],
@@ -201,6 +214,7 @@ export function assetsFor(treatment: TreatmentId, look: Look, seed: number, orde
     surface: { base: tex(art.base), height: tex(art.height), bump: 4, sss: [0.95, 0.35, 0.28], layers, order },
     backdrop: backdropTex(paintBackdrop('nails', look)),
     tips: art.tips.map(cropTex),
+    variants: Object.fromEntries(Object.entries(art.variants).map(([step, v]) => { const t = { layer: v.layer, made: null as Texture | null, get: () => (t.made ??= tex(v.paint())) }; return [step, t] })),
     skinRGB: art.skin.base,
   }
 }
@@ -214,6 +228,8 @@ export function destroyAssets(a: PartAssets) {
   if (a.features) for (const part of Object.values(a.features)) for (const c of Object.values(part)) all.push(c.texture)
   for (const c of a.tips ?? []) all.push(c.texture)
   if (a.towel?.made) all.push(a.towel.made)
+  if (a.liveMouth) all.push(a.liveMouth.texture)
+  for (const v of Object.values(a.variants ?? {})) if (v.made) all.push(v.made)
   if (a.robe) all.push(a.robe.texture)
   if (a.pimples) all.push(...Object.values(a.pimples))
   for (const t of new Set(all)) t.destroy(true)

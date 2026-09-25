@@ -1,6 +1,6 @@
 import type { Look } from '../core/customers.ts'
 import { FACE, SHAPES, bandEdge, faceOutline } from '../core/treatments/anatomy.ts'
-import type { Figure } from '../core/figure.ts'
+import { lookFigure, type Figure } from '../core/figure.ts'
 import { paintHairBack, paintHairCap, paintHairSides, scalpPath } from './hair.ts'
 import { makeRng } from '../core/rng.ts'
 import type { FaceProfile } from '../core/treatments/profile.ts'
@@ -23,11 +23,13 @@ export type FaceArt = {
   height: HTMLCanvasElement
   /** Painters for the layer sheets (called when each is first needed). */
   layers: Record<string, () => HTMLCanvasElement>
-  /** The clay mask once dry (the mask layer crossfades to it). */
+  /** The mask once dry or set (the mask layer crossfades to it). */
   maskDry: () => HTMLCanvasElement
   eyes: Record<EyeState, Crop>
   brows: Record<BrowState, Crop>
   mouth: Record<MouthState, Crop>
+  /** The mouth that blends between shapes (the close-up draws this one; the crops above are its key shapes). */
+  liveMouth: LiveMouth
   skin: SkinTone
 }
 
@@ -106,11 +108,14 @@ const IRIS: RGB[] = [[112, 70, 44], [150, 110, 60], [96, 132, 84], [92, 136, 190
 /** Per-customer feature shape, from the profile (all 0 to 1). */
 type Feat = { brow: number; lips: number; lashes: number; blush: number; nose: number; iris: RGB; masc: boolean; age: number; stubble: number; bow: boolean; earShift: number }
 
-export function paintFace(look: Look, seed: number, profile: FaceProfile): FaceArt {
+/** The four face masks (plan.ts gives each customer one): clay, a sheet mask, a charcoal bubble mask, gold foil. */
+export type MaskKind = 'clay' | 'sheet' | 'bubble' | 'gold'
+
+export function paintFace(look: Look, seed: number, profile: FaceProfile, maskKind: MaskKind = 'clay'): FaceArt {
   const skin = SKIN[look.skin % SKIN.length]
   const hair = HAIR[look.hair % HAIR.length]
   const band = hex(OUTFIT[look.outfit % OUTFIT.length])
-  const fig: Figure = look.figure ?? { masc: false, age: 0.35 }
+  const fig: Figure = lookFigure(look)
   const fr = makeRng(seed + 23)
   // Face shape: oval, round, heart (wide cheekbones) or square (more often masculine).
   const shape = fig.masc ? fr.pick([3, 3, 1, 0]) : fr.pick([0, 1, 2, 0])
@@ -125,14 +130,15 @@ export function paintFace(look: Look, seed: number, profile: FaceProfile): FaceA
   const height = paintHeight(seed)
   OUTLINE = FACE.outline
   const layers = paintLayers(skin, seed)
-  const maskDry = () => paintClay(true, seed)
+  layers.mask = () => paintMask(maskKind, false, seed)
+  const maskDry = () => paintMask(maskKind, true, seed)
   const tone = browTone(hair, skin)
   const eye = (st: EyeState) => eyeCrop(st, tone.lash, skin, feat)
   const eyes = { open: eye('open'), wide: eye('wide'), half: eye('half'), closed: eye('closed'), squeeze: eye('squeeze'), happy: eye('happy') }
   const brows = { relaxed: browCrop('relaxed', tone, seed, feat), worried: browCrop('worried', tone, seed, feat), happy: browCrop('happy', tone, seed, feat) }
   const m = (st: MouthState) => mouthCrop(st, skin, feat)
   const mouth = { neutral: m('neutral'), smile: m('smile'), wince: m('wince'), beam: m('beam'), o: m('o'), pout: m('pout') }
-  return { base, height, layers, maskDry, eyes, brows, mouth, skin }
+  return { base, height, layers, maskDry, eyes, brows, mouth, liveMouth: liveMouth(skin, feat), skin }
 }
 
 // ------------------------------------------------------------------ base
@@ -796,6 +802,17 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, () => HTMLCan
           }
         })
       })
+      // Around the mouth it is the lip scrub (the lips step paints this layer there): pink sugar.
+      const sctx = sheet.getContext('2d')!
+      sctx.save()
+      sctx.globalCompositeOperation = 'source-atop'
+      sctx.beginPath(); sctx.ellipse(FACE.lips.x, FACE.lips.y + 6, 150, 86, 0, 0, Math.PI * 2); sctx.clip()
+      sctx.fillStyle = 'rgba(248,180,206,0.92)'
+      sctx.fillRect(0, 0, S, S)
+      const rs = makeRng(seed + 95)
+      dots(sctx, [255, 250, 252], 500, () => ({ x: FACE.lips.x + rs.range(-150, 150), y: FACE.lips.y + 6 + rs.range(-86, 86), r: rs.range(1, 2.4), a: rs.range(0.6, 1) }), 2)
+      dots(sctx, [236, 140, 176], 200, () => ({ x: FACE.lips.x + rs.range(-150, 150), y: FACE.lips.y + 6 + rs.range(-86, 86), r: rs.range(1, 2), a: rs.range(0.5, 0.9) }), 2)
+      sctx.restore()
       feather(sheet, 8)
       return sheet
     },
@@ -820,7 +837,6 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, () => HTMLCan
   }
 }
 
-/** The mint clay mask, wet (glossy, brush-streaked) or dry (paler, matte, cracked). */
 /** The peel mask's outline: the face, minus organic cut-outs around each eye and brow and around the lips. */
 function maskClip(ctx: Ctx) {
   // The face first, then the windows cut out of it (an even-odd hole outside the face would fill instead).
@@ -844,6 +860,133 @@ function maskClip(ctx: Ctx) {
   const cap = FACE.hairCap
   if (cap.t === 'poly') { ctx.moveTo(cap.pts[0], cap.pts[1]); for (let i = 2; i < cap.pts.length; i += 2) ctx.lineTo(cap.pts[i], cap.pts[i + 1]); ctx.closePath() }
   ctx.clip('evenodd')
+}
+
+/** A face mask of the given kind, wet or dry/set, inside the mask outline (eye and lip windows cut out). */
+function paintMask(kind: MaskKind, dry: boolean, seed: number) {
+  if (kind === 'clay') return paintClay(dry, seed)
+  if (kind === 'sheet') return paintSheetMask(seed)
+  if (kind === 'bubble') return paintBubbleMask(seed)
+  return paintGoldMask(dry, seed)
+}
+
+/** Darken (or lighten) a sheet just inside every cut edge, so the mask reads as having a thickness. */
+function maskRim(sheet: HTMLCanvasElement, color: string, alpha: number, blur = 5) {
+  const [rim, rctx] = canvas(S)
+  rctx.drawImage(sheet, 0, 0)
+  rctx.globalCompositeOperation = 'source-in'
+  rctx.fillStyle = color
+  rctx.fillRect(0, 0, S, S)
+  const [inner, ictx] = canvas(S)
+  ictx.filter = 'blur(' + blur + 'px)'
+  ictx.drawImage(sheet, 0, 0)
+  rctx.globalCompositeOperation = 'destination-out'
+  rctx.drawImage(inner, 0, 0)
+  rctx.drawImage(inner, 0, 0)
+  const ctx = sheet.getContext('2d')!
+  ctx.globalAlpha = alpha
+  ctx.globalCompositeOperation = 'source-atop'
+  ctx.drawImage(rim, 0, 0)
+  ctx.globalAlpha = 1
+  ctx.globalCompositeOperation = 'source-over'
+  return sheet
+}
+
+/**
+ * A sheet mask: thin, translucent white fabric soaked in essence, the skin showing through, a fine fibrous weave,
+ * soft wrinkles where it was smoothed on, a wet sheen and its cut edge a little brighter.
+ */
+function paintSheetMask(seed: number) {
+  const sheet = clipped(S, ctx => {
+    ctx.fillStyle = 'rgba(248,250,253,0.5)'
+    ctx.fillRect(0, 0, S, S)
+    const r = makeRng(seed + 121)
+    // The fibres: a fine, soft weave of short strands.
+    softBatch(ctx, 0.6, c => {
+      c.lineWidth = 1
+      const light = new Path2D(), dark = new Path2D()
+      for (let i = 0; i < 5000; i++) {
+        const x = r.range(160, 860), y = r.range(240, 980), a = r.range(0, Math.PI), l = r.range(4, 12)
+        const path = r() < 0.5 ? light : dark
+        path.moveTo(x, y); path.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l)
+      }
+      c.strokeStyle = 'rgba(255,255,255,0.5)'; c.stroke(light)
+      c.strokeStyle = 'rgba(214,222,232,0.45)'; c.stroke(dark)
+    })
+    // Wrinkles: soft ridges where the sheet did not lie flat, mostly toward the edges.
+    softBatch(ctx, 3, c => {
+      for (let i = 0; i < 26; i++) {
+        const side = r() < 0.5 ? -1 : 1, x = 512 + side * r.range(150, 270), y = r.range(420, 900), len = r.range(40, 90), a = r.range(-0.5, 0.5) + (side < 0 ? 0.3 : -0.3)
+        c.strokeStyle = 'rgba(190,200,214,0.5)'; c.lineWidth = 5
+        c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + Math.cos(a) * len * 0.5 + 6, y + Math.sin(a) * len * 0.5, x + Math.cos(a) * len, y + Math.sin(a) * len); c.stroke()
+        c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = 3
+        c.beginPath(); c.moveTo(x - 4, y - 4); c.quadraticCurveTo(x + Math.cos(a) * len * 0.5 + 2, y + Math.sin(a) * len * 0.5 - 4, x + Math.cos(a) * len - 4, y + Math.sin(a) * len - 4); c.stroke()
+      }
+    })
+    // The wet sheen: broad soft light on the forehead, cheekbones and chin.
+    for (const [x, y, rx, ry] of [[470, 400, 150, 50], [380, 620, 80, 40], [660, 630, 60, 30], [500, 860, 60, 26]] as const) blob(ctx, x, y, rx, ry, [255, 255, 255], 0.45)
+  }, maskClip)
+  return maskRim(sheet, 'rgba(255,255,255,1)', 0.8, 4)
+}
+
+/** A charcoal bubble mask: a matte, smoky grey paste, brush-streaked, freckled with tiny fizzing bubbles. */
+function paintBubbleMask(seed: number) {
+  const sheet = clipped(S, ctx => {
+    const base: RGB = [98, 94, 104]
+    ctx.fillStyle = rgba(base, 0.95)
+    ctx.fillRect(0, 0, S, S)
+    const r = makeRng(seed + 131)
+    for (let i = 0; i < 800; i++) {
+      const x = r.range(160, 860), y = r.range(250, 970), a = r.range(-0.6, 0.6), len = r.range(30, 110)
+      ctx.strokeStyle = rgba(shade(base, r.range(-0.25, 0.18)), r.range(0.15, 0.4))
+      ctx.lineWidth = r.range(3, 10)
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + len * 0.5 * Math.cos(a), y + 10 * Math.sin(a * 3), x + len * Math.cos(a), y + len * Math.sin(a)); ctx.stroke()
+    }
+    ctx.globalCompositeOperation = 'soft-light'
+    ctx.drawImage(fbm(S, 30, 4, seed + 132), 0, 0)
+    ctx.globalCompositeOperation = 'source-over'
+    const bubbles = Array.from({ length: 900 }, () => ({ x: r.range(180, 850), y: r.range(260, 960), r: r.range(1.2, 4) }))
+    dots(ctx, [150, 146, 158], bubbles.length, i => ({ ...bubbles[i], a: 0.6 }), 2)
+    dots(ctx, [236, 234, 240], bubbles.length, i => ({ x: bubbles[i].x - bubbles[i].r * 0.3, y: bubbles[i].y - bubbles[i].r * 0.3, r: bubbles[i].r * 0.35, a: 0.8 }), 1)
+  }, maskClip)
+  return maskRim(sheet, 'rgba(64,60,70,1)', 0.7)
+}
+
+/**
+ * Gold foil: a thin leaf pressed onto a clear gel, crinkled into small facets that each catch the light
+ * differently, with bright glints and darker creases; once set it dulls a little.
+ */
+function paintGoldMask(dry: boolean, seed: number) {
+  const sheet = clipped(S, ctx => {
+    const gold: RGB = [232, 194, 104]
+    ctx.fillStyle = rgba(gold)
+    ctx.fillRect(0, 0, S, S)
+    const r = makeRng(seed + 141)
+    // Facets: small irregular polygons in lighter and darker golds.
+    for (let i = 0; i < 1400; i++) {
+      const x = r.range(160, 860), y = r.range(240, 980), rr = r.range(8, 22), n = r.int(4, 6), a0 = r() * Math.PI
+      const k = r.range(-0.3, 0.35)
+      ctx.fillStyle = rgba(k > 0 ? mixRGB(gold, [255, 244, 200], k * 1.6) : shade(gold, k), r.range(0.4, 0.8))
+      ctx.beginPath()
+      for (let j = 0; j < n; j++) { const aa = a0 + (j / n) * Math.PI * 2, d = rr * r.range(0.6, 1.1); if (j === 0) ctx.moveTo(x + Math.cos(aa) * d, y + Math.sin(aa) * d); else ctx.lineTo(x + Math.cos(aa) * d, y + Math.sin(aa) * d) }
+      ctx.closePath(); ctx.fill()
+    }
+    // Creases between the facets.
+    ctx.lineWidth = 1.2
+    const creases = new Path2D()
+    for (let i = 0; i < 500; i++) {
+      let x = r.range(170, 850), y = r.range(250, 970)
+      creases.moveTo(x, y)
+      for (let j = 0; j < 3; j++) { x += r.range(-14, 14); y += r.range(-14, 14); creases.lineTo(x, y) }
+    }
+    ctx.strokeStyle = 'rgba(150,108,40,0.4)'
+    ctx.stroke(creases)
+    // Glints.
+    for (let i = 0; i < (dry ? 60 : 140); i++) { const x = r.range(200, 830), y = r.range(280, 940); blob(ctx, x, y, r.range(3, 7), r.range(3, 7), [255, 252, 230], 0.9, 0.4) }
+    blob(ctx, 440, 420, 190, 80, [255, 244, 200], dry ? 0.15 : 0.3)
+    if (dry) { ctx.fillStyle = 'rgba(214,184,120,0.25)'; ctx.fillRect(0, 0, S, S) }
+  }, maskClip)
+  return maskRim(sheet, 'rgba(150,108,40,1)', 0.6, 4)
 }
 
 function paintClay(dry: boolean, seed: number) {
@@ -1186,13 +1329,60 @@ function drawBrow(ctx: Ctx, bx: number, by: number, side: number, state: BrowSta
 
 const warmMix = (c: RGB): RGB => mixRGB(c, [230, 196, 170], 0.35)
 
-function mouthCrop(state: MouthState, skin: SkinTone, feat: Feat): Crop {
-  // Full lips, a touch smaller on men.
-  const k = feat.masc ? 1.1 : 1.2, l = FACE.lips
-  return crop(MOUTH_CROP, ctx => { ctx.translate(l.x, l.y); ctx.scale(k, k); ctx.translate(-l.x, -l.y); drawMouth(ctx, l.x, l.y, state, skin, feat) })
+/**
+ * The mouth as a handful of numbers, so expressions blend by moving control points instead of crossfading
+ * drawings: the corners' half-width and height (negative is up), the lips' heights, how far the lip line
+ * sags in the middle (a smile), how far the lips part, how much of the upper teeth shows, how round the
+ * opening is (an "o") and how tense the corners are (a wince).
+ */
+export type MouthParams = { cw: number; corner: number; upperH: number; lowerH: number; sag: number; open: number; teeth: number; round: number; wince: number }
+export const MOUTH_PARAMS: Record<MouthState, MouthParams> = {
+  neutral: { cw: 64, corner: 2, upperH: 16, lowerH: 28, sag: 4, open: 0, teeth: 0, round: 0, wince: 0 },
+  smile: { cw: 66, corner: -10, upperH: 16, lowerH: 22, sag: 12, open: 0, teeth: 0, round: 0, wince: 0 },
+  wince: { cw: 60, corner: 8, upperH: 8, lowerH: 12, sag: -2, open: 0, teeth: 0, round: 0, wince: 1 },
+  pout: { cw: 54, corner: 6, upperH: 19, lowerH: 32, sag: 1, open: 0, teeth: 0, round: 0, wince: 0 },
+  beam: { cw: 60, corner: -12, upperH: 12, lowerH: 17, sag: 10, open: 15, teeth: 1, round: 0, wince: 0 },
+  o: { cw: 27, corner: 3, upperH: 13, lowerH: 15, sag: 2, open: 22, teeth: 0, round: 1, wince: 0 },
+}
+export function mixMouth(a: MouthParams, b: MouthParams, t: number): MouthParams {
+  const out = { ...a }
+  for (const k of Object.keys(a) as (keyof MouthParams)[]) out[k] = a[k] + (b[k] - a[k]) * t
+  return out
 }
 
-function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: SkinTone, feat: Feat) {
+/** A mouth that redraws itself for any blend of shapes (and the lip scrub), for the close-up's live mouth. */
+export type LiveMouth = { canvas: HTMLCanvasElement; x: number; y: number; draw: (p: MouthParams, scrub?: number) => void }
+
+function mouthScale(feat: Feat) { return feat.masc ? 1.1 : 1.2 }
+
+function mouthCrop(state: MouthState, skin: SkinTone, feat: Feat): Crop {
+  // Full lips, a touch smaller on men.
+  const k = mouthScale(feat), l = FACE.lips
+  return crop(MOUTH_CROP, ctx => { ctx.translate(l.x, l.y); ctx.scale(k, k); ctx.translate(-l.x, -l.y); drawMouth(ctx, l.x, l.y, MOUTH_PARAMS[state], skin, feat) })
+}
+
+export function liveMouth(skin: SkinTone, feat: Feat): LiveMouth {
+  const [c, ctx] = canvas(MOUTH_CROP.w, MOUTH_CROP.h)
+  const k = mouthScale(feat), l = FACE.lips
+  return {
+    canvas: c, x: MOUTH_CROP.x, y: MOUTH_CROP.y,
+    draw: (p, scrub = 0) => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.clearRect(0, 0, c.width, c.height)
+      ctx.translate(-MOUTH_CROP.x, -MOUTH_CROP.y)
+      ctx.translate(l.x, l.y); ctx.scale(k, k); ctx.translate(-l.x, -l.y)
+      drawMouth(ctx, l.x, l.y, p, skin, feat, scrub)
+    },
+  }
+}
+
+/**
+ * Lips from the parameters: an upper lip with a cupid's bow, a fuller lower lip, and between them either the
+ * lip line or, as they part, the dark of the mouth with the upper teeth under the lip. Shaded top to bottom,
+ * a wet highlight on the lower lip, soft shadows tucked into the corners (deeper in a smile), tension lines in
+ * a wince, the cheeks lifting in a beam. `scrub` lays pink sugar scrub over the lips.
+ */
+function drawMouth(ctx: Ctx, mx: number, my: number, p: MouthParams, skin: SkinTone, feat: Feat, scrub = 0) {
   const full = 1.05 + feat.lips * 0.3
   // Lips follow the tone: a touch of rose on fair skin, the customer's own deeper lip colour otherwise.
   const fair = Math.min(1, (skin.base[0] + skin.base[1] + skin.base[2]) / 3 / 215)
@@ -1200,94 +1390,94 @@ function drawMouth(ctx: Ctx, mx: number, my: number, state: MouthState, skin: Sk
   // Deep tones get a brighter, warmer gloss so the lips still read.
   const lipLight = mixRGB(mixRGB(lip, skin.light, 0.45), [255, 222, 214], 0.45 * (1 - fair))
   const inside = mixRGB(shade(skin.lip, -0.55), [70, 20, 30], 0.5)
-  if (state === 'beam' || state === 'o') {
-    const beam = state === 'beam'
-    // A small, soft smile: corners lifted and tucked into the cheeks, only the upper teeth showing.
-    // The beam: a wide crescent smile, corners lifted into the cheeks, the upper edge dipping below them.
-    const w = beam ? 56 : 17, cy = my - (beam ? 11 : -4)
-    const top = beam ? my + 1 : my - 8, bottom = beam ? my + 15 : my + 20
-    const opening = () => {
-      ctx.beginPath()
-      if (!beam) { ctx.ellipse(mx, my + 6, w, 15, 0, 0, Math.PI * 2); return }
-      ctx.moveTo(mx - w, cy)
-      ctx.bezierCurveTo(mx - w * 0.55, top - 1, mx + w * 0.55, top - 1, mx + w, cy)
-      ctx.bezierCurveTo(mx + w * 0.72, bottom, mx - w * 0.72, bottom, mx - w, cy)
-      ctx.closePath()
-    }
-    // Lips around the opening: a thin upper lip with a soft bow, a fuller lower lip.
-    ctx.beginPath()
-    if (beam) {
-      ctx.moveTo(mx - w - 7, cy + 1)
-      ctx.bezierCurveTo(mx - w * 0.6, top - 11 * full, mx - 12, top - 13 * full, mx, top - 8 * full)
-      ctx.bezierCurveTo(mx + 12, top - 13 * full, mx + w * 0.6, top - 11 * full, mx + w + 7, cy + 1)
-      ctx.bezierCurveTo(mx + w * 0.8, bottom + 15 * full, mx - w * 0.8, bottom + 15 * full, mx - w - 7, cy + 1)
-    } else ctx.ellipse(mx, my + 6, w + 13, 15 + 12 * full, 0, 0, Math.PI * 2)
-    ctx.closePath()
-    const g = ctx.createLinearGradient(0, top - 14, 0, bottom + 16)
-    g.addColorStop(0, rgba(lipDark)); g.addColorStop(0.45, rgba(lip)); g.addColorStop(1, rgba(shade(lip, 0.06)))
-    ctx.fillStyle = g
-    ctx.fill()
+  const cw = p.cw, upperH = p.upperH * full, lowerH = p.lowerH * full, rnd = p.round, open = p.open
+  const L = { x: mx - cw, y: my + p.corner }, R = { x: mx + cw, y: my + p.corner }
+  const lineY = my + p.sag + 4
+  const bw = Math.min(1, cw / 64)
+  const lift = open * 0.25
+  const ctrl = 0.5 + 0.5 * rnd, outer = 0.55 + 0.5 * rnd
+  const upTop = open * (0.3 + 0.45 * rnd), downTop = open * (0.9 - 0.15 * rnd)
+  // The outlines, as path builders.
+  const upperTop = () => {
+    ctx.moveTo(L.x, L.y)
+    ctx.bezierCurveTo(mx - cw * outer, my - upperH * 0.6 - lift, mx - 26 * bw, my - upperH - 4 - lift, mx - 14 * bw, my - upperH - lift)
+    ctx.quadraticCurveTo(mx, my - upperH + 8 - lift, mx + 14 * bw, my - upperH - lift)
+    ctx.bezierCurveTo(mx + 26 * bw, my - upperH - 4 - lift, mx + cw * outer, my - upperH * 0.6 - lift, R.x, R.y)
+  }
+  const upperBottomBack = () => ctx.bezierCurveTo(mx + cw * ctrl, lineY - upTop, mx - cw * ctrl, lineY - upTop, L.x, L.y)
+  const lowerTop = () => { ctx.moveTo(L.x, L.y); ctx.bezierCurveTo(mx - cw * ctrl, lineY + downTop, mx + cw * ctrl, lineY + downTop, R.x, R.y) }
+  const lowerBottomBack = () => ctx.bezierCurveTo(mx + cw * (0.6 + 0.4 * rnd), my + lowerH + p.sag + open * 0.8, mx - cw * (0.6 + 0.4 * rnd), my + lowerH + p.sag + open * 0.8, L.x, L.y)
+  const upperLip = () => { ctx.beginPath(); upperTop(); upperBottomBack(); ctx.closePath() }
+  const lowerLip = () => { ctx.beginPath(); lowerTop(); lowerBottomBack(); ctx.closePath() }
+  const opening = () => { ctx.beginPath(); ctx.moveTo(L.x, L.y); ctx.bezierCurveTo(mx - cw * ctrl, lineY - upTop, mx + cw * ctrl, lineY - upTop, R.x, R.y); ctx.bezierCurveTo(mx + cw * ctrl, lineY + downTop, mx - cw * ctrl, lineY + downTop, L.x, L.y); ctx.closePath() }
+  // The mouth inside, with the upper teeth tucked under the lip.
+  if (open > 0.5) {
     opening()
     ctx.fillStyle = rgba(inside)
     ctx.fill()
     ctx.save()
-    opening()
-    ctx.clip()
-    if (beam) {
-      // Upper teeth: one soft white band, barely separated, shaded under the lip.
+    opening(); ctx.clip()
+    const top = lineY - upTop * 0.75
+    if (p.teeth > 0.02) {
+      ctx.globalAlpha = Math.min(1, p.teeth)
       ctx.fillStyle = '#f8f2ee'
-      ctx.beginPath(); ctx.ellipse(mx, top + 2, w * 0.66, 6, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.ellipse(mx, top + 2, cw * 0.66, 6 + open * 0.15, 0, 0, Math.PI * 2); ctx.fill()
       ctx.strokeStyle = 'rgba(190,168,168,0.28)'; ctx.lineWidth = 1
       for (const k of [-1, 0, 1]) { ctx.beginPath(); ctx.moveTo(mx + k * 15, top - 4); ctx.lineTo(mx + k * 15, top + 8 - Math.abs(k) * 2); ctx.stroke() }
-      const sh = ctx.createLinearGradient(0, top - 6, 0, top + 4)
-      sh.addColorStop(0, rgba(inside, 0.5)); sh.addColorStop(1, rgba(inside, 0))
-      ctx.fillStyle = sh
-      ctx.fillRect(mx - w, top - 8, w * 2, 12)
+      ctx.globalAlpha = 1
     }
-    blob(ctx, mx, bottom + 2, w * 0.55, 9, mixRGB(skin.lip, [222, 108, 118], 0.45), 0.85)
+    const sh = ctx.createLinearGradient(0, top - 6, 0, top + 6)
+    sh.addColorStop(0, rgba(inside, 0.5)); sh.addColorStop(1, rgba(inside, 0))
+    ctx.fillStyle = sh
+    ctx.fillRect(mx - cw, top - 8, cw * 2, 14)
+    blob(ctx, mx, lineY + downTop * 0.75, cw * 0.5, 7 + open * 0.2, mixRGB(skin.lip, [222, 108, 118], 0.45), 0.8)
     ctx.restore()
-    // A soft gloss on the lower lip, and the cheeks lifting at the corners.
-    blob(ctx, mx + 5, bottom + 5 * full, w * 0.34, 3.5, lipLight, 0.55)
-    blob(ctx, mx - 4, bottom + 4.5 * full, w * 0.14, 2, [255, 255, 255], 0.45)
-    if (beam) for (const sd of [-1, 1]) blob(ctx, mx + sd * (w + 16), cy - 5, 9, 12, skin.shadow, 0.16)
-    return
   }
-  const pout = state === 'pout'
-  const corner = state === 'smile' ? -10 : state === 'wince' ? 8 : pout ? 6 : 2
-  const cw = state === 'smile' ? 66 : state === 'wince' ? 60 : pout ? 54 : 64
-  const upperH = (state === 'wince' ? 8 : pout ? 19 : 16) * full, lowerH = (state === 'wince' ? 12 : state === 'smile' ? 22 : pout ? 32 : 28) * full
-  const lineSag = state === 'smile' ? 12 : state === 'wince' ? -2 : pout ? 1 : 4
-  const L = { x: mx - cw, y: my + corner }, R = { x: mx + cw, y: my + corner }
-  // Upper lip with a cupid's bow.
-  ctx.beginPath()
-  ctx.moveTo(L.x, L.y)
-  ctx.bezierCurveTo(mx - cw * 0.55, my - upperH * 0.6, mx - 26, my - upperH - 4, mx - 14, my - upperH)
-  ctx.quadraticCurveTo(mx, my - upperH + 8, mx + 14, my - upperH)
-  ctx.bezierCurveTo(mx + 26, my - upperH - 4, mx + cw * 0.55, my - upperH * 0.6, R.x, R.y)
-  ctx.quadraticCurveTo(mx, my + lineSag + 4, L.x, L.y)
-  ctx.closePath()
-  const ug = ctx.createLinearGradient(0, my - upperH, 0, my + 4)
+  // Upper lip.
+  upperLip()
+  const ug = ctx.createLinearGradient(0, my - upperH - lift, 0, lineY)
   ug.addColorStop(0, rgba(lip)); ug.addColorStop(1, rgba(lipDark))
   ctx.fillStyle = ug
   ctx.fill()
   // Lower lip.
-  ctx.beginPath()
-  ctx.moveTo(L.x, L.y)
-  ctx.quadraticCurveTo(mx, my + lineSag + 4, R.x, R.y)
-  ctx.bezierCurveTo(mx + cw * 0.6, my + lowerH + lineSag, mx - cw * 0.6, my + lowerH + lineSag, L.x, L.y)
-  ctx.closePath()
-  const lg = ctx.createLinearGradient(0, my, 0, my + lowerH + lineSag)
+  lowerLip()
+  const lg = ctx.createLinearGradient(0, lineY + downTop * 0.5, 0, my + lowerH + p.sag + open * 0.8)
   lg.addColorStop(0, rgba(lipDark)); lg.addColorStop(0.4, rgba(lip)); lg.addColorStop(1, rgba(shade(lip, 0.08)))
   ctx.fillStyle = lg
   ctx.fill()
-  // The line between the lips, and a wet highlight.
-  ctx.strokeStyle = rgba(shade(lip, -0.5), 0.85)
-  ctx.lineWidth = state === 'wince' ? 3.5 : 2.6
-  ctx.beginPath(); ctx.moveTo(L.x + 2, L.y); ctx.quadraticCurveTo(mx, my + lineSag + 4, R.x - 2, R.y); ctx.stroke()
-  blob(ctx, mx + 6, my + lineSag + lowerH * 0.55, cw * 0.36, 5, lipLight, 0.75)
-  blob(ctx, mx - 6, my + lineSag + lowerH * 0.5, cw * 0.2, 3.5, [255, 255, 255], 0.85)
-  blob(ctx, mx + 22, my + lineSag + lowerH * 0.62, cw * 0.08, 2, [255, 255, 255], 0.7)
-  blob(ctx, mx - 16, my - upperH + 6, 12, 3, lipLight, 0.5)
-  for (const s of [-1, 1]) blob(ctx, mx + s * (cw + 4), my + corner, 8, 8, skin.shadow, state === 'smile' ? 0.35 : 0.25)
-  if (state === 'wince') { ctx.strokeStyle = rgba(skin.deep, 0.3); ctx.lineWidth = 1.5; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(mx + s * (cw + 6), my + 6); ctx.quadraticCurveTo(mx + s * (cw + 14), my + 16, mx + s * (cw + 10), my + 26); ctx.stroke() } }
+  // The line between the lips (it fades as they part), and the wet highlights.
+  const shut = Math.max(0, 1 - open / 6)
+  if (shut > 0) {
+    ctx.strokeStyle = rgba(shade(lip, -0.5), 0.85 * shut)
+    ctx.lineWidth = 2.6 + p.wince
+    ctx.beginPath(); ctx.moveTo(L.x + 2, L.y); ctx.bezierCurveTo(mx - cw * ctrl, lineY, mx + cw * ctrl, lineY, R.x - 2, R.y); ctx.stroke()
+  }
+  const lowMid = my + p.sag + (lowerH + open * 0.8) * 0.55 + downTop * 0.3
+  blob(ctx, mx + 6, lowMid, cw * 0.36, 5, lipLight, 0.75)
+  blob(ctx, mx - 6, lowMid - 1, cw * 0.2, 3.5, [255, 255, 255], 0.85)
+  blob(ctx, mx + 22 * bw, lowMid + 2, cw * 0.08, 2, [255, 255, 255], 0.7)
+  blob(ctx, mx - 16 * bw, my - upperH + 6 - lift, 12 * bw, 3, lipLight, 0.5)
+  // Corners tucked into the cheeks: deeper in a smile; the cheeks lift in a beam.
+  const smile = Math.max(0, -p.corner / 12)
+  for (const sd of [-1, 1]) blob(ctx, mx + sd * (cw + 4), my + p.corner, 8, 8, skin.shadow, 0.25 + 0.1 * smile)
+  if (p.teeth > 0.3) for (const sd of [-1, 1]) blob(ctx, mx + sd * (cw + 16), my + p.corner - 5, 9, 12, skin.shadow, 0.16 * p.teeth)
+  if (p.wince > 0.05) {
+    ctx.strokeStyle = rgba(skin.deep, 0.3 * p.wince); ctx.lineWidth = 1.5
+    for (const sd of [-1, 1]) { ctx.beginPath(); ctx.moveTo(mx + sd * (cw + 6), my + 6); ctx.quadraticCurveTo(mx + sd * (cw + 14), my + 16, mx + sd * (cw + 10), my + 26); ctx.stroke() }
+  }
+  if (scrub > 0.01) {
+    // Pink sugar scrub over both lips: a glossy pink film full of sugar crystals.
+    ctx.save()
+    ctx.globalAlpha = Math.min(1, scrub)
+    ctx.beginPath(); upperTop(); upperBottomBack(); ctx.closePath(); lowerTop(); lowerBottomBack(); ctx.closePath()
+    ctx.clip()
+    ctx.fillStyle = 'rgba(250,176,204,0.55)'
+    ctx.fillRect(mx - cw - 10, my - 60, cw * 2 + 20, 130)
+    for (let i = 0; i < 150; i++) {
+      const x = mx - cw + ((i * 73) % (cw * 2)), y = my - upperH - 6 + ((i * 41) % (upperH + lowerH + open + 20)), sz = 1.5 + (i % 3)
+      ctx.fillStyle = i % 4 ? 'rgba(255,250,252,0.95)' : 'rgba(255,200,220,0.95)'
+      ctx.fillRect(x, y, sz, sz)
+    }
+    ctx.restore()
+  }
 }

@@ -233,6 +233,73 @@ const PAINTERS: Record<string, { tip: [number, number]; draw: (ctx: Ctx) => void
     blob(ctx, 128, 205, 90, 20, [190, 150, 255], 0.8)
     ctx.fillStyle = '#9c86d9'; ctx.beginPath(); ctx.arc(128, 100, 10, 0, Math.PI * 2); ctx.fill()
   } },
+  // A spoolie: a slim lilac handle, a metal ferrule and a twisted brush of short dark bristles.
+  browBrush: { tip: [60, 198], draw: ctx => {
+    handle(ctx, 108, 150, 236, 22, 18, lilacHandle)
+    ctx.save(); ctx.translate(100, 158); ctx.rotate(-0.78)
+    const fg = ctx.createLinearGradient(0, -8, 0, 8); fg.addColorStop(0, '#ffffff'); fg.addColorStop(0.5, '#cfd4de'); fg.addColorStop(1, '#9aa2b2')
+    ctx.fillStyle = fg; ctx.beginPath(); ctx.roundRect(-12, -8, 28, 16, 4); ctx.fill()
+    ctx.restore()
+    ctx.save(); ctx.translate(60, 198); ctx.rotate(-0.78)
+    ctx.strokeStyle = '#8a8f9c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-34, 0); ctx.lineTo(50, 0); ctx.stroke()
+    // Bristles in a helix, the back ones darker, the front ones catching the light.
+    for (const front of [false, true]) {
+      for (let i = 0; i < 70; i++) {
+        const t = -32 + i * 1.1, rr = 7 + 7 * Math.min(1, (t + 32) / 30), ph = i * 0.95
+        const y = Math.sin(ph) * rr, z = Math.cos(ph)
+        if ((z > 0) !== front) continue
+        ctx.strokeStyle = front ? (i % 3 ? '#4a4452' : '#8a8298') : '#2a2430'
+        ctx.lineWidth = 1.6
+        ctx.beginPath(); ctx.moveTo(t, 0); ctx.lineTo(t + 1.5, y); ctx.stroke()
+      }
+    }
+    ctx.restore()
+  } },
+  // A jade roller: a big green stone cylinder on a gold frame, a jade handle.
+  jadeRoller: { tip: [74, 180], draw: ctx => {
+    const jade = (x: number, y: number, w: number, h: number, rot: number) => {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot)
+      const g = ctx.createLinearGradient(0, -h / 2, 0, h / 2)
+      g.addColorStop(0, '#d8f4e2'); g.addColorStop(0.35, '#7fcfa0'); g.addColorStop(0.75, '#3f9a6c'); g.addColorStop(1, '#2c7550')
+      ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h / 2); ctx.fill()
+      // Veins in the stone.
+      ctx.save(); ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h / 2); ctx.clip()
+      ctx.strokeStyle = 'rgba(230,255,240,0.45)'; ctx.lineWidth = 1.5
+      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(-w / 2 + k * w * 0.3, -h / 2); ctx.bezierCurveTo(-w / 4 + k * 8, 0, k * 10, h / 4, w / 2 - k * 12, h / 2); ctx.stroke() }
+      ctx.restore()
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.roundRect(-w / 2 + h * 0.3, -h / 2 + 3, w - h * 0.6, h * 0.16, 3); ctx.fill()
+      ctx.restore()
+    }
+    // The gold frame: two arms from the handle to the ends of the roller.
+    ctx.strokeStyle = '#c9a24a'; ctx.lineWidth = 6; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(150, 110); ctx.lineTo(118, 142); ctx.lineTo(96, 132); ctx.moveTo(118, 142); ctx.lineTo(56, 206); ctx.stroke()
+    ctx.strokeStyle = '#fff0b8'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(148, 108); ctx.lineTo(116, 140); ctx.stroke()
+    handle(ctx, 148, 110, 236, 24, 26, [110, 190, 146])
+    jade(74, 180, 92, 44, 0.78)
+    ctx.fillStyle = '#e2bb5c'; ctx.beginPath(); ctx.arc(74, 180, 6, 0, Math.PI * 2); ctx.fill()
+  } },
+  // A sheet mask held up by a corner in gloved fingers: soft, translucent, with eye and mouth cut-outs.
+  sheetMask: { tip: [104, 150], draw: ctx => {
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(150, 60); ctx.bezierCurveTo(200, 70, 214, 140, 196, 190); ctx.bezierCurveTo(176, 236, 110, 246, 72, 214); ctx.bezierCurveTo(40, 186, 42, 120, 70, 88); ctx.bezierCurveTo(92, 64, 120, 56, 150, 60)
+    ctx.closePath()
+    const g = ctx.createLinearGradient(40, 60, 210, 240)
+    g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(226,234,244,0.92)')
+    ctx.fillStyle = g
+    ctx.fill()
+    ctx.clip()
+    // Folds, fibres and the cut-outs.
+    ctx.strokeStyle = 'rgba(190,200,214,0.6)'; ctx.lineWidth = 4
+    for (const [x0, y0, x1, y1] of [[80, 100, 190, 170], [70, 150, 170, 220]] as const) { ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo((x0 + x1) / 2, (y0 + y1) / 2 - 20, x1, y1); ctx.stroke() }
+    ctx.fillStyle = 'rgba(200,210,224,0.8)'
+    for (const [x, y] of [[104, 132], [160, 128]] as const) { ctx.beginPath(); ctx.ellipse(x, y, 17, 8, 0.1, 0, Math.PI * 2); ctx.fill() }
+    ctx.beginPath(); ctx.ellipse(132, 196, 20, 8, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
+    ctx.strokeStyle = 'rgba(214,222,234,0.9)'; ctx.lineWidth = 2
+    glove(ctx, 170, 70, -0.9, 150, 42)
+  } },
   gems: { tip: [60, 196], draw: ctx => {
     handle(ctx, 70, 186, 220, 40, 14, metal)
     handle(ctx, 80, 196, 230, 56, 14, shade(metal, -0.1))

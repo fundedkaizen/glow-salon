@@ -20,8 +20,8 @@ type Layer = {
   uniforms: ReturnType<typeof layerMesh>['uniforms']
   style: LayerStyle
   pending: { x: number; y: number; r: number; a: number }[]
-  /** Animated fill (1) or clear (0) in progress. */
-  resolving: { to: 0 | 1; t: number } | null
+  /** Animated fill (1) or clear (0) in progress; a fill stays inside `mask` (the session's coverage) when given. */
+  resolving: { to: 0 | 1; t: number; mask?: Texture } | null
   hasPaint: boolean
 }
 
@@ -119,6 +119,17 @@ export class Surface {
     res.uArt2 = (made.art2 ?? made.art).source
   }
 
+  /** Show a layer with other art (a step's own look for it), or its own art again with null. */
+  setLayerArt(id: string, art: Texture | null) {
+    const def = this.art.layers[id], layer = this.layers.get(id)
+    if (!def || !layer) return
+    this.ensure(id)
+    const res = layer.mesh.shader!.resources as Record<string, unknown>
+    const use = art ?? def.art ?? Texture.EMPTY
+    res.uArt = use.source
+    res.uArt2 = (art ? art : def.art2 ?? use).source
+  }
+
   /** Paint the next lazy layer, if any (one per call, to spread the work over frames). */
   warmOne() {
     for (const id of this.layers.keys()) if (this.art.layers[id]?.lazy) { this.ensure(id); return true }
@@ -130,33 +141,23 @@ export class Surface {
     const layer = this.layers.get(id) ?? (id === '$wet' ? null : null)
     const target = id === '$wet' ? this.wet : layer?.rt
     if (!target) return
-    const [c, ctx] = canvas(GRID)
-    const img = ctx.createImageData(GRID, GRID)
-    let any = false
-    for (let i = 0; i < grid.length; i++) {
-      const v = Math.round(grid[i] * 255)
-      if (v > 0) any = true
-      img.data[i * 4] = 255; img.data[i * 4 + 1] = 255; img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = v
-    }
-    ctx.putImageData(img, 0, 0)
-    // Upscale smoothly (the mask is soft anyway) into the render texture.
-    const [big, bctx] = canvas(MASK_SIZE)
-    bctx.imageSmoothingEnabled = true
-    bctx.imageSmoothingQuality = 'high'
-    bctx.filter = 'blur(3px)'
-    bctx.drawImage(c, 0, 0, MASK_SIZE, MASK_SIZE)
-    // Layers that fill whole shapes (old polish, cuticles) get crisp edges instead of a soft grid blur.
-    if (crisp) {
-      const img2 = bctx.getImageData(0, 0, MASK_SIZE, MASK_SIZE)
-      const d = img2.data
-      for (let i = 3; i < d.length; i += 4) { const a = d[i] / 255; const t = Math.max(0, Math.min(1, (a - 0.3) / 0.35)); d[i] = Math.round(t * t * (3 - 2 * t) * 255) }
-      bctx.putImageData(img2, 0, 0)
-    }
-    const tex = Texture.from(big)
+    const { tex, any } = gridTexture(grid, crisp)
     const sprite = new Sprite(tex)
     this.renderer.render({ container: sprite, target, clear: true })
     tex.destroy(true)
     if (layer) { if (any) this.ensure(id); layer.hasPaint = any; layer.mesh.visible = any }
+  }
+
+  /**
+   * Settle a layer: fade it fully in (1) or out (0). A fill given the session's coverage grid stays inside it (the
+   * step's region), so a finished mask never spills into the corners of the sheet.
+   */
+  resolve(id: string, to: 0 | 1, grid?: Float32Array) {
+    const layer = this.layers.get(id)
+    if (!layer) return
+    layer.resolving?.mask?.destroy(true)
+    layer.resolving = { to, t: 0, mask: to === 1 && grid ? gridTexture(grid, false).tex : undefined }
+    if (to === 1) { this.ensure(id); layer.hasPaint = true; layer.mesh.visible = true }
   }
 
   /** Queue a brush stamp in art space: amount > 0 paints, < 0 erases. */
@@ -166,14 +167,6 @@ export class Surface {
     if (!layer) return
     layer.pending.push({ x, y, r, a: amount })
     if (amount > 0) { this.ensure(id); layer.hasPaint = true; layer.mesh.visible = true }
-  }
-
-  /** Settle a layer: fade it fully in (1) or out (0). */
-  resolve(id: string, to: 0 | 1) {
-    const layer = this.layers.get(id)
-    if (!layer) return
-    layer.resolving = { to, t: 0 }
-    if (to === 1) { this.ensure(id); layer.hasPaint = true; layer.mesh.visible = true }
   }
 
   /** Remove a layer below a line (the peel). */
@@ -265,7 +258,7 @@ export class Surface {
         const res = layer.resolving
         res.t += dt
         const s = this.stampSprite
-        s.texture = Texture.WHITE
+        s.texture = res.mask ?? Texture.WHITE
         s.anchor.set(0)
         s.position.set(0, 0)
         s.width = s.height = MASK_SIZE
@@ -275,6 +268,8 @@ export class Surface {
         s.blendMode = 'normal'
         if (res.t > 0.7) {
           if (res.to === 0) { this.renderer.render({ container: new Container(), target: layer.rt, clear: true }); layer.hasPaint = false; layer.mesh.visible = false }
+          s.texture = Texture.WHITE
+          res.mask?.destroy(true)
           layer.resolving = null
         }
       }
@@ -305,4 +300,31 @@ export class Surface {
     this.wet.destroy(true)
     this.root.destroy({ children: true })
   }
+}
+
+/** A coverage grid as a soft (or, for whole shapes, crisp-edged) mask texture at the mask's size. */
+function gridTexture(grid: Float32Array, crisp: boolean) {
+  const [c, ctx] = canvas(GRID)
+  const img = ctx.createImageData(GRID, GRID)
+  let any = false
+  for (let i = 0; i < grid.length; i++) {
+    const v = Math.round(grid[i] * 255)
+    if (v > 0) any = true
+    img.data[i * 4] = 255; img.data[i * 4 + 1] = 255; img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = v
+  }
+  ctx.putImageData(img, 0, 0)
+  // Upscale smoothly (the mask is soft anyway).
+  const [big, bctx] = canvas(MASK_SIZE)
+  bctx.imageSmoothingEnabled = true
+  bctx.imageSmoothingQuality = 'high'
+  bctx.filter = 'blur(3px)'
+  bctx.drawImage(c, 0, 0, MASK_SIZE, MASK_SIZE)
+  // Layers that fill whole shapes (old polish, cuticles) get crisp edges instead of a soft grid blur.
+  if (crisp) {
+    const img2 = bctx.getImageData(0, 0, MASK_SIZE, MASK_SIZE)
+    const d = img2.data
+    for (let i = 3; i < d.length; i += 4) { const a = d[i] / 255; const t = Math.max(0, Math.min(1, (a - 0.3) / 0.35)); d[i] = Math.round(t * t * (3 - 2 * t) * 255) }
+    bctx.putImageData(img2, 0, 0)
+  }
+  return { tex: Texture.from(big), any }
 }

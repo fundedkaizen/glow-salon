@@ -6,6 +6,7 @@ import { PEEL_FROM, PEEL_TO, TreatmentSession, WET, peelCurve, regionMask, type 
 import { POLISH_COLORS, type StepDef, type TreatmentId } from '../core/treatments/types.ts'
 import { starsFor } from '../core/reviews.ts'
 import { assetsFor, destroyAssets, type PartAssets } from '../art/assets.ts'
+import { MOUTH_PARAMS, mixMouth, type MaskKind, type MouthParams } from '../art/face.ts'
 import { BACKDROP, BACKDROP_OFFSET } from '../art/backdrop.ts'
 import { bits } from '../art/bits.ts'
 import { toolArt } from '../art/tools.ts'
@@ -79,6 +80,10 @@ export class TreatmentView {
   private targets = new Map<number, TargetView>()
   private features: Record<'eyes' | 'brows' | 'mouth', Record<string, Sprite>> = { eyes: {}, brows: {}, mouth: {} }
   private expr: Expr = 'neutral'
+  /** The live mouth's current shape, easing toward the expression's; redrawn only while it moves. */
+  private mouthP: MouthParams = { ...MOUTH_PARAMS.neutral }
+  private mouthDrawn: MouthParams | null = null
+  private scrubShown = 0
   private exprBase: Expr = 'neutral'
   private exprTimer = 0
   // idle life: blinks, a slow head sway, and small head moves on reactions (a spring on tilt and bob)
@@ -126,6 +131,8 @@ export class TreatmentView {
   private onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') this.opts.onLeave() }
 
   private opts: TreatmentViewOptions
+  private maskKind: MaskKind = 'clay'
+  private variantOn = new Set<string>()
   constructor(opts: TreatmentViewOptions) {
     this.opts = opts
     const { app, treatment, customer } = opts
@@ -134,7 +141,10 @@ export class TreatmentView {
     const t0 = performance.now()
     // Paint now only the layers that start with something on them; the rest follow in the next frames.
     const eager = new Set(Object.entries(this.session.layers).filter(([, g]) => g.some(v => v > 0)).map(([id]) => id))
-    this.assets = assetsFor(treatment, customer.look, customer.seed, order, this.session.profile, eager)
+    // Each customer gets one of four face masks; the mask layer is painted as that one.
+    const ids = new Set(this.session.def.steps.map(s => s.id))
+    this.maskKind = ids.has('sheet') ? 'sheet' : ids.has('bubble') ? 'bubble' : ids.has('gold') ? 'gold' : 'clay'
+    this.assets = assetsFor(treatment, customer.look, customer.seed, order, this.session.profile, eager, this.maskKind)
     this.buildMs = Math.round(performance.now() - t0)
     this.builtAt = t0
     this.surface = new Surface(app.renderer, this.assets.surface, 0)
@@ -183,7 +193,7 @@ export class TreatmentView {
     this.session.def.steps.forEach((st, i) => { if (st.choice && this.session.choices[i] !== undefined && st.layer) this.surface.setLayerTint(st.layer, POLISH_COLORS[this.session.choices[i]].hex) })
     // Resumed after the mask dried: it is dry clay now.
     const dryIndex = this.session.def.steps.findIndex(st => st.id === 'dry')
-    if (dryIndex >= 0 && this.session.status[dryIndex] === 'done') { this.surface.setLayerMix('mask', 1); this.surface.setLayerGloss('mask', 0.05) }
+    if (dryIndex >= 0 && this.session.status[dryIndex] === 'done') this.setMaskDry()
     // Steps this customer will never need drop off the tray up front.
     this.session.def.steps.forEach((s, i) => {
       const noTargets = s.need === 'targets' && s.targets !== 'patch' && !this.session.targets.some(t => t.kind === s.targets)
@@ -217,7 +227,15 @@ export class TreatmentView {
   private buildFeatures() {
     const f = this.assets.features
     if (!f) return
+    const live = this.assets.liveMouth
+    if (live) {
+      const s = new Sprite(live.texture)
+      s.position.set(live.x, live.y)
+      this.featuresLayer.addChild(s)
+    }
     for (const part of ['brows', 'eyes', 'mouth'] as const) {
+      // The live mouth replaces the crossfaded mouth drawings.
+      if (part === 'mouth' && live) continue
       for (const [state, crop] of Object.entries(f[part])) {
         const s = new Sprite(crop.texture)
         s.position.set(crop.x, crop.y)
@@ -271,7 +289,7 @@ export class TreatmentView {
     } else if (t.kind === 'hangnail') { const s = sprite(bits.hangnail(), 0.7); const d = fingerDir(HAND.fingers[t.n ?? 0]); s.rotation = Math.atan2(d.y, d.x) + Math.PI / 2 }
     else if (t.kind === 'gem') { const s = sprite(bits.sparkle(), 0.35); s.blendMode = 'add'; s.visible = false }
     if (t.done && t.kind !== 'gem' && t.kind !== 'patch') root.visible = false
-    if (t.done && t.kind === 'patch') this.placePatch(root, parts, true)
+    if (t.done && t.kind === 'patch') this.placePatch(root, parts, true, t)
     if (t.done && t.kind === 'gem') this.placeGem(root, t, true)
     this.targetsLayer.addChild(root)
     this.targets.set(t.id, { t, root, parts, flash: 0, gone: t.done && t.kind !== 'gem' && t.kind !== 'patch' })
@@ -356,6 +374,12 @@ export class TreatmentView {
     this.hud.setStep(this.session.step, this.session.status)
     if (step.choice) this.hud.chosen(this.session.choices[this.session.step])
     this.camGoal = { ...step.camera }
+    if (step.tint && step.layer && step.layer !== 'mask') this.surface.setLayerTint(step.layer, step.tint)
+    // A step with its own look for its layer (golden cuticle oil) shows it; the next step on that layer goes back.
+    const variant = this.assets.variants?.[step.id]
+    if (variant) { this.surface.setLayerArt(variant.layer, variant.get()); this.variantOn.add(variant.layer) }
+    else if (step.layer && this.variantOn.has(step.layer)) { this.surface.setLayerArt(step.layer, null); this.variantOn.delete(step.layer) }
+    if (step.layer === 'foam') this.surface.setLayerTint('foam', 0xb4b0ba, step.id === 'fizz' || step.id === 'rinseMask' ? 1 : 0)
     const art = toolArt(step.tool)
     this.tool.texture = art.texture
     this.tool.anchor.set(art.tip[0] / art.size, art.tip[1] / art.size)
@@ -455,7 +479,9 @@ export class TreatmentView {
     for (const tv of this.targets.values()) tv.root.destroy({ children: true })
     this.targets.clear()
     this.buildTargets()
-    if (this.session.step > 7 && this.opts.treatment === 'facial') { this.surface.setLayerMix('mask', 1); this.surface.setLayerGloss('mask', 0.05) }
+    // The mask is dry once its dry step is done (steps are shuffled per customer, so find it by id).
+    const dryIndex = this.session.def.steps.findIndex(st => st.id === 'dry')
+    if (dryIndex >= 0 && this.session.status[dryIndex] === 'done') this.setMaskDry()
     this.enterStep(true)
   }
 
@@ -607,7 +633,8 @@ export class TreatmentView {
           this.fx.spawn({ texture: bits.glow(), x: e.x, y: e.y, life: 0.45, scale: 0.5, scaleEnd: 2.4, alpha: 0.5, alphaEnd: 0, blend: 'add', tint: 0xfff4f8 })
           break
         case 'resolve':
-          this.surface.resolve(e.layer, e.to)
+          // A fill stays inside the session's coverage (the step's region), never the whole sheet.
+          this.surface.resolve(e.layer, e.to, e.to === 1 ? this.session.layers[e.layer] : undefined)
           if (e.layer === 'foam' && e.to === 0) this.foam.washAll()
           break
         case 'peel': this.onPeel(e); break
@@ -732,7 +759,7 @@ export class TreatmentView {
         if (tv) this.hideTarget(tv, 0.2)
         break
       }
-      case 'patch': sfx.patch(pan); if (tv) this.placePatch(tv.root, tv.parts, false); this.twinkle(e.x, e.y, 0.4); break
+      case 'patch': sfx.patch(pan); if (tv) this.placePatch(tv.root, tv.parts, false, tv.t); this.twinkle(e.x, e.y, 0.4); break
       case 'tip': {
         sfx.snip(pan)
         this.cam.punch += 0.01
@@ -770,14 +797,17 @@ export class TreatmentView {
     setTimeout(() => { if (!this.destroyed) tv.root.visible = false }, delay * 1000)
   }
 
-  private placePatch(root: Container, parts: Sprite[], instant: boolean) {
+  private placePatch(root: Container, parts: Sprite[], instant: boolean, t?: Target) {
     for (const p of parts) p.visible = false
-    const s = new Sprite(bits.patch())
-    s.anchor.set(0.5)
-    s.scale.set(instant ? 0.42 : 0.01)
-    s.rotation = (Math.random() - 0.5) * 0.6
+    // Under-eye patches are crescents, tilted down toward the outer corner; pimple patches little stars.
+    const eye = t?.tag === 'eye'
+    const s = new Sprite(eye ? bits.eyePatch() : bits.patch())
+    s.anchor.set(0.5, eye ? 0.35 : 0.5)
+    const k = eye ? 0.9 : 0.42
+    s.scale.set(instant ? k : 0.01)
+    s.rotation = eye ? (t!.x < 512 ? -0.12 : 0.12) : (Math.random() - 0.5) * 0.6
     root.addChild(s)
-    if (!instant) this.animate(0.35, t => s.scale.set(0.42 * easeOutBack(t)))
+    if (!instant) this.animate(0.35, u => s.scale.set(k * easeOutBack(u)))
   }
 
   private placeGem(root: Container, t: Target, instant: boolean) {
@@ -817,7 +847,7 @@ export class TreatmentView {
       this.surface.skin.uniforms.uniforms.uSkin[0] = 1
       for (let i = 0; i < 16; i++) this.fx.spawn({ texture: bits.steam(), x: 280 + Math.random() * 460, y: 400 + Math.random() * 420, vx: (Math.random() - 0.5) * 60, vy: -140 - Math.random() * 120, life: 1.6, scale: 1, scaleEnd: 3, alpha: 0.55, alphaEnd: 0 })
     }
-    if (prev?.id === 'dry') { this.surface.setLayerMix('mask', 1); this.surface.setLayerGloss('mask', 0.05) }
+    if (prev?.id === 'dry') this.setMaskDry()
     if (prev?.id === 'peel' && this.flap.visible) this.releaseFlap()
     this.flap.clear(); this.flap.visible = false
     if (prev?.id === 'cure' && this.uvLamp) { const l = this.uvLamp, g = this.uvGlow!; this.animate(0.5, t => { l.alpha = 1 - t; g.alpha = 0; l.y = 170 - t * 200 }) }
@@ -849,6 +879,22 @@ export class TreatmentView {
       if ((y0 > y) !== (y1 > y)) { const x = o[j] + ((y - y0) / (y1 - y0)) * (o[i] - o[j]); lo = Math.min(lo, x); hi = Math.max(hi, x) }
     }
     return lo < hi ? [lo, hi] : [512, 512]
+  }
+
+  /** The dried (or set) mask: clay goes matte; gold dulls a little; a sheet stays wet. */
+  private setMaskDry() {
+    if (this.maskKind === 'sheet') return
+    this.surface.setLayerMix('mask', 1)
+    this.surface.setLayerGloss('mask', this.maskKind === 'gold' ? 0.6 : 0.05)
+  }
+
+  /** The peel flap's colours for this customer's mask: its underside, edges and the rolled lip. */
+  private get flapPal() {
+    return this.maskKind === 'sheet'
+      ? { under: 0xeef2f6, side: 0xc4ced8, fold: 0xb4c0cc, tube: 0xf2f5f8, light: 0xffffff, dark: 0xbfc9d4, corner: 0xf6f8fb }
+      : this.maskKind === 'gold'
+        ? { under: 0xf2dca0, side: 0xb8903a, fold: 0xa6802c, tube: 0xe8c46a, light: 0xfff2c0, dark: 0xb08630, corner: 0xf4dc98 }
+        : { under: 0xd6efe4, side: 0x8fbfa9, fold: 0x7aa892, tube: 0x9fd8bf, light: 0xe9fbf2, dark: 0x6fb497, corner: 0xe6f7ef }
   }
 
   private drawPeel(dt: number) {
@@ -912,7 +958,8 @@ export class TreatmentView {
       const top: number[] = []
       edge(b, b.r, b.l, top)
       const shadeK = 0.8 + 0.2 * ((k + 1) / ROWS)
-      const c = (Math.round(0xd6 * shadeK) << 16) | (Math.round(0xef * shadeK) << 8) | Math.round(0xe4 * shadeK)
+      const u = this.flapPal.under
+      const c = (Math.round(((u >> 16) & 255) * shadeK) << 16) | (Math.round(((u >> 8) & 255) * shadeK) << 8) | Math.round((u & 255) * shadeK)
       g.poly([...strip, ...top]).fill({ color: c, alpha: 0.98 })
     }
     // The sides turn away: a soft darker edge along each.
@@ -921,13 +968,13 @@ export class TreatmentView {
       for (const row of rows) { const x = side ? row.r : row.l; pts.push(x, row.y(x)) }
       g.moveTo(pts[0], pts[1])
       for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1])
-      g.stroke({ width: 5, color: 0x8fbfa9, alpha: 0.6, cap: 'round' })
+      g.stroke({ width: 5, color: this.flapPal.side, alpha: 0.6, cap: 'round' })
     }
     // The fold line where it leaves the face.
     const foldPts: number[] = []
     edge(rows[0], rows[0].l, rows[0].r, foldPts)
     g.moveTo(foldPts[0], foldPts[1]); for (let i = 2; i < foldPts.length; i += 2) g.lineTo(foldPts[i], foldPts[i + 1])
-    g.stroke({ width: 3, color: 0x7aa892, alpha: 0.7, cap: 'round' })
+    g.stroke({ width: 3, color: this.flapPal.fold, alpha: 0.7, cap: 'round' })
     // What it pulled out of the pores: dark specks and little creamy plugs, more the further it goes.
     const count = Math.round(20 + this.peelShown * 50)
     for (let i = 0; i < count; i++) {
@@ -949,15 +996,16 @@ export class TreatmentView {
       for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1] + dy)
       g.stroke({ width: w, color, alpha, cap: 'round' })
     }
-    tube(0, thick, 0x9fd8bf, 1)
-    tube(-thick * 0.24, thick * 0.34, 0xe9fbf2, 0.95)
-    tube(thick * 0.26, thick * 0.24, 0x6fb497, 0.75)
+    const pal = this.flapPal
+    tube(0, thick, pal.tube, 1)
+    tube(-thick * 0.24, thick * 0.34, pal.light, 0.95)
+    tube(thick * 0.26, thick * 0.24, pal.dark, 0.75)
     // The fingers hold the lip where the pointer is.
     this.peelGrip = { x: Math.max(lipRow.l + 20, Math.min(lipRow.r - 20, this.pos.x)), y: lipRow.y(this.pos.x) }
     // Before it is lifted: a curled corner at the chin to grab.
     if (!this.session.peel.unstuck) {
       const cy = PEEL_FROM - 12
-      g.moveTo(470, cy).quadraticCurveTo(512, cy - 40 - Math.sin(this.time * 4) * 6, 554, cy).closePath().fill({ color: 0xe6f7ef })
+      g.moveTo(470, cy).quadraticCurveTo(512, cy - 40 - Math.sin(this.time * 4) * 6, 554, cy).closePath().fill({ color: this.flapPal.corner })
     }
   }
 
@@ -996,6 +1044,7 @@ export class TreatmentView {
 
   private setExpr(e: Expr, instant = false) {
     this.expr = e
+    if (instant) { this.mouthP = { ...MOUTH_PARAMS[EXPRESSIONS[e][2]] }; this.drawMouth() }
     if (instant) for (const part of ['eyes', 'brows', 'mouth'] as const) {
       const want = EXPRESSIONS[e][part === 'eyes' ? 0 : part === 'brows' ? 1 : 2]
       for (const [k, s] of Object.entries(this.features[part])) s.alpha = k === want ? 1 : 0
@@ -1061,8 +1110,28 @@ export class TreatmentView {
     this.surface.setLight(-0.32 + breath * 0.035, -0.5 + breath * 0.045, 0.8)
   }
 
+  /** Redraw the live mouth when its shape (or the lip scrub on it) has moved enough to see. */
+  private drawMouth() {
+    const live = this.assets.liveMouth
+    if (!live) return
+    // The lip scrub shows as much as the lips are covered.
+    const l = FACE.lips
+    let scrub = 0
+    for (const dx of [-50, -20, 20, 50]) for (const dy of [-8, 12]) scrub += this.coverage('cream', l.x + dx, l.y + dy) / 8
+    const d = this.mouthDrawn
+    const moved = !d || (Object.keys(d) as (keyof MouthParams)[]).some(k => Math.abs(d[k] - this.mouthP[k]) > (k === 'teeth' || k === 'round' || k === 'wince' ? 0.02 : 0.25))
+    if (!moved && Math.abs(scrub - this.scrubShown) < 0.03) return
+    this.mouthDrawn = { ...this.mouthP }
+    this.scrubShown = scrub
+    live.draw(this.mouthP, scrub)
+  }
+
   private updateExpr(dt: number) {
     if (this.exprTimer > 0) { this.exprTimer -= dt; if (this.exprTimer <= 0) this.setExpr(this.revealT >= 0 ? 'beam' : this.exprBase) }
+    // The mouth eases between shapes, a little quicker toward a wince than away from it.
+    const goal = MOUTH_PARAMS[EXPRESSIONS[this.expr][2]]
+    this.mouthP = mixMouth(this.mouthP, goal, 1 - Math.exp(-dt * (goal.wince > 0.5 ? 18 : 11)))
+    this.drawMouth()
     const k = Math.min(1, dt * 12)
     for (const part of ['eyes', 'brows', 'mouth'] as const) {
       const want = EXPRESSIONS[this.expr][part === 'eyes' ? 0 : part === 'brows' ? 1 : 2]

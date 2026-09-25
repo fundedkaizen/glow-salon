@@ -28,5 +28,15 @@ export function withFigure<L extends { figure?: Figure }>(look: L, name: string,
   return look.figure ? look : { ...look, figure: figureOf(name, archetype, seed) }
 }
 
+/**
+ * The figure the art draws for a look: the look's gender always wins over a stale or missing figure, so a man
+ * is never drawn with lashes and a bow, and a woman never with stubble.
+ */
+export function lookFigure(look: { figure?: Figure; gender?: 'female' | 'male'; age?: 'young' | 'adult' | 'older' }): Figure {
+  const f = look.figure
+  if (!f) return { masc: look.gender === 'male', age: look.age === 'young' ? 0.18 : look.age === 'older' ? 0.92 : look.age ? 0.42 : 0.35 }
+  return look.gender ? { ...f, masc: look.gender === 'male' } : f
+}
+
 /** Grey hair from here up. */
 export const SENIOR_AGE = 0.8
