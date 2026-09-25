@@ -211,6 +211,28 @@ function paintHead(ctx: Ctx, look: Look, skin: SkinT, hair: HairT, e: Expr, fig:
   paintAccessory(ctx, fig.masc && look.accessory === 1 ? { ...look, accessory: 0 } : look, cx, cy)
 }
 
+/**
+ * The face alone, for the 3D heads: painted into the head's face frame (catalog PEOPLE.faces.frame, head units round
+ * the head centre) over the skin's base colour, with the same cheeks, freckles, eyes, brows, nose and mouth as the
+ * 2D head, so a customer's face is the same person on the floor, in 2D and in the close-up.
+ */
+export function paintFaceFrame(ctx: Ctx, size: number, frame: { x0: number; x1: number; y0: number; y1: number }, look0: Look, e: Expr, archetype?: string, seed?: number) {
+  const look = { ...look0, accessory: accessoryFor(look0, archetype) }
+  const fig = lookFigure(look), skin = SKIN[look.skin % SKIN.length], face = faceVarOf(look, seed)
+  ctx.fillStyle = rgba(skin.base)
+  ctx.fillRect(0, 0, size, size)
+  ctx.save()
+  const k = size / (frame.x1 - frame.x0)
+  ctx.scale(k, size / (frame.y1 - frame.y0))
+  ctx.translate(-frame.x0, -frame.y0)
+  const blushA = (0.3 + 0.4 * face.blush) * (fig.masc ? 0.55 : 1)
+  blob(ctx, -8.2, 5.2, 3.6, 2.4, skin.blush, blushA)
+  blob(ctx, 8.8, 5.2, 3.6, 2.4, skin.blush, blushA)
+  if (look.freckles) { ctx.fillStyle = rgba(skin.deep, 0.45); for (const [fx, fy] of [[-9, 2.5], [-6.5, 4], [-8, 5.5], [8, 2.5], [10.5, 4], [7.5, 5.5]]) { ctx.beginPath(); ctx.arc(fx, fy, 0.55, 0, Math.PI * 2); ctx.fill() } }
+  paintFace(ctx, 0, 0, e, skin, fig, face)
+  ctx.restore()
+}
+
 function paintFace(ctx: Ctx, cx: number, cy: number, e: Expr, skin: SkinT, fig: Figure, face: FaceVar) {
   const ink = 'rgba(64,36,50,1)'
   const eyeY = cy + 1.4, ex = 5.7

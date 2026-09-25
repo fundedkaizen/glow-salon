@@ -1,11 +1,11 @@
-import { AnimationMixer, BufferAttribute, BufferGeometry, Color, Group, Material, MeshStandardMaterial, SkinnedMesh, Vector3, type AnimationAction, type Bone, type Mesh, type Object3D, type Texture } from 'three'
+import { AnimationMixer, BufferAttribute, BufferGeometry, CanvasTexture, Color, Group, Material, MeshStandardMaterial, SRGBColorSpace, SkinnedMesh, Vector3, type AnimationAction, type Bone, type Mesh, type Object3D, type Texture } from 'three'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { PEOPLE } from '../art3d/catalog.ts'
 import { HAIR, OUTFIT, SKIN } from '../art/palette.ts'
 import { IRIS, irisForSeed } from '../art/face.ts'
 import { hairPalette } from '../art/hair.ts'
-import { accessoryFor, outfitOf, type Expr, type Role } from '../art/salon/people.ts'
+import { accessoryFor, outfitOf, paintFaceFrame, type Expr, type Role } from '../art/salon/people.ts'
 import type { Look } from '../core/customers.ts'
 import { lookFigure } from '../core/figure.ts'
 import { makeRng } from '../core/rng.ts'
@@ -20,13 +20,15 @@ import type { Pose3, SeatKind3, Tool3 } from './person3d.ts'
  * materials shared by everyone: about four draw calls a person. B's clips play through a mixer with soft crossfades.
  * Same fields and methods as the stand-in (person3d.ts), so the floor drives either.
  */
-type Group4 = 'skin' | 'hair' | 'eyes' | 'flat'
+type Group4 = 'skin' | 'hair' | 'eyes' | 'flat' | 'face'
 
 const SHARED: Record<Group4, MeshStandardMaterial> = {
   skin: new MeshStandardMaterial({ vertexColors: true, roughness: 0.62 }),
   hair: new MeshStandardMaterial({ vertexColors: true, roughness: 0.5 }),
   eyes: new MeshStandardMaterial({ vertexColors: true, roughness: 0.18 }),
   flat: new MeshStandardMaterial({ vertexColors: true, roughness: 0.66 }),
+  // Never drawn: each person's face has its own material with their painted face (faceMat).
+  face: new MeshStandardMaterial({ roughness: 0.6 }),
 }
 let texturesSet = false
 
@@ -51,6 +53,13 @@ export class ModelPerson {
   speed = 0
   tool: Tool3 = null
   private expr: Expr = 'smile'
+  private shown: Expr = 'smile'
+  private faceCanvas!: HTMLCanvasElement
+  private faceTex!: CanvasTexture
+  private faceMat!: MeshStandardMaterial
+  private paintFace!: (e: Expr) => void
+  private blinkIn = 3
+  private blinkT = 0
 
   constructor(file: PeopleFile, kind: 'fem' | 'masc', look: Look, role: Role, tint: number, archetype?: string, seed?: number) {
     this.walkSpeed = PEOPLE.walkSpeed[kind]
@@ -61,7 +70,7 @@ export class ModelPerson {
     const style = PEOPLE.hair[((look.hairStyle % 7) + 7) % 7]
     const acc = accessoryFor(look, archetype)
     const accPart = acc === 1 && !fig.masc ? `bow_${style}` : acc === 2 ? 'glasses' : acc === 3 ? `flower_${style}` : ''
-    const show = new Set([`head_${kind}`, 'eyes', 'brows', `outfit_${(PEOPLE.outfits[kind] as readonly string[]).includes(outfitKind) ? outfitKind : 'jumper'}`, `hair_${style}`, accPart].filter(Boolean))
+    const show = new Set([`head_${kind}`, `outfit_${(PEOPLE.outfits[kind] as readonly string[]).includes(outfitKind) ? outfitKind : 'jumper'}`, `hair_${style}`, accPart].filter(Boolean))
     // Colours from the Look (catalog.ts PEOPLE.tints and outfitTints).
     const hair = hairPalette(HAIR[look.hair % HAIR.length], fig)
     const iris = seed !== undefined ? irisForSeed(seed) : IRIS[makeRng(look.skin * 31 + look.hair * 7 + look.outfit).int(0, IRIS.length - 1)]
@@ -78,6 +87,7 @@ export class ModelPerson {
     const outfitTints = (PEOPLE.outfitTints as Record<string, Record<string, string>>)[outfitKind] ?? {}
     const colourOf = (mat: string, base: Color): { group: Group4; color: Color } | null => {
       if (mat === 'Skin') return { group: 'skin', color: new Color(rgbHex(SKIN[look.skin % SKIN.length].base)) }
+      if (mat === 'Face') return { group: 'face', color: new Color(0xffffff) }
       if (mat === 'Hair') return { group: 'hair', color: new Color(rgbHex(hair.base)) }
       if (mat === 'Brows') return { group: 'hair', color: new Color(rgbHex(hair.dark)) }
       if (mat === 'Eyes') return { group: 'eyes', color: new Color(rgbHex(iris)) }
@@ -88,7 +98,7 @@ export class ModelPerson {
       return { group: 'flat', color: base.clone() }
     }
     // Gather the visible parts' meshes, sorted into the four groups.
-    const parts: Record<Group4, BufferGeometry[]> = { skin: [], hair: [], eyes: [], flat: [] }
+    const parts: Record<Group4, BufferGeometry[]> = { skin: [], hair: [], eyes: [], flat: [], face: [] }
     let skinned: SkinnedMesh | null = null
     const texture: Partial<Record<Group4, Texture>> = {}
     const shown = (o: Object3D): boolean => { for (let p: Object3D | null = o; p && p !== scene; p = p.parent) if (show.has(p.name)) return true; return false }
@@ -111,12 +121,22 @@ export class ModelPerson {
     const drop: Object3D[] = []
     scene.traverse(o => { if ((o as Mesh).isMesh) drop.push(o) })
     const base = skinned as SkinnedMesh | null
-    for (const g of ['skin', 'hair', 'eyes', 'flat'] as const) {
+    // The painted face: this person's own canvas, repainted for blinks and expressions.
+    this.faceCanvas = document.createElement('canvas')
+    this.faceCanvas.width = this.faceCanvas.height = PEOPLE.faces.frame.size
+    this.faceTex = new CanvasTexture(this.faceCanvas)
+    this.faceTex.flipY = false
+    this.faceTex.colorSpace = SRGBColorSpace
+    this.faceMat = new MeshStandardMaterial({ map: this.faceTex, roughness: 0.6 })
+    this.paintFace = (e: Expr) => { const ctx = this.faceCanvas.getContext('2d')!; paintFaceFrame(ctx, PEOPLE.faces.frame.size, PEOPLE.faces.frame, look, e, archetype, seed); this.faceTex.needsUpdate = true }
+    this.paintFace('smile')
+    this.blinkIn = 2 + Math.random() * 3
+    for (const g of ['skin', 'hair', 'eyes', 'flat', 'face'] as const) {
       if (!parts[g].length || !base) continue
       const geo = mergeGeometries(parts[g], false)
       for (const p of parts[g]) p.dispose()
       if (!geo) continue
-      const mesh = new SkinnedMesh(geo, SHARED[g])
+      const mesh = new SkinnedMesh(geo, g === 'face' ? this.faceMat : SHARED[g])
       mesh.bind(base.skeleton, base.bindMatrix)
       mesh.castShadow = g !== 'eyes'
       mesh.frustumCulled = false
@@ -157,7 +177,7 @@ export class ModelPerson {
   }
 
   set opacity(a: number) {
-    if (a >= 0.995) { if (this.fadeMats) { this.meshes.forEach((m, i) => { m.material = SHARED[this.groups[i]]; m.castShadow = this.groups[i] !== 'eyes' }); for (const f of this.fadeMats) f.dispose(); this.fadeMats = null } return }
+    if (a >= 0.995) { if (this.fadeMats) { this.meshes.forEach((m, i) => { m.material = this.groups[i] === 'face' ? this.faceMat : SHARED[this.groups[i]]; m.castShadow = this.groups[i] !== 'eyes' }); for (const f of this.fadeMats) f.dispose(); this.fadeMats = null } return }
     if (!this.fadeMats) {
       this.fadeMats = this.meshes.map(m => { const c = (m.material as MeshStandardMaterial).clone(); c.transparent = true; return c })
       this.meshes.forEach((m, i) => { m.material = this.fadeMats![i] })
@@ -187,17 +207,25 @@ export class ModelPerson {
     this.y += ((sit ? this.seatY : 0) - this.y) * Math.min(1, dt * 10)
     this.inner.position.y = this.y
     this.mixer.update(dt)
+    // The face: the current expression, with a blink now and then (not while asleep).
+    this.blinkIn -= dt
+    if (this.blinkIn <= 0 && this.expr !== 'sleepy') { this.blinkT = 0.14; this.blinkIn = 2.5 + Math.random() * 3.5 }
+    if (this.blinkT > 0) this.blinkT -= dt
+    const want: Expr = this.blinkT > 0 ? 'blink' : this.expr === 'meh' || this.expr === 'neutral' ? 'smile' : this.expr
+    if (want !== this.shown) { this.shown = want; this.paintFace(want) }
   }
 
   destroy() {
     for (const m of this.meshes) m.geometry.dispose()
+    this.faceTex.dispose()
+    this.faceMat.dispose()
     for (const m of this.fadeMats ?? []) (m as Material).dispose()
     this.mixer.stopAllAction()
     this.root.removeFromParent()
   }
 }
 
-const _up = new Vector3(0, 0.34, 0)
+const _up = new Vector3(0, 0.56, 0)
 
 /**
  * A mesh's geometry as plain floats with a colour per vertex (the tint, times the baked occlusion when it has
