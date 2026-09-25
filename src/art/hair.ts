@@ -207,48 +207,96 @@ function flowStrands(ctx: Ctx, pal: HairPal, r: Rng, count: number, place: () =>
 
 // ---------------------------------------------------------------- curls
 
+/** An elliptical patch of curly hair: centre, radii, and how far down it may go. */
+type CurlArea = { cx: number; cy: number; rx: number; ry: number; yMax: number }
+
 /**
- * Curls the way a painter draws them: clumps of springy crescents. Each curl is a thick "C" of hair turned
- * its own way, with a soft shadow tucked under it, a body in the hair's colour and a lit rim on the side
- * facing the light (brighter where the sheen ring passes). Clumps get soft volume first (light on top, shade
- * underneath), so the cloud has form and the curls sit on it. Batched by tone.
+ * Curly hair as a volume, the way a painter builds it: inside one soft silhouette, clumps of S-shaped ringlets
+ * grouped in clusters. Each clump is shaded as a lump (dark at its base, lighter on top), its ringlets drawn as
+ * little S coils with a lit upper edge; a broad soft sheen lies across the upper part of the whole mass; and
+ * small coils sit only along the edge to break the outline. `clip` keeps everything inside the silhouette.
  */
-function paintCurls(ctx: Ctx, pal: HairPal, r: Rng, count: number, place: () => P, size: [number, number], sheen: Sheen, from: P = { x: 512, y: 420 }) {
-  const curls: { p: P; s: number; a0: number; sweep: number }[] = []
-  for (let i = 0; i < count; i++) curls.push({ p: place(), s: r.range(size[0], size[1]), a0: r() * Math.PI * 2, sweep: r.range(1.2, 1.7) * Math.PI })
-  curls.sort((a, b) => a.p.y - b.p.y)
-  // Clump volume: soft light blobs on the upper side of the cloud's lumps, shade between them.
-  softBatch(ctx, 14, c => {
-    for (let i = 0; i < count / 6; i++) {
-      const q = curls[r.int(0, curls.length - 1)].p
-      c.fillStyle = rgba(pal.dark, 0.35); c.beginPath(); c.ellipse(q.x + 6, q.y + 12, size[1] * 2.2, size[1] * 1.6, 0, 0, Math.PI * 2); c.fill()
-      c.fillStyle = rgba(mixRGB(pal.base, pal.light, 0.3), 0.35); c.beginPath(); c.ellipse(q.x - 6, q.y - 8, size[1] * 1.6, size[1] * 1.1, 0, 0, Math.PI * 2); c.fill()
-    }
-  })
-  const shadow = new Path2D(), body = [new Path2D(), new Path2D()], rim = [new Path2D(), new Path2D(), new Path2D()]
-  for (const cu of curls) {
-    const { p, s: rad, a0, sweep } = cu
-    shadow.moveTo(p.x + Math.cos(a0) * rad + 2, p.y + Math.sin(a0) * rad + 4); shadow.arc(p.x + 2, p.y + 4, rad, a0, a0 + sweep)
-    const bp = body[r() < 0.5 ? 0 : 1]
-    bp.moveTo(p.x + Math.cos(a0) * rad, p.y + Math.sin(a0) * rad); bp.arc(p.x, p.y, rad, a0, a0 + sweep)
-    // The lit rim: the part of the curl facing up and left (around 225 degrees), where the arc covers it.
-    const litA = Math.PI * 1.25
-    let d = ((litA - a0) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)
-    if (d > sweep) continue
-    const k = sheen(p.x, p.y, r.range(-20, 20))
-    const rp = rim[k > 0.5 ? 2 : k > 0.22 ? 1 : 0]
-    const from0 = a0 + Math.max(0, d - 0.55), to0 = a0 + Math.min(sweep, d + 0.55)
-    rp.moveTo(p.x + Math.cos(from0) * rad * 0.92, p.y + Math.sin(from0) * rad * 0.92); rp.arc(p.x, p.y, rad * 0.92, from0, to0)
-    void from
+function paintCurlyVolume(ctx: Ctx, pal: HairPal, r: Rng, area: CurlArea, clumps: number, clip: (c: Ctx) => void, edge = true) {
+  const inside = (x: number, y: number, k = 1) => ((x - area.cx) / area.rx) ** 2 + ((y - area.cy) / area.ry) ** 2 < k && y < area.yMax
+  const centres: { x: number; y: number; r: number }[] = []
+  for (let i = 0; i < clumps * 4 && centres.length < clumps; i++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 0.95
+    const x = area.cx + Math.cos(a) * area.rx * d, y = area.cy + Math.sin(a) * area.ry * d
+    if (inside(x, y)) centres.push({ x, y, r: r.range(30, 48) })
   }
-  const w = (size[0] + size[1]) / 2
+  centres.sort((p, q) => p.y - q.y)
+  // S-shaped ringlets: two opposite arcs joined, turned along the clump's flow (outward from the head).
+  const back = new Path2D(), body = new Path2D(), lit = [new Path2D(), new Path2D()]
+  const sCoil = (x: number, y: number, sz: number, ang: number, bright: boolean) => {
+    const dx = Math.cos(ang), dy = Math.sin(ang)
+    for (const [k, dir] of [[-0.5, 1], [0.5, -1]] as const) {
+      const cx = x + dx * sz * k, cy = y + dy * sz * k, a0 = ang + (dir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5)
+      back.moveTo(cx + Math.cos(a0) * sz * 0.5 + 1.5, cy + Math.sin(a0) * sz * 0.5 + 2.5); back.arc(cx + 1.5, cy + 2.5, sz * 0.5, a0, a0 + dir * Math.PI * 1.1, dir < 0)
+      body.moveTo(cx + Math.cos(a0) * sz * 0.5, cy + Math.sin(a0) * sz * 0.5); body.arc(cx, cy, sz * 0.5, a0, a0 + dir * Math.PI * 1.1, dir < 0)
+      // The lit edge: the upper part of each loop.
+      const l0 = Math.PI * 1.05, l1 = Math.PI * 1.65
+      const lp = lit[bright ? 1 : 0]
+      lp.moveTo(cx + Math.cos(l0) * sz * 0.47, cy + Math.sin(l0) * sz * 0.47); lp.arc(cx, cy, sz * 0.47, l0, l1)
+    }
+  }
+  ctx.save()
+  clip(ctx)
+  // The undercoat: small, darker coils packed across the whole mass, so no part of it reads as a smooth fill.
+  {
+    const ub = new Path2D(), ul = new Path2D()
+    const n = Math.round((area.rx * area.ry) / 260)
+    for (let i = 0; i < n; i++) {
+      const a = r() * Math.PI * 2, d = Math.sqrt(r())
+      const x = area.cx + Math.cos(a) * area.rx * d, y = area.cy + Math.sin(a) * area.ry * d
+      if (y > area.yMax) continue
+      const sz = r.range(6, 10), a0 = r() * Math.PI * 2
+      ub.moveTo(x + Math.cos(a0) * sz, y + Math.sin(a0) * sz); ub.arc(x, y, sz, a0, a0 + Math.PI * 1.3)
+      ul.moveTo(x + Math.cos(Math.PI * 1.1) * sz * 0.9, y + Math.sin(Math.PI * 1.1) * sz * 0.9); ul.arc(x, y, sz * 0.9, Math.PI * 1.1, Math.PI * 1.55)
+    }
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = rgba(shade(pal.dark, -0.2), 0.8); ctx.lineWidth = 3.4; ctx.stroke(ub)
+    ctx.strokeStyle = rgba(mixRGB(pal.dark, pal.base, 0.55), 0.7); ctx.lineWidth = 1.6; ctx.stroke(ul)
+  }
+  // Each clump as a lump: shade tucked under its lower right, light over its upper left.
+  softBatch(ctx, 12, c => { for (const q of centres) { c.fillStyle = rgba(shade(pal.dark, -0.25), 0.6); c.beginPath(); c.ellipse(q.x + q.r * 0.25, q.y + q.r * 0.35, q.r * 0.95, q.r * 0.75, 0, 0, Math.PI * 2); c.fill() } })
+  softBatch(ctx, 10, c => { for (const q of centres) { c.fillStyle = rgba(mixRGB(pal.base, pal.light, 0.25), 0.55); c.beginPath(); c.ellipse(q.x - q.r * 0.2, q.y - q.r * 0.25, q.r * 0.7, q.r * 0.55, 0, 0, Math.PI * 2); c.fill() } })
+  for (const q of centres) {
+    const flow = Math.atan2(q.y - area.cy, q.x - area.cx) + Math.PI / 2
+    const n = r.int(14, 22)
+    for (let k = 0; k < n; k++) {
+      const a = r() * Math.PI * 2, d = Math.sqrt(r()) * q.r * 0.92
+      const x = q.x + Math.cos(a) * d, y = q.y + Math.sin(a) * d
+      // Lighter ringlets toward the top of the clump.
+      sCoil(x, y, r.range(10, 17), flow + r.range(-0.6, 0.6), y < q.y - q.r * 0.15)
+    }
+  }
+  const w = 4.6
+  ctx.lineCap = 'round'
+  ctx.strokeStyle = rgba(shade(pal.dark, -0.35), 0.7); ctx.lineWidth = w + 1.5; ctx.stroke(back)
+  ctx.strokeStyle = rgba(mixRGB(pal.dark, pal.base, 0.6)); ctx.lineWidth = w; ctx.stroke(body)
+  ctx.strokeStyle = rgba(mixRGB(pal.base, pal.light, 0.45)); ctx.lineWidth = w * 0.5; ctx.stroke(lit[0])
+  ctx.strokeStyle = rgba(mixRGB(pal.light, [255, 250, 244], 0.3)); ctx.lineWidth = w * 0.55; ctx.stroke(lit[1])
+  // A broad soft sheen across the upper part of the mass.
+  softBatch(ctx, 30, c => {
+    c.strokeStyle = rgba(mixRGB(pal.light, [255, 250, 244], 0.2), 0.3); c.lineWidth = area.ry * 0.28
+    c.beginPath(); c.ellipse(area.cx, area.cy + area.ry * 0.1, area.rx * 0.72, area.ry * 0.62, 0, Math.PI * 1.08, Math.PI * 1.72); c.stroke()
+  }, 'screen')
+  ctx.restore()
+  if (!edge) return
+  // Small coils along the edge, attached to it, breaking the outline (none float free).
+  const eb = new Path2D(), ef = new Path2D()
+  for (let i = 0; i < Math.round((area.rx + area.ry) / 7); i++) {
+    const a = r() * Math.PI * 2
+    const x = area.cx + Math.cos(a) * area.rx * 0.985, y = area.cy + Math.sin(a) * area.ry * 0.985
+    if (y > area.yMax - 6) continue
+    const sz = r.range(6, 10), a0 = a + r.range(-1, 1)
+    eb.moveTo(x + Math.cos(a0) * sz + 1, y + Math.sin(a0) * sz + 2); eb.arc(x + 1, y + 2, sz, a0, a0 + Math.PI * 1.4)
+    ef.moveTo(x + Math.cos(a0) * sz, y + Math.sin(a0) * sz); ef.arc(x, y, sz, a0, a0 + Math.PI * 1.4)
+  }
   ctx.save()
   ctx.lineCap = 'round'
-  ctx.strokeStyle = rgba(shade(pal.dark, -0.3), 0.55); ctx.lineWidth = w * 0.6; ctx.stroke(shadow)
-  ctx.strokeStyle = rgba(mixRGB(pal.dark, pal.base, 0.55)); ctx.lineWidth = w * 0.55; ctx.stroke(body[0])
-  ctx.strokeStyle = rgba(pal.base); ctx.lineWidth = w * 0.5; ctx.stroke(body[1])
-  const cols = [rgba(mixRGB(pal.base, pal.light, 0.35)), rgba(mixRGB(pal.base, pal.light, 0.7)), rgba(mixRGB(pal.light, [255, 250, 244], 0.4))]
-  rim.forEach((path, i) => { ctx.strokeStyle = cols[i]; ctx.lineWidth = w * (i === 2 ? 0.2 : 0.24); ctx.stroke(path) })
+  ctx.strokeStyle = rgba(shade(pal.dark, -0.3), 0.6); ctx.lineWidth = 5; ctx.stroke(eb)
+  ctx.strokeStyle = rgba(mixRGB(pal.dark, pal.base, 0.7)); ctx.lineWidth = 3.6; ctx.stroke(ef)
   ctx.restore()
 }
 
@@ -393,7 +441,7 @@ export function paintHairBack(ctx: Ctx, hair: HairPal, styleIndex: number, seed:
       const pts: number[] = []
       for (let k = 0; k < 28; k++) {
         const a = (k / 28) * Math.PI * 2
-        const rr = 1 + Math.sin(a * 7 + seed) * 0.03
+        const rr = 1 + Math.sin(a * 7 + seed) * 0.02 + Math.sin(a * 13 + seed * 0.3) * 0.012
         pts.push(soft(512 + Math.cos(a) * 440 * rr, 24, 1000), Math.min(900, 430 + Math.sin(a) * 410 * rr))
       }
       smoothPath(c, pts)
@@ -430,11 +478,7 @@ export function paintHairBack(ctx: Ctx, hair: HairPal, styleIndex: number, seed:
     locks.sort((a, b) => Math.abs(b.c[3].x - 512) - Math.abs(a.c[3].x - 512))
     paintLocks(ctx, locks, pal, sheen, r)
   } else if (style === 'curly') {
-    // Deep inside the cloud first, then the curls on top, densest toward the outside.
-    paintCurls(ctx, pal, r, 900, () => {
-      const a = r() * Math.PI * 2, d = Math.sqrt(r())
-      return { x: soft(512 + Math.cos(a) * 420 * d, 30, 994), y: Math.min(890, 430 + Math.sin(a) * 390 * d) }
-    }, [11, 19], sheen)
+    paintCurlyVolume(ctx, pal, r, { cx: 512, cy: 430, rx: 430, ry: 400, yMax: 900 }, 190, c => { silhouette(c); c.clip() })
   } else {
     // Sleek: the hair lies close over the scalp, drawn toward the bun, the ponytail tie, or (a crop) back and down.
     const target: P = style === 'bun' ? { x: 512, y: 110 } : style === 'pony' ? { x: 512 + ponySide * 20, y: 96 } : style === 'braids' ? { x: 512, y: 70 } : { x: 512, y: 60 }
@@ -543,7 +587,9 @@ export function paintHairCap(ctx: Ctx, hair: HairPal, styleIndex: number, seed: 
   ctx.fill()
   ctx.restore()
   if (style === 'curly') {
-    paintCurls(ctx, pal, r, 520, () => ({ x: r.range(150, 874), y: r.range(40, 380) }), [9, 16], sheen, { x: 512, y: 320 })
+    // Above the band only (inside the face's top).
+    const aboveBand = (c: Ctx) => { clipFace(c); c.beginPath(); c.moveTo(0, 0); c.lineTo(1024, 0); for (let k = 40; k >= 0; k--) { const q = bandEdge('top', k / 40); c.lineTo(q.x, q.y + 14) } c.closePath(); c.clip() }
+    paintCurlyVolume(ctx, pal, r, { cx: 512, cy: 270, rx: 380, ry: 250, yMax: 460 }, 90, aboveBand, false)
     return
   }
   const target: P = style === 'bun' ? { x: 512, y: 110 } : style === 'pony' ? { x: 512, y: 96 } : style === 'braids' ? { x: 512, y: 70 } : { x: 512, y: 40 }
@@ -598,7 +644,15 @@ export function paintHairSides(ctx: Ctx, hair: HairPal, styleIndex: number, seed
   const r = makeRng(seed + 970)
   const sheen = sheenFn([{ cx: 512, cy: 380, r: 330, w: 40 }])
   if (style === 'curly') {
-    for (const side of [-1, 1]) paintCurls(ctx, pal, r, 34, () => ({ x: 512 + side * r.range(262, 330), y: r.range(380, 520) }), [12, 20], sheen)
+    for (const side of [-1, 1]) {
+      const area = { cx: 512 + side * 318, cy: 440, rx: 38, ry: 82, yMax: 540 }
+      ctx.save()
+      ctx.beginPath(); ctx.ellipse(area.cx, area.cy, area.rx, area.ry, 0, 0, Math.PI * 2)
+      ctx.fillStyle = rgba(mixRGB(pal.base, pal.dark, 0.4)); ctx.fill()
+      ctx.restore()
+      paintCurlyVolume(ctx, pal, r, area, 6, c => { c.beginPath(); c.ellipse(area.cx, area.cy, area.rx, area.ry, 0, 0, Math.PI * 2); c.clip() })
+    }
+    void sheen
     return
   }
   if (style === 'long' || style === 'bob') {

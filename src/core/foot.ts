@@ -97,7 +97,9 @@ export function footShape(seed: number): FootShape {
     const map = (x: number, y: number) => (sole ? { x, y } : topPoint(x, y))
     const base = map(sx(s.base[0]), s.base[1])
     let tip = map(sx(s.tip[0]), s.tip[1])
-    tip = { x: base.x + (tip.x - base.x) * len[i], y: base.y + (tip.y - base.y) * len[i] }
+    // From below, the smaller toes curl under a little, so they look shorter.
+    const tuck = sole && i > 0 ? 0.86 : 1
+    tip = { x: base.x + (tip.x - base.x) * len[i] * tuck, y: base.y + (tip.y - base.y) * len[i] * tuck }
     // A bunion tips the big toe toward the second (toward the middle of the foot).
     if (i === 0 && bunion) tip.x += (sole ? 1 : -1) * 30 * k * bunion
     return { name: TOE_NAMES[i], base, tip, r0: s.r0 * thick[i] * width * k, r1: s.r1 * thick[i] * width * k, nailLength: s.nl * k * len[i] ** 0.5, nailWidth: s.nw * k * thick[i] * width }

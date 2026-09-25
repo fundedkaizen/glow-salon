@@ -113,8 +113,8 @@ function soleToePads(t: Toe) {
   const big = t.name === 'big'
   const pad = (u: number, rx: number, ry: number) => { const c = alongToe(t, u); return { x: c.x, y: c.y, rx, ry, rot: ang } }
   return big
-    ? [pad(0.32, t.r0 * 1.0, t.r0 * 0.95), pad(0.7, t.r1 * 1.08, t.r1 * 1.3)]
-    : [pad(0.4, t.r0 * 0.94, t.r0 * 0.95), pad(0.74, t.r1 * 1.05, t.r1 * 1.28)]
+    ? [pad(0.34, t.r0 * 1.06, t.r0 * 0.68), pad(0.72, t.r1 * 1.2, t.r1 * 0.95)]
+    : [pad(0.42, t.r0 * 0.98, t.r0 * 0.7), pad(0.76, t.r1 * 1.12, t.r1 * 0.98)]
 }
 
 function clipTo(ctx: Ctx, mask: HTMLCanvasElement) {
@@ -586,7 +586,7 @@ function paintSoleBase(sole: SkinTone, top: SkinTone, seed: number, a: FootAnato
       g.addColorStop(0, rgba(mixRGB(sole.base, sole.light, 0.7))); g.addColorStop(0.55, rgba(mixRGB(sole.base, sole.blush, 0.15))); g.addColorStop(0.9, rgba(mixRGB(sole.base, ao, 0.2))); g.addColorStop(1, rgba(mixRGB(sole.base, ao, 0.3)))
       tx.fillStyle = g
       tx.beginPath(); tx.ellipse(pd.x, pd.y, pd.rx, pd.ry, pd.rot, 0, Math.PI * 2); tx.fill()
-      blob(tx, pd.x - pd.rx * 0.3, pd.y - pd.ry * 0.35, pd.rx * 0.36, pd.ry * 0.24, sole.light, j === pads.length - 1 ? 0.5 : 0.35)
+      blob(tx, pd.x - pd.rx * 0.28, pd.y - pd.ry * 0.3, pd.rx * 0.42, pd.ry * 0.26, sole.light, j === pads.length - 1 ? 0.4 : 0.28)
     }
     // The creases at the joints: a dark fold under each pad, lit just below.
     const d = toeDir(t), n = { x: -d.y, y: d.x }
