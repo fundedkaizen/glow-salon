@@ -285,8 +285,24 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
       for (let i = 0; i < 200; i++) { const x = r.range(180, 760), y = r.range(200, 700); l.beginPath(); l.moveTo(x, y); l.lineTo(x + r.range(-14, 14), y + r.range(-6, 6)); l.stroke() }
     }),
     dirt: layer(tipsMask, l => {
-      l.drawImage(tintedByNoise(S, [110, 92, 74], fbm(S, 8, 3, seed + 6), 0.55, 0.95), 0, 0)
-      for (let i = 0; i < 500; i++) { l.fillStyle = rgba([72, 58, 46], r.range(0.4, 0.9)); l.fillRect(r.range(160, 800), r.range(200, 700), r.range(1.5, 3.5), r.range(1.5, 3.5)) }
+      // Grime under the free edge: a dark crescent where the nail leaves the fingertip.
+      for (const f of HAND.fingers) {
+        const nl = nailOf(f)
+        const a = Math.atan2(nl.dir.y, nl.dir.x)
+        blurred(l, 2.5, () => {
+          l.strokeStyle = rgba([92, 74, 58], 0.85)
+          l.lineWidth = 9
+          l.lineCap = 'round'
+          l.beginPath()
+          l.ellipse(nl.tip.x - nl.dir.x * 4, nl.tip.y - nl.dir.y * 4, nl.halfWidth * 0.82, 10, a + Math.PI / 2, Math.PI * 0.08, Math.PI * 0.92)
+          l.stroke()
+        })
+        for (let i = 0; i < 18; i++) {
+          const t = r.range(-0.8, 0.8)
+          l.fillStyle = rgba([70, 56, 44], r.range(0.4, 0.9))
+          l.fillRect(nl.tip.x - nl.dir.y * t * nl.halfWidth - nl.dir.x * r.range(0, 10), nl.tip.y + nl.dir.x * t * nl.halfWidth - nl.dir.y * r.range(0, 10), 2.5, 2.5)
+        }
+      }
     }),
     dry: layer(handMask, l => {
       l.drawImage(tintedByNoise(S, mixRGB(skin.light, [255, 246, 240], 0.5), fbm(S, 26, 3, seed + 7), 0.2, 0.55), 0, 0)

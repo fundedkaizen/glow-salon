@@ -213,3 +213,18 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .title .pill { min-width: 220px; min-height: 56px; font-size: 19px; }
 .title-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .nametag { font: 800 12px var(--font); }
+
+/* Phones: the step card spans the width; the customer chip and Skip sit in a row under it. */
+@media (max-width: 560px) {
+  .thud-top { flex-wrap: wrap; gap: 8px; padding: calc(10px + var(--safe-t)) 10px 0; }
+  .thud-head { order: 1; flex: 1 1 calc(100% - 60px); padding: 8px 12px 9px; }
+  .thud-leave { order: 0; width: 44px; height: 44px; }
+  .thud-title { font-size: 18px; }
+  .thud-hint { font-size: 13px; }
+  .thud-side { order: 2; flex: 1 1 100%; flex-direction: row; justify-content: space-between; align-items: center; }
+  .thud-chip { padding: 7px 12px; font-size: 13px; }
+  .thud-skip { min-height: 32px; font-size: 13px; }
+  .tool { width: 60px; height: 60px; }
+  .tool img { width: 50px; height: 50px; }
+  .thud-tray { padding: 42px 12px 10px; gap: 8px; }
+}

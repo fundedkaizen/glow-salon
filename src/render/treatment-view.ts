@@ -141,7 +141,7 @@ export class TreatmentView {
     this.buildLamp()
     this.buildFeatures()
     this.buildTargets()
-    for (const [id, grid] of Object.entries(this.session.layers)) this.surface.initFromGrid(id, grid)
+    for (const [id, grid] of Object.entries(this.session.layers)) this.surface.initFromGrid(id, grid, this.crispLayer(id))
 
     this.hud = new TreatmentHud(opts.overlay, this.session.def, {
       customer: customer.name, wish: treatment === 'nails' ? customer.wish : null, role: opts.role, leadName: opts.leadName,
@@ -175,6 +175,12 @@ export class TreatmentView {
   }
 
   // ------------------------------------------------------------------ setup
+
+  /** Layers seeded as whole shapes, drawn with crisp edges. */
+  private crispLayer(id: string) {
+    const seed = this.session.def.layers.find(l => l.id === id)?.seed
+    return seed === 'full' || seed === 'polish' || seed === 'cuticle' || seed === 'dirt'
+  }
 
   private buildFeatures() {
     const f = this.assets.features
@@ -255,7 +261,7 @@ export class TreatmentView {
     this.view = { w, h, top: small ? 88 : 84, bottom: small ? 150 : 150 }
     // Frame the subject to fill most of the screen's height (the face or the hand, about 800 art px),
     // never wider than the screen.
-    this.fit = Math.min((0.8 * h) / 800, (0.96 * w) / (this.opts.treatment === 'facial' ? 700 : 820))
+    this.fit = Math.min((0.8 * h) / 800, (0.96 * w) / (this.opts.treatment === 'facial' ? 700 : 660))
   }
 
   private placeCamera(dt: number) {
@@ -369,7 +375,7 @@ export class TreatmentView {
   /** A late join: take the lead's state and redraw everything from it. */
   applySnapshot(snap: SessionSnapshot) {
     this.session.restore(snap)
-    for (const [id, grid] of Object.entries(this.session.layers)) this.surface.initFromGrid(id, grid)
+    for (const [id, grid] of Object.entries(this.session.layers)) this.surface.initFromGrid(id, grid, this.crispLayer(id))
     for (const tv of this.targets.values()) tv.root.destroy({ children: true })
     this.targets.clear()
     this.buildTargets()

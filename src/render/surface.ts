@@ -101,7 +101,7 @@ export class Surface {
   }
 
   /** Start a layer from the session's coverage grid (seeded grime, a resumed treatment...). */
-  initFromGrid(id: string, grid: Float32Array) {
+  initFromGrid(id: string, grid: Float32Array, crisp = false) {
     const layer = this.layers.get(id) ?? (id === '$wet' ? null : null)
     const target = id === '$wet' ? this.wet : layer?.rt
     if (!target) return
@@ -120,6 +120,13 @@ export class Surface {
     bctx.imageSmoothingQuality = 'high'
     bctx.filter = 'blur(3px)'
     bctx.drawImage(c, 0, 0, MASK_SIZE, MASK_SIZE)
+    // Layers that fill whole shapes (old polish, cuticles) get crisp edges instead of a soft grid blur.
+    if (crisp) {
+      const img2 = bctx.getImageData(0, 0, MASK_SIZE, MASK_SIZE)
+      const d = img2.data
+      for (let i = 3; i < d.length; i += 4) { const a = d[i] / 255; const t = Math.max(0, Math.min(1, (a - 0.3) / 0.35)); d[i] = Math.round(t * t * (3 - 2 * t) * 255) }
+      bctx.putImageData(img2, 0, 0)
+    }
     const tex = Texture.from(big)
     const sprite = new Sprite(tex)
     this.renderer.render({ container: sprite, target, clear: true })
