@@ -17,7 +17,14 @@ import { WebSocketServer } from 'ws'
  *                                     leaves, every guest gets { t: 'peer', joined: false, id: 0, hostLeft: true }
  *   a guest's message goes to the host only, with `from` set to the guest's number
  *   a host's message goes to one guest (`to`), to every guest but one (`skip`), or to every guest
+ *
+ * Coming back: every `room` reply carries a `key`. A phone that leaves the page (to share the link, take a call)
+ * drops its socket; its seat is held for GRACE_MS, and `/coop?room=CODE&key=KEY` takes it back (the same code, the
+ * same id, `resumed: true`). Nobody else is told about a drop shorter than that. Clients that never send a key work
+ * as before, apart from the grace.
  */
+import { randomUUID } from 'node:crypto'
+const GRACE_MS = 90000
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const MAX_MESSAGE = 256 * 1024
 const GUESTS = [1, 2, 3]
@@ -39,7 +46,7 @@ export function attachRelay(httpServer) {
   httpServer.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url ?? '/', 'http://relay')
     if (url.pathname !== '/coop') return
-    wss.handleUpgrade(request, socket, head, ws => join(ws, url.searchParams.get('room')))
+    wss.handleUpgrade(request, socket, head, ws => join(ws, url.searchParams.get('room'), url.searchParams.get('key')))
   })
   // Keep connections alive through proxies and tunnels, and drop dead ones.
   const beat = setInterval(() => {
@@ -53,7 +60,25 @@ export function attachRelay(httpServer) {
   return wss
 }
 
-function join(ws, requested) {
+/** Someone's socket dropped: hold their seat for a while, then tell the others they left. */
+function holdSeat(room, id) {
+  const seat = id === 0 ? room.hostSeat : room.seats.get(id)
+  if (!seat) return
+  clearTimeout(seat.timer)
+  seat.timer = setTimeout(() => {
+    if (id === 0) {
+      if (room.host && room.host.readyState === 1) return
+      for (const guest of room.guests.values()) { send(guest, { t: 'peer', joined: false, id: 0, hostLeft: true }); guest.close() }
+      rooms.delete(room.code)
+    } else {
+      if (room.guests.get(id)?.readyState === 1) return
+      room.guests.delete(id); room.seats.delete(id)
+      send(room.host, { t: 'peer', joined: false, id })
+    }
+  }, GRACE_MS)
+}
+
+function join(ws, requested, key) {
   // A bad frame (too large, malformed) must close that one socket, never crash the relay.
   ws.on('error', () => { try { ws.terminate() } catch { /* already gone */ } })
   ws.alive = true
@@ -63,19 +88,49 @@ function join(ws, requested) {
     const code = requested.toUpperCase()
     room = rooms.get(code)
     if (!room) { send(ws, { t: 'error', reason: 'That game was not found. Ask for a new link.' }); ws.close(); return }
+    if (key && room.hostSeat.key === key) {
+      // The host is back: same room, same guests.
+      clearTimeout(room.hostSeat.timer)
+      const old = room.host
+      room.host = ws; id = 0
+      if (old && old !== ws) { old.replaced = true; try { old.terminate() } catch { /* gone */ } }
+      send(ws, { t: 'room', code, you: 'host', id: 0, key, resumed: true })
+      for (const [guest, socket] of room.guests) if (socket.readyState === 1) send(ws, { t: 'peer', joined: true, id: guest })
+      attach(ws, room, id)
+      return
+    }
+    const back = key ? [...room.seats].find(([, s]) => s.key === key) : undefined
+    if (back) {
+      // A guest is back in their own seat.
+      id = back[0]
+      clearTimeout(back[1].timer)
+      const old = room.guests.get(id)
+      if (old && old !== ws) { old.replaced = true; try { old.terminate() } catch { /* gone */ } }
+      room.guests.set(id, ws)
+      send(ws, { t: 'room', code, you: 'guest', id, key, resumed: true })
+      if (room.host?.readyState === 1) send(ws, { t: 'peer', joined: true, id: 0 })
+      attach(ws, room, id)
+      return
+    }
     id = GUESTS.find(n => !room.guests.has(n))
     if (id === undefined) { send(ws, { t: 'error', reason: 'That game is full (four players).' }); ws.close(); return }
     room.guests.set(id, ws)
-    send(ws, { t: 'room', code, you: 'guest', id })
+    const seat = { key: randomUUID(), timer: null }
+    room.seats.set(id, seat)
+    send(ws, { t: 'room', code, you: 'guest', id, key: seat.key })
     send(room.host, { t: 'peer', joined: true, id })
     send(ws, { t: 'peer', joined: true, id: 0 })
   } else {
     const code = newCode()
-    room = { code, host: ws, guests: new Map() }
+    room = { code, host: ws, guests: new Map(), seats: new Map(), hostSeat: { key: randomUUID(), timer: null } }
     rooms.set(code, room)
     id = 0
-    send(ws, { t: 'room', code, you: 'host', id: 0 })
+    send(ws, { t: 'room', code, you: 'host', id: 0, key: room.hostSeat.key })
   }
+  attach(ws, room, id)
+}
+
+function attach(ws, room, id) {
   ws.on('message', (data, binary) => {
     if (binary) return
     const text = data.toString()
@@ -97,13 +152,10 @@ function join(ws, requested) {
     for (const [guest, socket] of room.guests) if (guest !== skip) send(socket, text)
   })
   ws.on('close', () => {
-    if (id === 0) {
-      for (const guest of room.guests.values()) { send(guest, { t: 'peer', joined: false, id: 0, hostLeft: true }); guest.close() }
-      rooms.delete(room.code)
-    } else if (room.guests.get(id) === ws) {
-      room.guests.delete(id)
-      send(room.host, { t: 'peer', joined: false, id })
-    }
+    if (ws.replaced) return
+    // A drop is not a goodbye: hold the seat so the same player can come back (see GRACE_MS).
+    if (id === 0) { if (room.host === ws) holdSeat(room, 0) }
+    else if (room.guests.get(id) === ws) holdSeat(room, id)
   })
 }
 

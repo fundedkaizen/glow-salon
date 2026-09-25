@@ -177,7 +177,7 @@ export class SalonGame {
       onOpen: () => { sfx.unlock(); sfx.bellDesk(); this.act({ a: 'ready' }) },
       onNextTrack: () => { sfx.click(); music.next() },
       onToggleMusic: () => { saveSettings({ musicOn: !settings.musicOn }); if (settings.musicOn) music.start(); this.hud?.setMusicOn(settings.musicOn) },
-      onSettings: () => openSettings(this.ui, { onQuit: () => this.toTitle(), onRename: name => { if (name) this.act({ a: 'rename', name }) } }),
+      onSettings: () => openSettings(this.ui, { onQuit: () => this.toTitle(), onRename: name => { if (name) this.act({ a: 'rename', name }) }, onInvite: this.hostLink ? () => this.showRoom('') : undefined }),
       onVote: (id, yes) => this.act({ a: 'vote', id, yes }),
       onExtVote: yes => this.act({ a: 'extVote', yes }),
     })
