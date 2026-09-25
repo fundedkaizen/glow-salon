@@ -616,7 +616,7 @@ export class TreatmentSession {
   snapshot(): SessionSnapshot {
     const layers: Record<string, string> = {}
     for (const [id, grid] of Object.entries(this.layers)) layers[id] = encodeGrid(grid)
-    return { step: this.step, layers, targets: this.targets.map(t => ({ ...t })), status: [...this.status], hold: this.hold, peel: { ...this.peel }, choices: { ...this.choices }, popped: this.popped, extracted: this.extracted, startSum: this.startSum, ready: this.ready }
+    return { step: this.step, layers, targets: this.targets.map(t => ({ ...t })), status: [...this.status], hold: this.hold, peel: { ...this.peel }, choices: { ...this.choices }, popped: this.popped, extracted: this.extracted, startSum: this.startSum, ready: this.ready, elapsed: this.elapsed }
   }
 
   restore(snap: SessionSnapshot) {
@@ -632,6 +632,7 @@ export class TreatmentSession {
     this.extracted = snap.extracted
     this.startSum = snap.startSum
     this.ready = snap.ready
+    this.elapsed = snap.elapsed ?? this.elapsed
     this.finished = this.step >= this.def.steps.length
     this.events.length = 0
   }
@@ -649,4 +650,6 @@ export type SessionSnapshot = {
   extracted: number
   startSum: number
   ready: boolean
+  /** Seconds the treatment has run (a helper who takes over keeps counting from here). */
+  elapsed?: number
 }
