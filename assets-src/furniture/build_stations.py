@@ -123,7 +123,10 @@ def facial_chair(style):
     lens = face + Vector((0.0, -0.3, 0.2))
     top = lens.z + 0.12
     parts.append(furn.tube('lamppole', [(lx, ly, 0.03), (lx, ly, top)], 0.018, mat='Trim'))
-    parts.append(furn.tube('lamparm', [(lx, ly, top), (lx * 0.4, (ly + lens.y) / 2, top + 0.04), (lens.x - 0.02, lens.y + 0.05, lens.z + 0.1)], 0.014, mat='Trim'))
+    # a tidy arm: straight up the pole, a level arm out over the chair, a short drop to the lens's top
+    parts.append(furn.tube('lamparm', [(lx, ly, top), (lens.x, lens.y, top), (lens.x, lens.y + 0.06, lens.z + 0.1)], 0.014, mat='Trim'))
+    parts.append(furn.sphere('joint', 0.024, loc=(lx, ly, top), mat='Trim'))
+    parts.append(furn.sphere('joint2', 0.02, loc=(lens.x, lens.y, top), mat='Trim'))
     ring = furn.ring('lens', 0.11, 0.02, mat='Trim' if shape != 'mint' else 'Base')
     glass = furn.cyl('lensglass', 0.1, 0.1, 0.008, loc=(0, 0, -0.004), mat='Glass', seg=24)
     lensobj = gs.join([ring, glass], 'lens')

@@ -219,6 +219,18 @@ def build_all(arm, gentle=False):
         return p
     clips['cheer'] = rig.author(arm, 'cheer', [(0, hop(-0.05, 50, False)), (6, hop(0.12, 0, True, 18)), (11, hop(0.14, 4, True, 14)),
                                                (17, hop(-0.04, 44, True)), (23, hop(0.0, 10, True)), (30, hop(-0.05, 50, False))])
+    # sit_down / stand_up: from standing in front of a sofa-height seat to sit_sofa (0.6 s), and back. Played like the
+    # seated clips, with the origin on the seat node: the feet start on the floor sofa-height below the hips.
+    rest = arm.data.bones['pelvis'].head_local.copy()
+    below = 0.354  # PEOPLE.hipsAboveFeet.sit_sofa (the measured sofa seat)
+    stand = dict(RELAXED)
+    stand['hips'] = (0.0, -0.3, rest.z - below)
+    mid = dict(POSES['sit_sofa'])
+    mid.update({'hips': (0.0, -0.16, 0.08), 'pelvis': (22, 0, 0), 'spine_02': (8, 0, 0), 'thigh_l': (-100, 0, -6), 'thigh_r': (-100, 0, 6),
+                'calf_l': (80, 0, 0), 'calf_r': (80, 0, 0)})
+    seat = POSES['sit_sofa']
+    clips['sit_down'] = rig.author(arm, 'sit_down', chin_up([(0, stand), (9, mid), (18, seat)]))
+    clips['stand_up'] = rig.author(arm, 'stand_up', chin_up([(0, seat), (9, mid), (18, stand)]))
     return clips
 
 

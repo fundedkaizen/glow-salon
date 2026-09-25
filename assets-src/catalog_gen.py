@@ -129,6 +129,8 @@ export type ModelEntry = {
   sitClip?: string
   /** Animation clips inside the file (the cat). */
   animations?: string[]
+  /** Ground speed (m/s) the in-place walk clip matches (the cat). */
+  walkSpeed?: number
   /** For purchasable items: three styles (the first is the default). */
   styles?: ModelStyle[]
   /** The decor set or regular this item belongs to. */
@@ -152,6 +154,8 @@ export type ModelEntry = {
  * - Clips: `animations`. The seated ones (`seatedClips`) put the hips (pelvis joint) exactly on the model's origin,
  *   facing +Z: put the character's origin on a station's `seat` node with the node's rotation. For a seat with no
  *   node, `hipsAboveFeet` says how high the hips sit above the floor the feet rest on.
+ * - `sit_down` / `stand_up` (0.6 s) go between standing in front of a sofa-height seat and `sit_sofa`; play them with
+ *   the origin already on the seat node (the feet start `hipsAboveFeet.sit_sofa` below it), then loop the seated clip.
  * - `walkSpeed` is the ground speed (m/s) the in-place walk cycle matches at timeScale 1.
  */
 '''

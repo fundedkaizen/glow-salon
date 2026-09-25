@@ -36,6 +36,8 @@ export type ModelEntry = {
   sitClip?: string
   /** Animation clips inside the file (the cat). */
   animations?: string[]
+  /** Ground speed (m/s) the in-place walk clip matches (the cat). */
+  walkSpeed?: number
   /** For purchasable items: three styles (the first is the default). */
   styles?: ModelStyle[]
   /** The decor set or regular this item belongs to. */
@@ -59,6 +61,8 @@ export type ModelEntry = {
  * - Clips: `animations`. The seated ones (`seatedClips`) put the hips (pelvis joint) exactly on the model's origin,
  *   facing +Z: put the character's origin on a station's `seat` node with the node's rotation. For a seat with no
  *   node, `hipsAboveFeet` says how high the hips sit above the floor the feet rest on.
+ * - `sit_down` / `stand_up` (0.6 s) go between standing in front of a sofa-height seat and `sit_sofa`; play them with
+ *   the origin already on the seat node (the feet start `hipsAboveFeet.sit_sofa` below it), then loop the seated clip.
  * - `walkSpeed` is the ground speed (m/s) the in-place walk cycle matches at timeScale 1.
  */
 
@@ -202,10 +206,12 @@ export const PEOPLE = {
     "cheer",
     "idle",
     "sit_chair",
+    "sit_down",
     "sit_pedicure",
     "sit_sofa",
     "sit_stool",
     "sleepy",
+    "stand_up",
     "talk",
     "walk",
     "wave",
@@ -223,6 +229,8 @@ export const PEOPLE = {
     work: 2.0,
     wave: 1.333,
     cheer: 1.0,
+    sit_down: 0.6,
+    stand_up: 0.6,
   },
   seatedClips: ["sit_chair", "sit_sofa", "sit_stool", "sit_pedicure", "sleepy"],
   tris: {
@@ -367,7 +375,7 @@ export const MODELS: ModelEntry[] = [
     kind: "station",
     file: "stations/facial-chair-rose.glb",
     footprint: [1.455, 1.444],
-    height: 1.651,
+    height: 1.62,
     nodes: {
       seat: {
         pos: [-0.1011, 0.6, -0.0542],
@@ -799,6 +807,162 @@ export const MODELS: ModelEntry[] = [
       },
     ],
     sitClip: "sit_sofa",
+  },
+  {
+    id: "awning",
+    name: "Awning",
+    kind: "room",
+    file: "life/awning.glb",
+    footprint: [2.078, 0.89],
+    height: 2.486,
+    nodes: {},
+    recolour: ["Accent", "Trim"],
+    materials: ["Accent", "Accent2", "Trim"],
+    tris: 2172,
+  },
+  {
+    id: "flower-bed",
+    name: "Flower bed",
+    kind: "plant",
+    file: "life/flower-bed.glb",
+    footprint: [1.397, 0.597],
+    height: 0.412,
+    nodes: {},
+    recolour: [],
+    materials: ["Flower", "Flower2", "Leaf", "Soil", "Wood"],
+    tris: 3200,
+  },
+  {
+    id: "hedge",
+    name: "Hedge planter",
+    kind: "plant",
+    file: "life/hedge.glb",
+    footprint: [1.499, 0.5],
+    height: 0.67,
+    nodes: {},
+    recolour: [],
+    materials: ["Flower", "Flower2", "Leaf", "Leafdark", "Stone"],
+    tris: 1596,
+  },
+  {
+    id: "plant-floor",
+    name: "Floor plant",
+    kind: "plant",
+    file: "life/plant-floor.glb",
+    footprint: [0.813, 0.694],
+    height: 1.222,
+    nodes: {},
+    recolour: ["Accent", "Trim"],
+    materials: ["Accent", "Leaf", "Soil", "Trim"],
+    tris: 1268,
+  },
+  {
+    id: "plant-small",
+    name: "Small plant",
+    kind: "plant",
+    file: "life/plant-small.glb",
+    footprint: [0.375, 0.32],
+    height: 0.564,
+    nodes: {},
+    recolour: ["Accent", "Trim"],
+    materials: ["Accent", "Leaf", "Soil", "Trim"],
+    tris: 1268,
+  },
+  {
+    id: "plant-tall",
+    name: "Tall topiary",
+    kind: "plant",
+    file: "life/plant-tall.glb",
+    footprint: [0.78, 0.78],
+    height: 2.22,
+    nodes: {},
+    recolour: ["Accent", "Trim"],
+    materials: ["Accent", "Leaf", "Soil", "Trim"],
+    tris: 872,
+  },
+  {
+    id: "tree",
+    name: "Tree",
+    kind: "plant",
+    file: "life/tree.glb",
+    footprint: [1.45, 1.21],
+    height: 2.26,
+    nodes: {},
+    recolour: [],
+    materials: ["Leaf", "Leafdark", "Wooddark"],
+    tris: 1196,
+  },
+  {
+    id: "bench",
+    name: "Street bench",
+    kind: "life",
+    file: "life/bench.glb",
+    footprint: [1.4, 0.55],
+    height: 0.885,
+    nodes: {
+      seat: {
+        pos: [0.0, 0.47, 0.07],
+        rotY: 0.0,
+      },
+    },
+    recolour: [],
+    materials: ["Black", "Wood"],
+    tris: 3200,
+  },
+  {
+    id: "bin",
+    name: "Bin",
+    kind: "life",
+    file: "life/bin.glb",
+    footprint: [0.33, 0.365],
+    height: 0.39,
+    nodes: {},
+    recolour: ["Accent", "Trim"],
+    materials: ["Accent", "Trim"],
+    tris: 420,
+  },
+  {
+    id: "cat",
+    name: "Salon cat",
+    kind: "life",
+    file: "life/cat.glb",
+    footprint: [0.25, 0.6],
+    height: 0.4,
+    nodes: {},
+    recolour: ["Fur", "Fur2"],
+    materials: ["Eye", "Fur", "Fur2", "Nose"],
+    tris: 2600,
+    animations: ["idle", "walk"],
+    walkSpeed: 0.45,
+  },
+  {
+    id: "fountain",
+    name: "Fountain garden",
+    kind: "life",
+    file: "life/fountain.glb",
+    footprint: [1.638, 1.238],
+    height: 0.97,
+    nodes: {
+      lookat: {
+        pos: [0.05, 0.8, -0.0],
+        rotY: 0.0,
+      },
+    },
+    recolour: [],
+    materials: ["Accent2", "Base", "Flower", "Flower2", "Leaf", "Leafdark", "Soil", "Water"],
+    tris: 3200,
+  },
+  {
+    id: "street-lamp",
+    name: "Street lamp",
+    kind: "life",
+    file: "life/street-lamp.glb",
+    footprint: [0.36, 0.36],
+    height: 3.11,
+    nodes: {},
+    recolour: [],
+    materials: ["Black", "Lamp"],
+    tris: 452,
   },
 ]
 
