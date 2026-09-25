@@ -15,8 +15,8 @@ import { personaFor, storyBeat } from '../core/persona.ts'
 import { withFigure } from '../core/figure.ts'
 import { hashString, makeRng } from '../core/rng.ts'
 import type { Action, Customer, DayStats, GameEvent, Pending, Phase, Player, Station } from '../core/salon.ts'
-import type { SalonExt } from '../core/salon-ext.ts'
-import { STAFF_GRACE, STAFF_ID_BASE, type StaffMember } from '../core/staff.ts'
+import { staffCountdown, type SalonExt } from '../core/salon-ext.ts'
+import { STAFF_ID_BASE, type StaffMember } from '../core/staff.ts'
 import { Cat } from './floor-cat.ts'
 import { Person } from './floor-person.ts'
 import { Particles, easeOutBack } from './particles.ts'
@@ -595,7 +595,7 @@ export class FloorView {
   private onKeyDown = (e: KeyboardEvent) => {
     if (!this.inputOn || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
     const k = e.key.toLowerCase()
-    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { this.keys.add(k); this.path = []; this.goal = null; e.preventDefault() }
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { this.keys.add(k); this.path = []; this.goal = null; this.claim(null); e.preventDefault() }
     if ((k === 'f' || k === 'e' || k === 'enter' || k === ' ') && !e.repeat) { if (this.target) { e.preventDefault(); this.interact() } }
   }
   private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.key.toLowerCase()) }
@@ -629,7 +629,16 @@ export class FloorView {
       if (p.x > r.x - 10 && p.x < r.x + r.w + 10 && p.y > r.y - 60 && p.y < r.y + r.h + 10) { const spot = stationSpot(st.slot); this.goTo({ kind: 'station', id: st.id, ...spot }); return }
     }
     this.goal = null
+    this.claim(null)
     this.walkTo(p)
+  }
+
+  /** Tell the salon which station this player is walking over to (null: none), so staff leave it to them. */
+  private claimed: string | null = null
+  private claim(station: string | null) {
+    if (station === this.claimed) return
+    this.claimed = station
+    this.hooks.onAction({ a: 'claim', station })
   }
 
   private walkTo(p: Pt) {
@@ -642,6 +651,7 @@ export class FloorView {
   private goTo(t: Target) {
     const here = Math.hypot(this.me.x - t.x, this.me.y - t.y)
     this.goal = t
+    this.claim(t.kind === 'station' ? t.id : null)
     if (here < 30) { this.goal = null; this.interactWith(t); return }
     this.walkTo(t.kind === 'cat' ? { x: t.x + (this.me.x < t.x ? -40 : 40), y: t.y + 6 } : t)
   }
@@ -925,8 +935,8 @@ export class FloorView {
       let label = ''
       if (c && c.state === 'seated' && st.lead === null) {
         const s = state.ext?.staff.find(m => m.station === st.id && !m.task && m.breakLeft <= 0)
-        const since = state.ext?.today.seatedAt[st.id]
-        if (s && since !== undefined) label = `${s.name} takes over in ${Math.max(0, Math.ceil(STAFF_GRACE - (state.clock - since)))}s`
+        const left = staffCountdown(state, st.id)
+        if (s && left !== null) label = `${s.name} takes over in ${Math.ceil(left)}s`
       }
       info.text.text = label
       const bg = info.label.children[0] as Graphics

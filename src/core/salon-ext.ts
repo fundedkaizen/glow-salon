@@ -2,12 +2,13 @@ import { withLookDefaults, type CustomerPlan } from './customers.ts'
 import { advanceCampaigns, campaignBias, campaignCustomers, canRunCampaign, CAMPAIGN_BY_ID, type ActiveCampaign } from './marketing.ts'
 import { DECOR_ITEM_BY_ID, GIFT_BY_ID, GIFT_BY_REGULAR } from './decor.ts'
 import { CONFIRM_PRICE } from './economy.ts'
+import { stationSpot } from './floor.ts'
 import { goalFor, goalTally, type DailyGoal } from './goals.ts'
 import { personaFor, type Persona } from './persona.ts'
 import { writeGoogleReview, type GoogleReview } from './review-writer.ts'
 import { MOOD_DRAIN_WAITING, reduce, type Customer, type SalonState } from './salon.ts'
 import { candidatesFor, cleanStaffName, gainXp, has, hire, MAX_STAFF, rest, staffDuration, staffResult, STAFF_GRACE, STAFF_ID_BASE, tire, weekOf, type Candidate, type StaffMember } from './staff.ts'
-import { TREATMENTS } from './treatments/registry.ts'
+import { planTreatment } from './treatments/plan.ts'
 import type { TreatmentResult } from './treatments/session.ts'
 
 /**
@@ -43,6 +44,8 @@ export type SalonExt = {
     ready: number[]; wages: number; pets: number; levelUps: string[]; bias: string[]; seatedAt: Record<string, number>; friendUps: { name: string; level: number; gift: string | null }[]
     /** Today's relaxed goal and whether it is reached. */
     goal: DailyGoal | null
+    /** Stations players are walking over to (player id to station and when), so staff leave them be. */
+    claims: Record<number, { station: string; at: number }>
   }
   vote: ExtVote | null
 }
@@ -59,11 +62,13 @@ export type ExtAction =
   | { a: 'renameCat'; name: string }
   /** Ready to open: the day starts once every player in the salon is ready. */
   | { a: 'ready' }
+  /** A player sets off for a station (or for somewhere else: null), so staff do not take it from under them. */
+  | { a: 'claim'; station: string | null }
 
 export const DEFAULT_SALON_NAME = 'Glow Salon'
 export const DEFAULT_CAT_NAME = 'Mochi'
 
-const emptyToday = (): SalonExt['today'] => ({ ready: [], wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [], goal: null })
+const emptyToday = (): SalonExt['today'] => ({ ready: [], wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [], goal: null, claims: {} })
 
 export function newExt(): SalonExt {
   return { salonName: DEFAULT_SALON_NAME, catName: DEFAULT_CAT_NAME, staff: [], hired: [], week: -1, campaigns: [], loyalty: false, friends: {}, decorOrder: [], recent: [], stars: [0, 0, 0, 0, 0], lastDay: 0, names: [], today: emptyToday(), vote: null }
@@ -244,6 +249,13 @@ export function reduceExt(state: SalonState, by: number, action: ExtAction): boo
       if (state.players.every(p => e.today.ready.includes(p.id))) reduce(state, by, { a: 'open' })
       return true
     }
+    case 'claim': {
+      const claims = (e.today.claims ??= {})
+      if (action.station === null) { delete claims[by]; return true }
+      if (!player || !state.stations.some(st => st.id === action.station)) return false
+      claims[by] = { station: action.station, at: state.clock }
+      return true
+    }
     case 'petCat': e.today.pets++; return true
     case 'placeDecor': {
       if (!state.owned.includes(action.id) || !DECOR_ITEM_BY_ID[action.id]) return false
@@ -283,8 +295,28 @@ export function staffShare(state: SalonState, staffId: number, stars: number, tr
 
 /** Staff skilled enough for a treatment to take it at a station that is not theirs. */
 const SKILLED = 2
+/** Seconds a customer waits before staff set to "Anywhere" come over: players get first pick. */
+export const ROAM_GRACE = 30
+/** A player this close to a station's spot is at it (the floor's prompt shows from about 80 px). */
+export const NEAR_STATION = 120
+/** Seconds a player's walk to a station keeps it for them. */
+export const CLAIM_SECONDS = 12
 
-/** The station an idle staff member should start at now, if any: their own first, then any skilled one nobody else covers. */
+/** A player is at this station, standing by it, or on the way to it: staff leave it to them. */
+export function playerHolds(state: Pick<SalonState, 'players' | 'stations' | 'clock'> & { ext?: SalonExt }, stationId: string): boolean {
+  const st = state.stations.find(x => x.id === stationId)
+  if (!st || st.slot < 0) return false
+  const spot = stationSpot(st.slot)
+  if (state.players.some(p => p.station === stationId || Math.hypot(p.x - spot.x, p.y - spot.y) < NEAR_STATION)) return true
+  const claims = state.ext?.today.claims ?? {}
+  return state.players.some(p => { const c = claims[p.id]; return !!c && c.station === stationId && state.clock - c.at < CLAIM_SECONDS })
+}
+
+/**
+ * The station an idle staff member should start at now, if any. Staff with a station work only there; staff
+ * set to "Anywhere they are skilled" pick up any station nobody covers, after a longer wait. Never one a
+ * player is at or walking to.
+ */
 function workFor(state: SalonState, s: StaffMember): string | null {
   const e = ext(state)
   const seated = (st: SalonState['stations'][number]) => {
@@ -293,18 +325,21 @@ function workFor(state: SalonState, s: StaffMember): string | null {
     return !!c && c.state === 'seated'
   }
   const ready = (st: SalonState['stations'][number], grace: number) => {
+    // A player at the station (or on the way) restarts the wait, so staff never step in the moment they leave.
+    if (playerHolds(state, st.id)) { e.today.seatedAt[st.id] = state.clock; return false }
     const since = (e.today.seatedAt[st.id] ??= state.clock)
     return state.clock - since >= grace
   }
-  const home = s.station ? state.stations.find(x => x.id === s.station) : null
-  if (home && seated(home)) return ready(home, STAFF_GRACE) ? home.id : null
-  // Anywhere else they are skilled for, that no free colleague calls home: a little longer to let a player come.
+  if (s.station) {
+    const home = state.stations.find(x => x.id === s.station)
+    return home && seated(home) && ready(home, STAFF_GRACE) ? home.id : null
+  }
   for (const st of state.stations) {
-    if (st === home || !seated(st)) continue
+    if (!seated(st)) continue
     const c = state.customers.find(x => x.id === st.customer)!
     if ((s.skills[c.plan.treatment] ?? 0) < SKILLED) continue
     if (e.staff.some(m => m !== s && m.station === st.id && !m.task && m.breakLeft <= 0)) continue
-    if (ready(st, STAFF_GRACE * 2)) return st.id
+    if (ready(st, ROAM_GRACE)) return st.id
   }
   return null
 }
@@ -350,18 +385,19 @@ export function extTick(state: SalonState, dt: number) {
     delete e.today.seatedAt[st.id]
     st.lead = s.id
     c.state = 'treating'
-    s.task = { station: st.id, t: 0, dur: staffDuration(s, c.plan.treatment, state.clock) }
+    s.task = { station: st.id, t: 0, dur: staffDuration(s, c.plan.treatment, state.clock, planTreatment(c.plan.treatment, c.plan.seed, c.plan.disaster).def.parSeconds) }
   }
 }
 
 function finishForStaff(state: SalonState, s: StaffMember, stationId: string) {
   const st = state.stations.find(x => x.id === stationId)!
   const c = state.customers.find(x => x.id === st.customer)
+  const took = s.task?.dur ?? 0
   s.task = null
   if (!c) return
-  const def = TREATMENTS[c.plan.treatment]
+  const def = planTreatment(c.plan.treatment, c.plan.seed, c.plan.disaster).def
   const persona = personaOf(state, c.plan)
-  const result = staffResult(s, c.plan.treatment, def.parSeconds, c.plan.seed, persona.traits)
+  const result = { ...staffResult(s, c.plan.treatment, def.parSeconds, c.plan.seed, persona.traits), seconds: Math.round(took) || def.parSeconds }
   reduce(state, s.id, { a: 'finish', station: stationId, result })
   // Staff are not players: their day's numbers stay off the players' awards.
   delete state.stats.byPlayer[s.id]
@@ -370,12 +406,12 @@ function finishForStaff(state: SalonState, s: StaffMember, stationId: string) {
 }
 
 /** Seconds until the station's staff member steps in, or null when nobody will. */
-export function staffCountdown(state: SalonState & { ext?: SalonExt }, stationId: string): number | null {
+export function staffCountdown(state: Pick<SalonState, 'players' | 'stations' | 'clock'> & { ext?: SalonExt }, stationId: string): number | null {
   const e = state.ext
   if (!e) return null
   const s = e.staff.find(m => m.station === stationId && !m.task && m.breakLeft <= 0)
   const since = e.today.seatedAt[stationId]
-  if (!s || since === undefined) return null
+  if (!s || since === undefined || playerHolds(state, stationId)) return null
   return Math.max(0, STAFF_GRACE - (state.clock - since))
 }
 

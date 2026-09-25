@@ -97,9 +97,12 @@ export const has = (s: Pick<StaffMember, 'traits'>, trait: string) => s.traits.i
 /** Treatments done to reach the next level. */
 export const xpToLevel = (level: number) => 2 + level
 
-/** Real seconds a staff member takes for a treatment: quicker with skill, slower for perfectionists. */
-export function staffDuration(s: StaffMember, treatment: TreatmentId, clock: number): number {
-  let d = 62 - 7 * (s.skills[treatment] ?? 1)
+/**
+ * Real seconds a staff member takes for a treatment, from its par (what an unhurried player takes): a
+ * one-star trainee about par, a five-star expert a little over half. Slower for perfectionists.
+ */
+export function staffDuration(s: StaffMember, treatment: TreatmentId, clock: number, par: number): number {
+  let d = par * (1.1 - 0.1 * (s.skills[treatment] ?? 1))
   if (has(s, 'perfectionist')) d *= 1.15
   if (has(s, 'night-owl') && clock > 150) d *= 0.85
   if (has(s, 'early-bird') && clock < 90) d *= 0.85
