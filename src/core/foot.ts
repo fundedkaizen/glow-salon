@@ -57,8 +57,8 @@ export type FootShape = {
  * the top under a draped towel. Its geometry is designed as a whole foot and mapped into art space by this scale
  * about a point near the toe tips.
  */
-export const TOP_SCALE = 1.42
-const TOP_PIVOT = { x: 512, y: 988 }
+export const TOP_SCALE = 1.62
+const TOP_PIVOT = { x: 512, y: 986 }
 export function topPoint(x: number, y: number): Point { return { x: TOP_PIVOT.x + (x - TOP_PIVOT.x) * TOP_SCALE, y: TOP_PIVOT.y + (y - TOP_PIVOT.y) * TOP_SCALE } }
 
 /** The hanging edge of the towel draped over the ankle (top view): layers stop above it. */
@@ -67,11 +67,11 @@ export function drapeY(x: number) { return 150 + 34 * Math.exp(-(((x - 560) / 24
 type ToeSpec = { base: [number, number]; tip: [number, number]; r0: number; r1: number; nl: number; nw: number }
 /** Top view, before variation. */
 const TOP_TOES: ToeSpec[] = [
-  { base: [650, 742], tip: [662, 940], r0: 61, r1: 56, nl: 80, nw: 40 },
-  { base: [550, 776], tip: [543, 916], r0: 36, r1: 33, nl: 34, nw: 19 },
-  { base: [474, 768], tip: [461, 892], r0: 34, r1: 31, nl: 31, nw: 17.5 },
-  { base: [403, 748], tip: [386, 858], r0: 32, r1: 29, nl: 27, nw: 16 },
-  { base: [338, 716], tip: [318, 808], r0: 30, r1: 26, nl: 22, nw: 13.5 },
+  { base: [650, 752], tip: [664, 940], r0: 60, r1: 55, nl: 78, nw: 40 },
+  { base: [553, 780], tip: [542, 932], r0: 37, r1: 34, nl: 38, nw: 21 },
+  { base: [477, 772], tip: [458, 908], r0: 35, r1: 32, nl: 34, nw: 19.5 },
+  { base: [405, 752], tip: [381, 874], r0: 33, r1: 30, nl: 30, nw: 18 },
+  { base: [341, 720], tip: [314, 824], r0: 31, r1: 27, nl: 25, nw: 15.5 },
 ]
 /** Sole view, before variation: the same toes seen from below (foreshortened, pads showing). */
 const SOLE_TOES: ToeSpec[] = [
@@ -230,8 +230,8 @@ export function footAnatomy(seed: number) {
     nailFolds: { include: [fold(-1), fold(1)] },
     knuckles: { include: knuckleShapes },
     betweenToes: { include: between },
-    instep: { include: [{ t: 'ellipse', cx: T(512, 520).x, cy: T(512, 520).y, rx: 170 * w * K, ry: 200 * K }], exclude: [cuff] },
-    ankle: { include: [{ t: 'poly', pts: [T(356, 250).x, CUFF_Y, T(676, 250).x, CUFF_Y, T(690, 525).x, T(690, 525).y, T(330, 525).x, T(330, 525).y] }], exclude: [cuff] },
+    instep: { include: [{ t: 'ellipse', cx: T(512, 650).x, cy: T(512, 650).y, rx: 170 * w * K, ry: 70 * K }], exclude: [cuff] },
+    ankle: { include: [{ t: 'poly', pts: [110, CUFF_Y, 914, CUFF_Y, 914, CUFF_Y + 130, 110, CUFF_Y + 130] }], exclude: [cuff] },
     everywhere: { include: [EVERYWHERE] },
   }
   const SOLE: Record<FootSoleRegion, Region> = {

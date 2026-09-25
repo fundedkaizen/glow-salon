@@ -219,7 +219,7 @@ function paintTopBase(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, 
   const toes = a.shape.toes
   const fair = fairOf(skin)
   // Lit from the top left: the outer (left) slope of the instep catches it, the arch side (right) turns away.
-  const lg = s.createLinearGradient(180, 0, 840, 900)
+  const lg = s.createLinearGradient(60, 0, 960, 900)
   lg.addColorStop(0, rgba(mixRGB(skin.base, skin.light, 0.35))); lg.addColorStop(0.5, rgba(skin.base)); lg.addColorStop(1, rgba(mixRGB(skin.base, skin.shadow, 0.4)))
   s.fillStyle = lg
   s.fillRect(0, 0, S, S)
@@ -228,20 +228,20 @@ function paintTopBase(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, 
   s.drawImage(fbm(S, 70, 4, seed + 1), 0, 0)
   s.globalAlpha = 1
   s.globalCompositeOperation = 'source-over'
-  skinDabs(s, skin, seed, 190, 840, 0, 980, 380)
+  skinDabs(s, skin, seed, 60, 960, 0, 980, 420)
   const ao = aoOf(skin)
   // The instep is a dome: a broad light down its outer slope, shade down the arch side and toward the ankle.
   softBatch(s, 50, c => {
-    c.fillStyle = rgba(skin.light, 0.5); c.beginPath(); c.ellipse(370, 320, 120, 300, -0.1, 0, Math.PI * 2); c.fill()
+    c.fillStyle = rgba(skin.light, 0.5); c.beginPath(); c.ellipse(250, 300, 150, 230, -0.15, 0, Math.PI * 2); c.fill()
   })
   softBatch(s, 44, c => {
-    c.fillStyle = rgba(ao, 0.6); c.beginPath(); c.ellipse(790, 330, 80, 320, -0.08, 0, Math.PI * 2); c.fill()
-    c.fillStyle = rgba(ao, 0.3); c.beginPath(); c.ellipse(210, 360, 50, 260, 0.1, 0, Math.PI * 2); c.fill()
+    c.fillStyle = rgba(ao, 0.55); c.beginPath(); c.ellipse(870, 300, 90, 260, -0.08, 0, Math.PI * 2); c.fill()
+    c.fillStyle = rgba(ao, 0.3); c.beginPath(); c.ellipse(150, 340, 60, 240, 0.1, 0, Math.PI * 2); c.fill()
   }, 'multiply')
   // Extensor tendons fanning from under the towel to each toe; the big toe's stands out most.
   const tendon = (c: Ctx, t: Toe, dx: number) => {
     const wx = 520 + (t.base.x - 512) * 0.3, bow = (t.base.x - 512) * 0.08
-    c.beginPath(); c.moveTo(wx + dx, -20); c.quadraticCurveTo((wx + t.base.x) / 2 + bow + dx, 330, t.base.x + dx, t.base.y - t.r0 * 0.9); c.stroke()
+    c.beginPath(); c.moveTo(wx + dx, -20); c.quadraticCurveTo((wx + t.base.x) / 2 + bow + dx, 250, t.base.x + dx, t.base.y - t.r0 * 0.9); c.stroke()
   }
   softBatch(s, 16, c => { for (const [i, t] of toes.entries()) { c.strokeStyle = rgba(ao, i === 0 ? 0.32 : 0.13); c.lineWidth = i === 0 ? 24 : 13; tendon(c, t, i === 0 ? 18 : 12) } }, 'multiply')
   softBatch(s, 12, c => { for (const [i, t] of toes.entries()) { c.strokeStyle = rgba(skin.light, i === 0 ? 0.42 : 0.18); c.lineWidth = i === 0 ? 20 : 12; tendon(c, t, 0) } })
@@ -251,7 +251,7 @@ function paintTopBase(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, 
   softBatch(s, 8, c => {
     c.strokeStyle = rgba(veinCol, 0.08 + 0.07 * fair); c.lineWidth = 12
     for (let k = 0; k < 3; k++) {
-      let x = vr.range(360, 680), y = vr.range(520, 580)
+      let x = vr.range(280, 740), y = vr.range(470, 520)
       c.beginPath(); c.moveTo(x, y)
       for (let j = 0; j < 4; j++) { const nx = x + vr.range(-50, 50), ny = y - vr.range(100, 150); c.quadraticCurveTo(x + vr.range(-25, 25), (y + ny) / 2, nx, ny); x = nx; y = ny }
       c.stroke()
@@ -510,7 +510,7 @@ function paintTopHeight(seed: number, a: FootAnatomy, sil: HTMLCanvasElement) {
   // Tendons and ankle bones stand proud; the clefts between the toes sink.
   softBatch(c, 9, k => {
     k.strokeStyle = 'rgba(255,255,255,0.18)'
-    for (const [i, t] of toes.entries()) { const wx = 520 + (t.base.x - 512) * 0.3; k.lineWidth = i === 0 ? 22 : 12; k.beginPath(); k.moveTo(wx, -20); k.quadraticCurveTo((wx + t.base.x) / 2 + (t.base.x - 512) * 0.08, 330, t.base.x, t.base.y - t.r0 * 0.9); k.stroke() }
+    for (const [i, t] of toes.entries()) { const wx = 520 + (t.base.x - 512) * 0.3; k.lineWidth = i === 0 ? 22 : 12; k.beginPath(); k.moveTo(wx, -20); k.quadraticCurveTo((wx + t.base.x) / 2 + (t.base.x - 512) * 0.08, 250, t.base.x, t.base.y - t.r0 * 0.9); k.stroke() }
   })
   const nails = shapesCanvas(a.shapes.nailShapes)
   blurred(c, 1.5, () => { c.globalAlpha = 0.45; c.drawImage(nails, 0, 0) })
@@ -874,7 +874,7 @@ function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil
   const inflamed = inflamedOf(skin)
   const bigNail = toeNail(toes[0])
   const ingrownSide = p.ingrown || 1
-  const X0 = 180, X1 = 850, Y0 = CUFF_Y, Y1 = 990
+  const X0 = 60, X1 = 960, Y0 = CUFF_Y, Y1 = 990
   const polishCol = hex(POLISH_COLORS[(p.polish?.color ?? 1) % POLISH_COLORS.length].hex)
   const hair = HAIR[look.hair % HAIR.length]
   return {
@@ -1090,8 +1090,8 @@ function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil
       // Patches: soft brown clouds with darker cores, more and bigger as it gets worse.
       const patches = Array.from({ length: Math.round(3 + 16 * k) }, () => {
         const toward = r() < 0.55
-        const x = toward ? r.range(260, 800) : r.range(X0 + 20, X0 + 170), y = toward ? r.range(560, 900) : r.range(200, 800)
-        return { x: r() < 0.5 ? x : r.range(260, 800), y: r() < 0.5 ? y : r.range(200, 900), rx: r.range(50, 120) * (0.7 + 0.5 * k), ry: r.range(34, 70) * (0.7 + 0.5 * k), a: r.range(0, Math.PI) }
+        const x = toward ? r.range(140, 900) : r.range(X0 + 20, X0 + 170), y = toward ? r.range(460, 900) : r.range(200, 700)
+        return { x: r() < 0.5 ? x : r.range(140, 900), y: r() < 0.5 ? y : r.range(200, 900), rx: r.range(50, 120) * (0.7 + 0.5 * k), ry: r.range(34, 70) * (0.7 + 0.5 * k), a: r.range(0, Math.PI) }
       })
       softBatch(l, 26, c => { for (const pt of patches) { c.fillStyle = rgba(mud, 0.22 + 0.3 * k); c.beginPath(); c.ellipse(pt.x, pt.y, pt.rx, pt.ry, pt.a, 0, Math.PI * 2); c.fill() } })
       softBatch(l, 14, c => { for (const pt of patches) { c.fillStyle = rgba(shade(mud, -0.15), 0.1 + 0.2 * k); c.beginPath(); c.ellipse(pt.x + pt.rx * 0.1, pt.y + pt.ry * 0.1, pt.rx * 0.45, pt.ry * 0.45, pt.a, 0, Math.PI * 2); c.fill() } })
@@ -1122,7 +1122,7 @@ function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil
         }
       })
       // Grit: fine dark specks where it is worst.
-      dots(l, shade(mud, -0.3), Math.round(900 * k), () => ({ x: r.range(220, 820), y: r.range(420, 960), r: r.range(0.8, 1.8), a: r.range(0.25, 0.6) }), 2)
+      dots(l, shade(mud, -0.3), Math.round(1200 * k), () => ({ x: r.range(100, 920), y: r.range(300, 960), r: r.range(0.8, 1.8), a: r.range(0.25, 0.6) }), 2)
       toes.forEach((t, i) => {
         const nl = toeNail(t), hw = nl.halfWidth, ang = Math.atan2(nl.dir.y, nl.dir.x) + Math.PI / 2
         blurred(l, 1.5, () => {
@@ -1145,7 +1145,7 @@ function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil
       tuft(toes[0], Math.round(60 * n), 0.04, 0.42)
       for (const t of toes.slice(1, 4)) tuft(t, Math.round(14 * n), 0.06, 0.36)
       for (let k = 0; k < Math.round(420 * n); k++) {
-        const y = CUFF_Y + 10 + (r() ** 1.2) * 480, x = r.range(240, 790)
+        const y = CUFF_Y + 10 + (r() ** 1.2) * 330, x = r.range(110, 910)
         put.push({ x, y, a: Math.PI / 2 + (x - 512) / 500 + r.range(-0.35, 0.35), len: r.range(7, 12) * (y < 320 ? 1.25 : 1) })
       }
       const dark = new Path2D(), lit = new Path2D()
