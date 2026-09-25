@@ -758,21 +758,29 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
     ctx.drawImage(tintedByNoise(512, [222, 92, 104], fbm(512, 12, 2, seed + 61), 0.32, 0.6), 0, 0)
   })
   layers.serum = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, [255, 214, 130], fbm(512, 40, 2, seed + 71), 0.28, 0.45), 0, 0)
+    ctx.drawImage(tintedByNoise(512, [255, 238, 196], fbm(512, 40, 2, seed + 71), 0.14, 0.26), 0, 0)
   })
   layers.glow = clipped(512, (ctx) => {
     ctx.drawImage(tintedByNoise(512, [255, 236, 236], fbm(512, 60, 2, seed + 81), 0.12, 0.26), 0, 0)
   })
   layers.cream = clipped(S, (ctx) => {
-    ctx.fillStyle = '#fffaf3'
+    // Rich white cream: smooth, with soft swirls where it was scooped and spread.
+    ctx.fillStyle = '#fffaf4'
     ctx.fillRect(0, 0, S, S)
+    ctx.globalCompositeOperation = 'multiply'
+    ctx.globalAlpha = 0.25
+    ctx.drawImage(fbm(S, 60, 3, seed + 90), 0, 0)
+    ctx.globalAlpha = 1
+    ctx.globalCompositeOperation = 'source-over'
     const rc = makeRng(seed + 91)
-    for (let i = 0; i < 500; i++) {
-      const x = rc.range(200, 830), y = rc.range(280, 940)
-      ctx.strokeStyle = rc() < 0.5 ? 'rgba(236,222,210,0.8)' : 'rgba(255,255,255,0.9)'
-      ctx.lineWidth = rc.range(2, 6)
-      ctx.beginPath(); ctx.arc(x, y, rc.range(8, 30), rc() * 6, rc() * 6 + rc.range(1, 3)); ctx.stroke()
-    }
+    blurred(ctx, 3, () => {
+      for (let i = 0; i < 70; i++) {
+        const x = rc.range(220, 810), y = rc.range(300, 920), rr = rc.range(18, 44)
+        ctx.strokeStyle = rc() < 0.5 ? 'rgba(232,220,214,0.5)' : 'rgba(255,255,255,0.8)'
+        ctx.lineWidth = rc.range(3, 7)
+        ctx.beginPath(); ctx.arc(x, y, rr, rc() * 6, rc() * 6 + rc.range(1.2, 2.4)); ctx.stroke()
+      }
+    })
   })
   layers.mask = paintClay(false, seed)
   layers.foam = clipped(S, (ctx) => {

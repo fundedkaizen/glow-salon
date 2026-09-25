@@ -44,7 +44,7 @@ const FACE_STYLES: Record<string, LayerStyle> = {
   flakes: { gloss: 0.05, relief: 1.4 },
   serum: { gloss: 1, relief: 0.8 },
   glow: { gloss: 0.8, relief: 0 },
-  cream: { gloss: 0.4, relief: 3.2, brush: 'paint' },
+  cream: { gloss: 0.55, relief: 2.2, brush: 'paint' },
   mask: { gloss: 0.8, relief: 3.8, brush: 'paint' },
   foam: { gloss: 0.3, relief: 2.6 },
 }
