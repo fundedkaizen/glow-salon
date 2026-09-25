@@ -12,6 +12,7 @@ import type { Op, SessionSnapshot, TreatmentResult } from '../core/treatments/se
 import { CoopLink, type CoopStatus } from '../net/coop-link.ts'
 import { FloorView, type FloorCustomer, type FloorState } from '../render/floor-view.ts'
 import { openTreatment } from './treatment-glue.ts'
+import { warmCloseUps } from '../render/warmup.ts'
 import { Computer } from '../ui/computer.ts'
 import { FloorHud } from '../ui/floor-hud.ts'
 import { Lobby, openSettings } from '../ui/lobby.ts'
@@ -154,6 +155,7 @@ export class SalonGame {
     this.demo = makeDemo(this.app)
     this.app.stage.addChild(this.demo.view.root)
     this.lobby.showTitle()
+    warmCloseUps(this.app.renderer)
   }
 
   private enterFloor() {

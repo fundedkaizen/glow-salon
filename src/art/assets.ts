@@ -82,6 +82,8 @@ function backdropTex(c: HTMLCanvasElement) {
 /** The facial room is the same for everyone: painted once, kept for the session. */
 let sharedFacialBackdrop: Texture | null = null
 function facialBackdrop() { return (sharedFacialBackdrop ??= backdropTex(paintBackdrop('facial', { skin: 0, hair: 0, hairStyle: 0, outfit: 0, accessory: 0, freckles: false }))) }
+/** Paint the shared facial backdrop ahead of time (the title screen warms it). */
+export function warmFacialBackdrop() { return facialBackdrop() }
 /** A texture painted on first use. */
 function lazyTex(paint: () => HTMLCanvasElement) {
   const t = { made: null as Texture | null, get: () => (t.made ??= tex(paint())) }

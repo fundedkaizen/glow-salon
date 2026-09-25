@@ -7,6 +7,7 @@ import { TreatmentView } from './render/treatment-view.ts'
 import { sfx, Sfx } from './audio/sfx.ts'
 import { CoopLink } from './net/coop-link.ts'
 import { startGame } from './game/game.ts'
+import { warmCloseUps } from './render/warmup.ts'
 
 /**
  * Boot: one WebGL canvas for the salon and the close-ups, a DOM layer on top for the UI.
@@ -22,7 +23,11 @@ async function boot() {
   const ui = document.getElementById('ui')!
   const params = new URLSearchParams(location.search)
   const view = params.get('view')
-  if (view === 'facial' || view === 'nails') closeUp(app, ui, view, params)
+  if (view === 'facial' || view === 'nails') {
+    // `&warm`: warm the close-ups first, as the title screen does, to measure a treatment opened from the game.
+    if (params.has('warm')) { warmCloseUps(app.renderer); await new Promise(r => setTimeout(r, 1500)) }
+    closeUp(app, ui, view, params)
+  }
   else await startGame(app, ui)
   document.getElementById('boot')?.classList.add('done')
 }
