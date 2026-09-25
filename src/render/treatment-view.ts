@@ -70,6 +70,9 @@ export class TreatmentView {
   private featuresLayer = new Container()
   private overFx = new Container()
   private toolLayer = new Container()
+  /** The last pointer was a finger (the tool works offset from it, with an aim ring on the spot). */
+  private touch = false
+  private aim = new Graphics()
   private revealLayer = new Container()
   private surface: Surface
   private assets: PartAssets
@@ -232,6 +235,9 @@ export class TreatmentView {
     this.hint.anchor.set(0.5)
     this.hint.visible = false
     this.toolLayer.addChild(this.hint, this.partner, this.lampSprite, this.tool)
+    this.aim.circle(0, 0, 13).stroke({ width: 2.5, color: 0xffffff, alpha: 0.95 }).circle(0, 0, 13).stroke({ width: 5, color: 0xe7799c, alpha: 0.35 }).circle(0, 0, 2).fill({ color: 0xffffff })
+    this.aim.visible = false
+    this.toolLayer.addChild(this.aim)
     this.tool.visible = false
     this.buildLamp()
     this.buildFeatures()
@@ -683,6 +689,7 @@ export class TreatmentView {
     if (this.destroyed) return
     const rect = this.opts.app.canvas.getBoundingClientRect()
     const sx = e.clientX - rect.left, sy = e.clientY - rect.top
+    this.touch = e.pointerType === 'touch'
     if (e.type === 'pointerdown') {
       if (e.button > 0) return
       sfx.unlock()
@@ -717,6 +724,8 @@ export class TreatmentView {
   }
 
   private moveTo(sx: number, sy: number, jump = false) {
+    // A finger hides what it presses, so on touch the tool works a little above and to the left of the fingertip.
+    if (this.touch) { sx -= 34; sy -= 58 }
     this.screen.x = sx; this.screen.y = sy
     if (jump) { this.screen.lastX = sx; this.screen.lastY = sy }
     this.pos = this.toArt(sx, sy)
@@ -1816,6 +1825,9 @@ export class TreatmentView {
     this.tool.rotation = rot
     this.tool.scale.set(base * (1 + this.press * 0.04 - pinch), base * (1 - this.press * 0.07))
     this.tool.alpha = this.down ? 1 : 0.85
+    // On a finger, a small ring marks exactly where the tool works (the fingertip sits below and to the right of it).
+    this.aim.visible = this.touch && this.down && !this.reveal && !this.session.finished
+    if (this.aim.visible) { this.aim.position.set(this.pos.x, this.pos.y); this.aim.scale.set(1 / Math.max(0.5, this.world.scale.x)) }
   }
 
   // ------------------------------------------------------------------ reveal & photo
