@@ -1,5 +1,6 @@
 import { REVIEWS_DATA } from '../content/reviews.ts'
 import type { Look } from './customers.ts'
+import { DECOR_ITEM_BY_ID } from './decor.ts'
 import type { Review } from './reviews.ts'
 import { speedScore } from './reviews.ts'
 import { makeRng, type Rng } from './rng.ts'
@@ -44,6 +45,10 @@ export type ReviewInput = {
   staff: string
   /** The salon cat was petted today (customers notice a happy cat). */
   cat: boolean
+  /** What the salon owns: reviews only mention decor that is really there. Left out: no decor. */
+  owned?: readonly string[]
+  /** Treated by a hired staff member (not a player): only then can a review praise the staff. */
+  byStaff?: boolean
   /** Lines used recently; picked lines are appended (the caller keeps the list short). */
   recent: string[]
 }
@@ -83,6 +88,21 @@ function fill(text: string, input: ReviewInput) {
   return text.replace(/\{salon\}/g, input.salon).replace(/\{staff\}/g, staffWord(input.staff)).replace(/\{treatment\}/g, w.treatment).replace(/\{part\}/g, w.part)
 }
 
+/** Starter decor and set pieces by what they are, so a review names only what the salon has. */
+const PLANT_KINDS = new Set(['plant', 'palm', 'bonsai', 'wreath'])
+const LIGHT_KINDS = new Set(['lamp', 'lantern', 'chandelier', 'neon', 'disco'])
+function decorOwned(owned: readonly string[] = []) {
+  let any = false, plants = false, lights = false
+  for (const id of owned) {
+    const set = DECOR_ITEM_BY_ID[id]
+    if (set) { any = true; if (PLANT_KINDS.has(set.kind)) plants = true; if (LIGHT_KINDS.has(set.kind)) lights = true; continue }
+    if (['plant', 'candles', 'rug', 'lights', 'art', 'neon', 'aquarium', 'chandelier'].includes(id) || id.startsWith('gift:')) any = true
+    if (id === 'plant' || id === 'gift:rosa' || id === 'gift:hazel') plants = true
+    if (id === 'lights' || id === 'neon' || id === 'chandelier' || id === 'candles') lights = true
+  }
+  return { any, plants, lights }
+}
+
 /** A remark starts a sentence (openers and closers keep the voice's own casing, "ngl", "no notes"). */
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -106,21 +126,24 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   const remarks: string[] = [sentence(fill(fresh(r, g.remarks[bucket], input.recent), input))]
   if (stars >= 5 && result.thoroughness >= 0.9 && r.chance(0.45)) remarks.push(sentence(fill(fresh(r, g.remarks[bucket], input.recent), input)))
 
-  // Extras: what actually happened, most notable first, at most two.
+  // Extras: what actually happened, most notable first, at most two. Decor is only praised when it exists.
+  const decor = decorOwned(input.owned)
   const extras: ReviewExtra[] = []
   if (input.disaster && stars >= 3) extras.push('disaster')
   if (result.fourHands) extras.push('four-hands')
   if (input.regular && stars >= 4) extras.push('regular')
   if (input.cat && r.chance(0.7)) extras.push('cat')
   if (speed >= 1 && input.mood > 0.8 && stars >= 4) extras.push('fast')
-  if (input.ambience >= 3 && r.chance(0.55)) extras.push('decor')
+  if (decor.any && input.ambience >= 3 && r.chance(0.55)) extras.push('decor')
   // The price against what this customer is used to spending.
   const expected = 18 + input.budget * 9
   if (input.price > expected * 1.5 && r.chance(0.6)) extras.push('pricey')
   else if (input.price < expected * 0.95 && stars >= 4 && r.chance(0.5)) extras.push('bargain')
-  if (!extras.length && r.chance(0.3)) extras.push(r.chance(0.5) ? 'music' : 'decor')
+  if (!extras.length && r.chance(0.3)) extras.push(decor.any && r.chance(0.5) ? 'decor' : 'music')
   const chosen = extras.slice(0, 2)
-  const extraLines = chosen.map(e => sentence(fill(fresh(r, g.extras[e], input.recent), input)))
+  // "The plants and lights are so cute" needs both a plant and a light in the salon.
+  const lines = (e: ReviewExtra) => g.extras[e].filter(l => e !== 'decor' || !/plants and lights/i.test(l) || (decor.plants && decor.lights))
+  const extraLines = chosen.map(e => sentence(fill(fresh(r, lines(e), input.recent), input)))
   const closer = fill(fresh(r, g.closers[voice], input.recent), input)
 
   const names = [staffWord(input.staff), input.salon]
@@ -137,7 +160,7 @@ export function writeGoogleReview(input: ReviewInput): GoogleReview {
   // The categories this review speaks for.
   if (stars >= 4) tags.push(result.treatment === 'nails' ? TAGS.nails : TAGS.facial)
   if (stars >= 4 && (voice === 'sleepy' || voice === 'dreamy' || input.mood > 0.85)) tags.push(TAGS.relaxing)
-  if (stars >= 4 && remarks.some(t => t.toLowerCase().includes(staffWord(input.staff).toLowerCase()))) tags.push(TAGS.friendly)
+  if (stars >= 4 && input.byStaff && remarks.some(t => t.toLowerCase().includes(staffWord(input.staff).toLowerCase()))) tags.push(TAGS.friendly)
   for (const e of chosen) {
     if (e === 'cat') tags.push(TAGS.cat)
     else if (e === 'decor') tags.push(TAGS.decor)

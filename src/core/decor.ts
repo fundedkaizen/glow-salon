@@ -1,5 +1,6 @@
 import { WORLD_DATA } from '../content/world.ts'
 import type { Item } from './economy.ts'
+import { STORY_REGULARS } from './persona.ts'
 
 /**
  * Decor sets from the world content (Pastel Pop, Zen Garden, Luxe Gold...): six items each, bought one by
@@ -40,8 +41,10 @@ const PALETTES: Record<string, number[]> = {
   'neon-night': [0x3a2f4d, 0xff5fa8, 0x5fe3f0, 0xa98bff],
 }
 
-/** Sets in the order they open, with the price of a medium item. */
+/** Sets in the order they open, with the price of a medium item. A new set arrives in the shop every three days. */
 const ORDER: [string, number][] = [['pastel-pop', 60], ['cottagecore', 75], ['tropical', 90], ['zen-garden', 105], ['retro-diner', 120], ['neon-night', 140], ['luxe-gold', 170]]
+/** The day each set arrives in the shop, in ORDER. */
+export const SET_DAYS = [2, 5, 8, 11, 14, 17, 20]
 
 const slug = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
@@ -80,9 +83,80 @@ export const DECOR_SET_ITEMS: Item[] = DECOR_SETS.flatMap((set, i) => {
     blurb: `${set.label} set. +${item.size} ambience.`,
     price: priceOf(set, item),
     needs: gateway ? [gateway.id] : undefined,
+    unlockDay: SET_DAYS[i],
     effect: { kind: 'decor' as const, ambience: item.size, prop: item.id },
   }))
 })
+
+// ------------------------------------------------------------------ set bonuses
+
+/**
+ * What each complete set does, as the world content words it, on top of its +3 ambience. Treatments the
+ * salon does not have yet map onto the ones it has: "massage and spa" is the facial chair for now, and
+ * "summer treatments" are every treatment during the summer season.
+ */
+export const SET_EFFECT_TEXT: Record<string, string> = Object.fromEntries(WORLD_DATA.decorSets.map(s => [s.id, s.bonus]))
+
+export const hasSet = (owned: readonly string[], id: string) => DECOR_SET_BY_ID[id]?.items.every(i => owned.includes(i.id)) ?? false
+
+/** The season a salon day falls in (the year is four 28-day seasons). */
+export function seasonOf(day: number): string {
+  const d = (Math.max(1, day) - 1) % 112
+  return WORLD_DATA.seasons.find(s => d >= s.days[0] && d <= s.days[1])?.id ?? 'spring'
+}
+
+/** Tip multiplier from complete sets for this customer. `late`: they arrived in the second half of the day. */
+export function setTipMult(owned: readonly string[], archetype: string, late: boolean): number {
+  let m = 1
+  if (hasSet(owned, 'pastel-pop') && (archetype === 'student' || archetype === 'teen')) m *= 1.1
+  if (hasSet(owned, 'cottagecore') && (archetype === 'grandma' || archetype === 'grandpa' || archetype === 'gardener')) m *= 2
+  if (hasSet(owned, 'neon-night') && late) m *= 1.2
+  return m
+}
+
+/** Extra stars from complete sets (Zen Garden: spa treatments, the facials, +1). */
+export function setStarBonus(owned: readonly string[], treatment: string): number {
+  return hasSet(owned, 'zen-garden') && treatment === 'facial' ? 1 : 0
+}
+
+/** Pay multiplier from complete sets (Tropical: +15% during summer). */
+export function setPayMult(owned: readonly string[], day: number): number {
+  return hasSet(owned, 'tropical') && seasonOf(day) === 'summer' ? 1.15 : 1
+}
+
+/** How likely a met regular is to come back, per customer (Retro Diner: sooner; loyalty cards: more often). */
+export function regularChance(owned: readonly string[], loyalty: boolean): number {
+  return 0.3 * (hasSet(owned, 'retro-diner') ? 1.5 : 1) * (loyalty ? 1.3 : 1)
+}
+
+/** Luxe Gold: VIPs visit twice as often. */
+export const vipBoost = (owned: readonly string[]) => hasSet(owned, 'luxe-gold')
+
+// ------------------------------------------------------------------ gifts
+
+/** A regular's level-5 gift, as a real item: it goes on the gift shelf and adds ambience. */
+export type GiftDef = { id: string; regular: string; from: string; label: string; kind: string }
+
+const GIFT_WORD: Record<string, (name: string) => string> = {
+  decor: n => n, polish: n => `${n} polish`, tool: n => n, product: n => n, music: () => 'A song for the salon',
+}
+
+export const GIFTS: GiftDef[] = STORY_REGULARS.map(r => {
+  const [kind, slugName] = r.gift.split(':')
+  const words = slugName.replace(/-/g, ' ')
+  const label = (GIFT_WORD[kind] ?? (n => n))(words)
+  return { id: `gift:${r.id}`, regular: r.id, from: r.name, label: titleCase(label), kind }
+})
+export const GIFT_BY_REGULAR: Record<string, GiftDef> = Object.fromEntries(GIFTS.map(g => [g.regular, g]))
+export const GIFT_BY_ID: Record<string, GiftDef> = Object.fromEntries(GIFTS.map(g => [g.id, g]))
+
+export const GIFT_ITEMS: Item[] = GIFTS.map(g => ({
+  id: g.id, tab: 'decor' as const, name: g.label, blurb: `A gift from ${g.from}. On the gift shelf, +1 ambience.`, price: 0, gift: true,
+  effect: { kind: 'decor' as const, ambience: 1, prop: g.id },
+}))
+
+/** Where gifts go on the salon floor: along the front wall by the reception, then by the windows. */
+export const GIFT_SLOTS: { x: number; y: number }[] = [{ x: 44, y: 250 }, { x: 348, y: 180 }, { x: 1110, y: 176 }, { x: 1250, y: 470 }, { x: 1250, y: 560 }, { x: 44, y: 470 }, { x: 250, y: 770 }, { x: 900, y: 772 }]
 
 /** Sets the salon owns every item of. */
 export function completeSets(owned: readonly string[]): string[] {

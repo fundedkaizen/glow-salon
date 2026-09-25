@@ -99,7 +99,7 @@ export function run() {
   check('a running campaign cannot be bought twice', !canRunCampaign('flyers', [{ id: 'flyers', day: 1 }], false, 999).ok)
 
   // ---------------------------------------------------------------- inside the salon day
-  let state = startDay({ ...newSave(4242), money: 5000 }, [])
+  let state = startDay({ ...newSave(4242), money: 5000, day: 5 }, [])
   reduce(state, 0, { a: 'join', name: 'Kai' })
   check('ext is created for a new save', !!state.ext && state.ext.salonName === 'Glow Salon')
   check('hiring waits for a second station', !hireCheck(state, 0).ok)
@@ -172,7 +172,8 @@ export function run() {
   check('everyone ready: the salon opens', state.phase === 'open')
 
   // Co-op: big hires wait for everyone.
-  state = startDay({ ...newSave(99), money: 5000, owned: ['facial-chair-2'] }, [])
+  // Day 7 (still week 0): the magazine campaign opens on day 13, so it is checked on a later day below.
+  state = startDay({ ...newSave(99), money: 5000, owned: ['facial-chair-2'], day: 7 }, [])
   reduce(state, 0, { a: 'join', name: 'A' })
   reduce(state, 1, { a: 'join', name: 'B' })
   const bigIdx = candidatesFor(99, 0).findIndex(c => c.fee >= 200)
@@ -182,6 +183,8 @@ export function run() {
     reduce(state, 1, { a: 'extVote', yes: true })
     check('both said yes: hired', ext(state).staff.length === 1 && ext(state).vote === null)
   }
+  check('the magazine is not in the shop yet on day 7', !reduce(state, 0, { a: 'campaign', id: 'magazine' }))
+  state.day = 13
   reduce(state, 0, { a: 'campaign', id: 'magazine' })
   check('a big campaign asks too', ext(state).vote?.kind === 'campaign')
   reduce(state, 1, { a: 'extVote', yes: false })

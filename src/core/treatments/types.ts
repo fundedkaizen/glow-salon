@@ -43,7 +43,7 @@ export type Reaction = 'neutral' | 'content' | 'flinch' | 'tickle'
 
 /** Sound families; audio/sfx.ts plays each (recorded clips layered with synthesis). */
 export type ToolSound = 'steam' | 'foam' | 'water' | 'pop' | 'loop' | 'wipe' | 'brush' | 'fan' | 'peel' | 'drip' | 'cream' | 'patch'
-  | 'snip' | 'rasp' | 'push' | 'buff' | 'scrub' | 'polish' | 'uv' | 'gem'
+  | 'snip' | 'rasp' | 'push' | 'buff' | 'scrub' | 'polish' | 'uv' | 'gem' | 'comb' | 'roll' | 'oil' | 'sheet'
 
 export type StepDef = {
   id: string
@@ -69,6 +69,8 @@ export type StepDef = {
   passive?: number
   /** Target steps: which targets. */
   targets?: TargetKind
+  /** Target steps that share a kind with another step (under-eye patches and pimple patches): which group. */
+  targetTag?: string
   /** Where the camera looks during the step (art space) and how close. */
   camera: { x: number; y: number; zoom: number }
   /** How the customer feels about this step. */
@@ -91,6 +93,12 @@ export type StepDef = {
   need?: 'targets' | 'layer' | 'disaster'
   /** Layers this step clears away when it finishes, besides its own. */
   clears?: string[]
+  /**
+   * The colour this step's product should show in, for steps that share a layer (the mask variants all
+   * paint the 'mask' layer: grey-green clay, a white sheet, charcoal bubbles, gold foil). The art tints the
+   * layer (and the peel flap) with it; without it the layer keeps its own colour.
+   */
+  tint?: number
 }
 
 export type TreatmentDef = {

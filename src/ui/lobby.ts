@@ -146,10 +146,13 @@ export class Lobby {
     setTimeout(() => input.focus(), 60)
   }
 
+  /** The room window is on screen (so it can be refreshed when someone comes or goes). */
+  get roomOpen() { return !!this.coopPanel?.isConnected }
+
   /** The room: invite link and who is here. Updated as people come and go. */
   showCoop(v: CoopView) {
     if (!this.coopPanel || !this.coopPanel.isConnected) {
-      const { panel } = this.panel(v.role === 'host' ? 'Your salon is open' : 'Joining', '')
+      const { panel } = this.panel(v.role === 'host' ? 'Room ready' : 'Joining', '')
       this.coopPanel = panel
     }
     const panel = this.coopPanel

@@ -3,7 +3,7 @@ import { PLAYER_CSS } from '../art/palette.ts'
 import { tick } from '../audio/salon-sfx.ts'
 import { sfx } from '../audio/sfx.ts'
 import type { Look } from '../core/customers.ts'
-import { nextUnlock } from '../core/economy.ts'
+import { arrivals, nextUnlock } from '../core/economy.ts'
 import { ARCHETYPE_BY_ID } from '../core/persona.ts'
 import type { Review } from '../core/reviews.ts'
 import { salonTags, type GoogleReview } from '../core/review-writer.ts'
@@ -41,6 +41,8 @@ export type ReceiptData = {
   owned: string[]
   money: number
   news: string[]
+  /** Today's relaxed goal, and whether it paid out. */
+  goal: { text: string; reward: number; done: boolean } | null
 }
 
 export type ReceiptHooks = { onNext: () => void }
@@ -56,7 +58,7 @@ function starsHtml(v: number) {
 const AWARD_ICON: Record<string, string> = { 'Most pimples popped': ICON.heart, 'Tip magnet': ICON.coin, 'Busiest hands': ICON.trophy, 'Speedy hands': ICON.star, 'Nail artist': ICON.sparkle, 'Foam artist': ICON.cup, 'Blackhead hunter': ICON.tools }
 
 export class Receipt {
-  readonly el = h('div', 'gs gs-veil')
+  readonly el = h('div', 'gs gs-veil gs-veil-top')
   private fast = false
   private nextBtn: HTMLButtonElement
   private hooks: ReceiptHooks
@@ -95,8 +97,9 @@ export class Receipt {
     const lines: [HTMLElement, number, string][] = [
       [line('Treatments', 'plus'), d.revenue, '+'],
       [line('Tips', 'plus'), d.tips, '+'],
-      [line('Products used', 'minus'), d.costs, '-'],
     ]
+    if (d.goal?.done) lines.push([line('Daily goal', 'plus'), d.goal.reward, '+'])
+    lines.push([line('Products used', 'minus'), d.costs, '-'])
     if (d.wages) lines.push([line('Staff wages', 'minus'), d.wages, '-'])
     paper.append(h('hr', 'gs-rule'))
     const net = h('div', 'gs-net', `<span>Profit</span><b>$0</b>`)
@@ -117,7 +120,12 @@ export class Receipt {
       for (const i of card.querySelectorAll<HTMLElement>('.gs-hist-bar i')) i.style.width = `${(hist[Number(i.dataset.n) - 1] / max) * 100}%`
     }
     drawHist()
-    wrap.append(paper, side)
+    // The paper column holds the Next day button, stuck to the bottom of the screen while the page scrolls.
+    const col = h('div', 'gs-paper-col')
+    const row = h('div', 'gs-next-row')
+    row.append(this.nextBtn)
+    col.append(paper, row)
+    wrap.append(col, side)
     this.el.append(wrap)
     sfx.shutter()
 
@@ -190,18 +198,20 @@ export class Receipt {
       for (const n of d.news) box.append(h('div', '', esc(n)))
       side.append(box)
     }
-    // What to save for next.
-    const next = nextUnlock(d.owned)
+    // What arrives in the shop tomorrow, and what to save for next.
+    const tomorrow = arrivals(d.day + 1)
+    if (tomorrow.length) {
+      await this.pause(300)
+      side.append(h('div', 'gs-teaser', `${ICON.sparkle}<div><b>New in the shop tomorrow</b>${esc(tomorrow.map(i => i.name).join(', '))}</div>`))
+    }
+    const next = nextUnlock(d.owned, d.day + 1)
     if (next) {
       await this.pause(300)
       const gap = next.price - d.money
       side.append(h('div', 'gs-teaser', `${ICON.gift}<div><b>Next up: ${esc(next.name)}</b>${esc(next.blurb)} ${gap > 0 ? `You are ${money(gap)} away.` : 'You can afford it now, at the salon computer.'}</div>`))
     }
-    const row = h('div', 'gs-next-row')
-    row.append(this.nextBtn)
-    side.append(row)
     this.nextBtn.disabled = false
-    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    this.nextBtn.classList.add('ready')
   }
 
   close() {

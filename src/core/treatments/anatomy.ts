@@ -125,17 +125,25 @@ const cuticleShapes: Shape[] = HAND.fingers.map(f => {
 })
 
 // ---------------------------------------------------------------- regions
-export type RegionId = 'face' | 'skin' | 'nose' | 'tzone' | 'hand' | 'nails' | 'tips' | 'cuticles' | 'everywhere'
+export type RegionId = 'face' | 'skin' | 'nose' | 'tzone' | 'brows' | 'lips' | 'hand' | 'nails' | 'tips' | 'cuticles' | 'nail0' | 'nail1' | 'nail2' | 'nail3' | 'nail4' | 'everywhere'
 
 export const REGIONS: Record<RegionId, Region> = {
   face: { include: [faceShape], exclude: [FACE.hairCap] },
   skin: { include: [faceShape], exclude: [FACE.hairCap, ...eyeShapes, ...browShapes, lipShape] },
   nose: { include: [noseShape] },
+  brows: { include: browShapes },
+  lips: { include: [lipShape] },
   tzone: { include: [{ t: 'ellipse', cx: 512, cy: 388, rx: 210, ry: 78 }, noseShape, { t: 'ellipse', cx: 512, cy: 850, rx: 90, ry: 40 }], exclude: [FACE.hairCap, ...browShapes] },
   hand: { include: [{ t: 'poly', pts: HAND.palm }, ...fingerShapes] },
   nails: { include: nailShapes },
   tips: { include: tipShapes },
   cuticles: { include: cuticleShapes },
+  // One nail each, for steps on a single finger (repairing a broken nail).
+  nail0: { include: [nailShapes[0]] },
+  nail1: { include: [nailShapes[1]] },
+  nail2: { include: [nailShapes[2]] },
+  nail3: { include: [nailShapes[3]] },
+  nail4: { include: [nailShapes[4]] },
   everywhere: { include: [{ t: 'poly', pts: [0, 0, 1024, 0, 1024, 1024, 0, 1024] }] },
 }
 

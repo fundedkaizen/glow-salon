@@ -8,9 +8,9 @@ import { PLAYER_COLORS } from '../art/palette.ts'
 import { purr, softPop } from '../audio/salon-sfx.ts'
 import { sfx } from '../audio/sfx.ts'
 import { randomLook, type Look } from '../core/customers.ts'
-import { DECOR_ITEM_BY_ID, DECOR_SLOTS, placeDecor } from '../core/decor.ts'
-import { ITEM_BY_ID } from '../core/economy.ts'
-import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, findPath, FLOOR_H, FLOOR_W, ROWS, SOFA_SEATS, stationRect, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
+import { DECOR_ITEM_BY_ID, DECOR_SLOTS, GIFT_BY_ID, GIFT_SLOTS, placeDecor } from '../core/decor.ts'
+import { canBuy, ITEM_BY_ID, ITEMS } from '../core/economy.ts'
+import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, findPath, FLOOR_H, FLOOR_W, PROP_SPOTS, ROWS, SOFA_SEATS, stationRect, stationSpot, SLOTS, type Pt } from '../core/floor.ts'
 import { personaFor, storyBeat } from '../core/persona.ts'
 import { withFigure } from '../core/figure.ts'
 import { hashString, makeRng } from '../core/rng.ts'
@@ -35,6 +35,7 @@ export type FloorCustomer = Omit<Customer, 'path'>
 export type FloorState = {
   phase: Phase
   day: number
+  money?: number
   clock: number
   customers: FloorCustomer[]
   stations: Station[]
@@ -49,25 +50,28 @@ export type FloorState = {
 export type FloorHooks = {
   /** A player action for the salon (the controller applies it or sends it to the host). */
   onAction: (a: Action) => void
+  /** This player bought something that stands in the salon: the controller can close the shop so the pan shows. */
+  onBoughtHere?: (item: string) => void
   /** The local player starts (or joins) the treatment at a station. */
   onStartTreatment: (stationId: string, customer: FloorCustomer) => void
-  /** The local player sits down at the salon computer. */
-  onOpenComputer: () => void
+  /** The local player sits down at the salon computer (on a given shop tab, when they came from an empty slot). */
+  onOpenComputer: (tab?: 'stations') => void
 }
 
 type Target = { kind: 'station'; id: string; x: number; y: number } | { kind: 'computer'; x: number; y: number } | { kind: 'cat'; x: number; y: number }
 
-type CustomerView = { person: Person; x: number; y: number; bubble: Container; ring: Graphics; iconSprite: Sprite; say: Container | null; sayT: number; said: boolean; lastState: string; alpha: number }
+type CustomerView = { person: Person; x: number; y: number; bubble: Container; ring: Graphics; iconSprite: Sprite; say: Container | null; sayT: number; said: boolean; lastState: string; alpha: number; dots: Container; waitT: number }
 type PlayerView = { person: Person; tag: Container; x: number; y: number }
-type StaffView = { person: Person; tag: Container; x: number; y: number; path: Pt[]; goal: Pt; tea: Sprite }
+type StaffView = { person: Person; tag: Container; x: number; y: number; path: Pt[]; goal: Pt; tea: Sprite; tool: Container; puff: number }
 
 const TAG_FONT = 'Nunito, system-ui, sans-serif'
 const HEAD_TOP = 132
 
 /** Players have no customisation yet: a look from their name, so each keeps theirs. */
 export function playerLook(id: number, name: string): Look {
-  const look = randomLook(makeRng(hashString(name.toLowerCase()) ^ (id * 7919)))
-  return { ...look, accessory: look.accessory === 2 ? 0 : look.accessory }
+  const look = randomLook(makeRng(hashString(name.toLowerCase()) ^ (id * 7919)), { gender: 'female', age: 'adult' })
+  // Players keep the young-adult look they always had (no random grey hair) until avatars can be chosen.
+  return { ...look, accessory: look.accessory === 2 ? 0 : look.accessory, figure: { masc: false, age: 0.35 } }
 }
 
 const toTexture = (p: Piece) => canvasTexture(p.canvas)
@@ -131,6 +135,16 @@ export class FloorView {
   private destroyed = false
   private moveMarker = new Graphics()
   private markerT = 0
+  /** Empty slots glowing while a new station waits to be placed. */
+  private ghosts: { slot: number; root: Container; ph: number }[] = []
+  /** Empty slots waiting for a future station: a soft plus, brighter when one is affordable. */
+  private spares: { slot: number; root: Container; ph: number }[] = []
+  private sparesLit = false
+  /** The shop tab to open when the player reaches the computer (they tapped an empty slot). */
+  private nextTab: 'stations' | undefined
+  private ghostLabel: Container | null = null
+  /** A short camera move to something new (a purchase, a placed station). */
+  private focus: { x: number; y: number; t: number; dur: number } | null = null
   /** Demo mode (the title screen): no local player, no input. */
   readonly demo: boolean
 
@@ -154,7 +168,8 @@ export class FloorView {
     outside.x = -OUTSIDE_W
     this.world.addChildAt(outside, 0)
     this.sortLayer.sortableChildren = true
-    this.world.addChild(room, this.rugLayer, this.wallLayer, this.moveMarker, this.sortLayer, this.door, light, this.ceilingLayer, this.glowLayer, front, vignette, this.fxLayer, this.uiLayer)
+    // The door sits under the people walking through it.
+    this.world.addChild(room, this.rugLayer, this.wallLayer, this.moveMarker, this.door, this.sortLayer, light, this.ceilingLayer, this.glowLayer, front, vignette, this.fxLayer, this.uiLayer)
     this.fxLayer.addChild(this.fx.root)
     this.buildDoor()
     this.buildAmbient()
@@ -273,7 +288,12 @@ export class FloorView {
     this.chandelierGlow = null
     this.twinkles = []
     this.fish = []
+    this.ghosts = []
+    this.spares = []
+    this.ghostLabel = null
     const add = (layer: Container, s: Container, x: number, y: number, z = y) => { s.position.set(x, y); s.zIndex = z; layer.addChild(s); this.furniture.push(s); return s }
+    /** Decor reads at a glance: nothing smaller than about 56 px. */
+    const atLeast = (sp: Sprite, p: Piece, min = 56) => { const k = min / Math.max(p.w, p.h); if (k > 1) sp.scale.set(k); return sp }
     // Fixed furniture.
     add(this.sortLayer, spriteOf(cached('desk', paintDesk)), 110, 288)
     add(this.sortLayer, spriteOf(cached('sofa', paintSofa)), 380, 246)
@@ -285,14 +305,50 @@ export class FloorView {
     add(this.sortLayer, spriteOf(cached('welcome', paintWelcomeSign)), 118, 704)
     add(this.sortLayer, spriteOf(cached('magazines', paintMagazineTable)), 352, 258)
     add(this.sortLayer, spriteOf(cached('tea', paintTeaCorner)), 54, 334)
-    // Empty station slots wait behind a soft folding screen: more room is coming.
+    // Cozy touches in the front of the salon, so it never feels bare: a long soft runner, a reading lamp
+    // and a magazine table in the corner.
+    const runner = spriteOf(cached('baseRug', paintBaseRug))
+    runner.scale.set(0.62, 0.42); runner.tint = 0xd8f3e8; runner.alpha = 0.85
+    add(this.rugLayer, runner, 440, 700)
+    add(this.sortLayer, spriteOf(cached('lamp', paintFloorLamp)), 652, 792)
+    add(this.sortLayer, spriteOf(cached('magazines', paintMagazineTable)), 1228, 770)
+    // Empty station slots wait behind a soft folding screen: more room is coming. While a new station waits
+    // to be placed, every empty slot glows instead, with a plus to tap.
     const usedSlots = new Set(state.stations.map(s => s.slot))
+    const unplaced = this.demo ? undefined : state.stations.find(s => s.slot < 0)
     let firstEmpty = true
     for (let i = 0; i < SLOTS.length; i++) {
       if (usedSlots.has(i)) continue
-      if (firstEmpty) add(this.sortLayer, spriteOf(cached('soon', paintSoonScreen)), SLOTS[i].x, SLOTS[i].y + 55, SLOTS[i].y)
-      else { const g = new Graphics().roundRect(-75, -26, 150, 52, 18).stroke({ width: 2, color: 0xd696ac, alpha: 0.28 }); add(this.rugLayer, g, SLOTS[i].x, SLOTS[i].y + 36) }
+      if (unplaced) {
+        const ghost = new Container()
+        const g = new Graphics()
+        g.roundRect(-75, -52, 150, 104, 24).fill({ color: 0xffffff, alpha: 0.35 }).stroke({ width: 3, color: 0xe98aa8, alpha: 0.9 })
+        g.circle(0, 0, 20).fill({ color: 0xe98aa8 }).stroke({ width: 3, color: 0xffffff })
+        g.roundRect(-3, -11, 6, 22, 3).fill({ color: 0xffffff }).roundRect(-11, -3, 22, 6, 3).fill({ color: 0xffffff })
+        ghost.addChild(g)
+        add(this.rugLayer, ghost, SLOTS[i].x, SLOTS[i].y)
+        this.ghosts.push({ slot: i, root: ghost, ph: i * 0.7 })
+        continue
+      }
+      if (firstEmpty && i < 6) add(this.sortLayer, spriteOf(cached('soon', paintSoonScreen)), SLOTS[i].x, SLOTS[i].y + 55, SLOTS[i].y)
+      else if (!this.demo) {
+        // A spot for a future station: a soft outline with a plus. Tapping it goes to the shop's stations.
+        const spare = new Container()
+        const g = new Graphics()
+        g.roundRect(-75, -46, 150, 92, 22).fill({ color: 0xffffff, alpha: 0.16 }).stroke({ width: 2, color: 0xd696ac, alpha: 0.45 })
+        g.circle(0, 0, 15).fill({ color: 0xe98aa8, alpha: 0.55 })
+        g.roundRect(-2.5, -8, 5, 16, 2.5).fill({ color: 0xffffff }).roundRect(-8, -2.5, 16, 5, 2.5).fill({ color: 0xffffff })
+        spare.addChild(g)
+        add(this.rugLayer, spare, SLOTS[i].x, SLOTS[i].y)
+        this.spares.push({ slot: i, root: spare, ph: i })
+      }
       firstEmpty = false
+    }
+    if (unplaced && this.ghosts.length) {
+      const label = speech(`Tap a glowing spot for your new ${unplaced.kind === 'facial' ? 'facial chair' : 'nail desk'}`)
+      const first = SLOTS[this.ghosts[0].slot]
+      add(this.uiLayer, label, first.x, first.y - 70)
+      this.ghostLabel = label
     }
     // Empty decor slots get a little filler until something is bought for them.
     const taken = new Set(decor.map(d => `${d.place}:${d.slot}`))
@@ -309,6 +365,7 @@ export class FloorView {
     add(this.sortLayer, plaque, 216, 256, 289)
     // Stations.
     for (const st of state.stations) {
+      if (st.slot < 0) continue
       const p = SLOTS[st.slot]
       if (st.kind === 'facial') {
         const chair = cachedPair('facial', paintFacialChair)
@@ -381,13 +438,45 @@ export class FloorView {
       if (!p) continue
       const tex = cachedTex(`decor:${d.id}`, p)
       if (item.place === 'window') { for (const w of CURTAIN_SPOTS) add(this.wallLayer, spriteOf(p, tex), w.x, w.y) }
-      else if (item.place === 'wall') add(this.wallLayer, spriteOf(p, tex), d.x, d.y)
+      else if (item.place === 'wall') add(this.wallLayer, atLeast(spriteOf(p, tex), p), d.x, d.y)
       else if (item.place === 'rug') add(this.rugLayer, spriteOf(p, tex), d.x, d.y)
-      else if (item.place === 'ceiling') add(this.ceilingLayer, spriteOf(p, tex), d.x, 0)
+      else if (item.place === 'ceiling') add(this.ceilingLayer, atLeast(spriteOf(p, tex), p), d.x, 0)
       else if (item.place === 'table') {
-        add(this.sortLayer, spriteOf(p, tex), d.x, d.y + (d.slot === 1 ? 0 : 8), d.slot === 1 ? 260 : 300)
-      } else add(this.sortLayer, spriteOf(p, tex), d.x, d.y)
+        add(this.sortLayer, atLeast(spriteOf(p, tex), p, 50), d.x, d.y + (d.slot === 1 ? 0 : 8), d.slot === 1 ? 260 : 300)
+      } else add(this.sortLayer, atLeast(spriteOf(p, tex), p), d.x, d.y)
     }
+    // Gifts from friends, each with a little ribbon, in the gift spots.
+    state.owned.filter(id => GIFT_BY_ID[id]).slice(0, GIFT_SLOTS.length).forEach((id, i) => {
+      const p = giftPiece(id)
+      const spot = GIFT_SLOTS[i]
+      const holder = new Container()
+      holder.addChild(atLeast(spriteOf(p, cachedTex(`gift:${id}`, p)), p, 52))
+      const bow = new Graphics().circle(-5, 0, 5).fill({ color: 0xf07aa0 }).circle(5, 0, 5).fill({ color: 0xf07aa0 }).circle(0, 0, 3).fill({ color: 0xffd35a })
+      bow.position.set(0, -8)
+      holder.addChild(bow)
+      add(this.sortLayer, holder, spot.x, spot.y)
+    })
+  }
+
+  /** Where something the salon owns stands, for the camera and the sparkles. */
+  itemSpot(id: string): Pt | null {
+    const state = this.state
+    if (!state) return null
+    const d = placeDecor(state.owned, state.ext?.decorOrder ?? []).find(x => x.id === id)
+    if (d) return { x: d.x, y: d.place === 'ceiling' ? 60 : d.place === 'window' ? 90 : d.y - 20 }
+    const gi = state.owned.filter(o => GIFT_BY_ID[o]).indexOf(id)
+    if (gi >= 0 && gi < GIFT_SLOTS.length) return { x: GIFT_SLOTS[gi].x, y: GIFT_SLOTS[gi].y - 20 }
+    const e = ITEM_BY_ID[id]?.effect
+    if (e?.kind === 'decor' && PROP_SPOTS[e.prop]) return PROP_SPOTS[e.prop]
+    return null
+  }
+
+  /** Move the camera to a spot for a moment, with a sparkle burst: something new is here. */
+  focusOn(x: number, y: number, pan = true) {
+    if (pan) this.focus = { x, y, t: 0, dur: 2.6 }
+    this.burst(x, y - 10, 'sparkle', 16)
+    this.burst(x, y - 10, 'heart', 4)
+    sfx.unlockChime()
   }
 
   private syncPeople(state: FloorState) {
@@ -408,14 +497,20 @@ export class FloorView {
         iconSprite.anchor.set(0.5); iconSprite.scale.set(0.82); iconSprite.y = -2
         bubble.addChild(bg, ring, iconSprite)
         bubble.scale.set(0)
-        this.uiLayer.addChild(bubble)
+        // A gentle "still waiting" cue: three soft dots beside the bubble.
+        const dots = new Container()
+        const dbg = new Graphics().roundRect(-17, -9, 34, 18, 9).fill({ color: 0xffffff, alpha: 0.95 }).stroke({ width: 1.2, color: 0xe9c2d0 })
+        dots.addChild(dbg)
+        for (let k = 0; k < 3; k++) { const dot = new Graphics().circle(0, 0, 3).fill({ color: 0xc58aa4 }); dot.x = -9 + k * 9; dots.addChild(dot) }
+        dots.visible = false
+        this.uiLayer.addChild(bubble, dots)
         person.root.eventMode = 'none'
-        v = { person, x: c.x, y: c.y, bubble, ring, iconSprite, say: null, sayT: 0, said: false, lastState: '', alpha: 0 }
+        v = { person, x: c.x, y: c.y, bubble, ring, iconSprite, say: null, sayT: 0, said: false, lastState: '', alpha: 0, dots, waitT: 0 }
         this.sortLayer.addChild(person.root)
         this.customers.set(c.id, v)
       }
     }
-    for (const [id, v] of this.customers) if (!seen.has(id)) { v.person.destroy(); v.bubble.destroy(); v.say?.destroy(); this.customers.delete(id) }
+    for (const [id, v] of this.customers) if (!seen.has(id)) { v.person.destroy(); v.bubble.destroy(); v.dots.destroy(); v.say?.destroy(); this.customers.delete(id) }
     // Players.
     const pseen = new Set<number>()
     for (const p of state.players) {
@@ -426,6 +521,7 @@ export class FloorView {
         const person = new Person(playerLook(p.id, p.name), 'player', PLAYER_COLORS[p.id % PLAYER_COLORS.length])
         const tag = nameTag(p.name, PLAYER_COLORS[p.id % PLAYER_COLORS.length], p.id === this.playerId)
         ;(tag as Container & { name2?: string }).name2 = p.name
+        tag.visible = !this.demo
         this.uiLayer.addChild(tag)
         this.sortLayer.addChild(person.root)
         v = { person, tag, x: p.x, y: p.y }
@@ -440,19 +536,28 @@ export class FloorView {
       let v = this.staff.get(s.id)
       if (!v || (v.tag as Container & { name2?: string }).name2 !== s.name) {
         const pos = v ? { x: v.x, y: v.y } : { x: 360, y: 330 }
-        if (v) { v.person.destroy(); v.tag.destroy(); v.tea.destroy() }
+        if (v) { v.person.destroy(); v.tag.destroy(); v.tea.destroy(); v.tool.destroy() }
         const person = new Person(s.look, 'staff')
         const tag = nameTag(s.name, 0x4fbf98, false, 'staff')
         ;(tag as Container & { name2?: string }).name2 = s.name
+        // The title screen shows the salon, not a list of names.
+        tag.visible = !this.demo
         const tea = new Sprite(icons.tea())
         tea.anchor.set(0.5); tea.visible = false
-        this.uiLayer.addChild(tag, tea)
+        // While they work: a little bubble with what they are doing.
+        const tool = new Container()
+        const tb = new Graphics().roundRect(-17, -17, 34, 32, 14).fill({ color: 0xffffff }).stroke({ width: 1.4, color: 0xbfeadb })
+        tb.poly([-5, 14, 5, 14, 0, 20]).fill({ color: 0xffffff })
+        const ti = new Sprite(icons.facial()); ti.anchor.set(0.5); ti.scale.set(0.72); ti.y = -1
+        tool.addChild(tb, ti)
+        tool.visible = false
+        this.uiLayer.addChild(tag, tea, tool)
         this.sortLayer.addChild(person.root)
-        v = { person, tag, x: pos.x, y: pos.y, path: [], goal: pos, tea }
+        v = { person, tag, x: pos.x, y: pos.y, path: [], goal: pos, tea, tool, puff: 0 }
         this.staff.set(s.id, v)
       }
     }
-    for (const [id, v] of this.staff) if (!sseen.has(id)) { v.person.destroy(); v.tag.destroy(); v.tea.destroy(); this.staff.delete(id) }
+    for (const [id, v] of this.staff) if (!sseen.has(id)) { v.person.destroy(); v.tag.destroy(); v.tea.destroy(); v.tool.destroy(); this.staff.delete(id) }
   }
 
   private syncEvents(state: FloorState) {
@@ -460,6 +565,17 @@ export class FloorView {
       if (e.seq <= this.lastSeq) continue
       this.lastSeq = e.seq
       if (e.kind === 'arrive') { sfx.door(); this.doorOpen = Math.max(this.doorOpen, 0.2); this.bellSwing = 1 }
+      else if (e.kind === 'bought' && e.item) {
+        // A new station has no spot yet: look at the glowing empty slots waiting for it.
+        const ghost = state.stations.some(st => st.slot < 0) ? SLOTS[state.stations.find(st => st.slot < 0) ? SLOTS.findIndex((_, i) => !state.stations.some(st => st.slot === i)) : 0] : null
+        const spot = this.itemSpot(e.item) ?? (ghost ? { x: ghost.x, y: ghost.y } : null)
+        if (!spot) continue
+        const mine = e.player === this.playerId
+        if (mine) this.hooks.onBoughtHere?.(e.item)
+        // The buyer's shop closes first; then the camera goes to see it.
+        setTimeout(() => { if (!this.destroyed) this.focusOn(spot.x, spot.y, mine) }, mine ? 450 : 0)
+      } else if (e.kind === 'placed' && e.x !== undefined && e.y !== undefined) this.focusOn(e.x, e.y - 30, e.player === this.playerId)
+      else if (e.kind === 'gift' && e.item) { const spot = this.itemSpot(e.item); if (spot) this.focusOn(spot.x, spot.y, false) }
       else if (e.kind === 'paid') {
         sfx.cash()
         const x = e.x ?? 600, y = (e.y ?? 400) - HEAD_TOP
@@ -490,11 +606,21 @@ export class FloorView {
     if (!this.inputOn || this.demo || !this.state) return
     const p = this.toWorld(e)
     sfx.unlock()
-    // What did they tap? A station, the computer, the cat, or the floor.
+    // What did they tap? A glowing empty slot, a station, the computer, the cat, or the floor.
+    const unplaced = this.state.stations.find(s => s.slot < 0)
+    if (unplaced) for (const g of this.ghosts) {
+      const at = SLOTS[g.slot]
+      if (Math.abs(p.x - at.x) < 80 && Math.abs(p.y - at.y) < 60) { sfx.click(); this.hooks.onAction({ a: 'place', station: unplaced.id, slot: g.slot }); return }
+    }
+    for (const g of this.spares) {
+      const at = SLOTS[g.slot]
+      if (Math.abs(p.x - at.x) < 80 && Math.abs(p.y - at.y) < 50) { sfx.click(); this.nextTab = 'stations'; this.goTo({ kind: 'computer', ...COMPUTER_SPOT }); return }
+    }
     const catPos = this.cat.pos
     if (Math.hypot(p.x - catPos.x, p.y - (catPos.y - 16)) < 34) { this.goTo({ kind: 'cat', x: this.cat.x, y: this.cat.y }); return }
     if (p.x > DESK.x - 10 && p.x < DESK.x + DESK.w + 10 && p.y > DESK.y - 60 && p.y < DESK.y + DESK.h + 10) { this.goTo({ kind: 'computer', ...COMPUTER_SPOT }); return }
     for (const st of this.state.stations) {
+      if (st.slot < 0) continue
       const r = stationRect(st.slot)
       if (p.x > r.x - 10 && p.x < r.x + r.w + 10 && p.y > r.y - 60 && p.y < r.y + r.h + 10) { const spot = stationSpot(st.slot); this.goTo({ kind: 'station', id: st.id, ...spot }); return }
     }
@@ -522,7 +648,7 @@ export class FloorView {
   private interactWith(t: Target) {
     if (!this.state) return
     sfx.unlock()
-    if (t.kind === 'computer') { sfx.click(); this.hooks.onOpenComputer(); return }
+    if (t.kind === 'computer') { sfx.click(); const tab = this.nextTab; this.nextTab = undefined; this.hooks.onOpenComputer(tab); return }
     if (t.kind === 'cat') {
       this.cat.pet()
       purr()
@@ -555,6 +681,14 @@ export class FloorView {
       this.updateStations(state)
       this.updatePrompt(state, dt)
     }
+    for (const g of this.ghosts) { g.ph += dt; const k = 1 + Math.sin(g.ph * 3) * 0.035; g.root.scale.set(k); g.root.alpha = 0.75 + 0.25 * Math.sin(g.ph * 3) }
+    // Spare slots glow a little when a new station is affordable today.
+    if (state) {
+      const money = state.money ?? 0
+      this.sparesLit = ITEMS.some(i => i.effect.kind === 'station' && canBuy(state.owned, money, i.id, state.day).ok)
+    }
+    for (const g of this.spares) { g.ph += dt; g.root.alpha = this.sparesLit ? 0.7 + 0.3 * Math.sin(g.ph * 2.4) : 0.45; g.root.scale.set(this.sparesLit ? 1 + Math.sin(g.ph * 2.4) * 0.02 : 1) }
+    if (this.ghostLabel) this.ghostLabel.y += Math.sin(this.t * 2.2) * 0.12
     this.updateDoor(dt)
     this.updateAmbient(dt)
     this.fx.update(dt)
@@ -659,8 +793,18 @@ export class FloorView {
         const col = mood > 0.72 ? 0x6fd3ad : mood > 0.45 ? 0xf2c76b : 0xf08aa8
         v.ring.clear().moveTo(0, -18).arc(0, -2, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.05, mood)).stroke({ width: 3, color: col, cap: 'round' })
       }
-      // A story regular says their line once they sit down.
-      if (!v.said && (c.state === 'seated' || c.state === 'treating') && persona.story && !moving) {
+      // Nobody is looking after them yet: after a few seconds, soft dots breathe beside the bubble.
+      const st = c.station ? state.stations.find(x => x.id === c.station) : null
+      const unserved = (c.state === 'waiting' || (c.state === 'seated' && !!st && st.lead === null)) && !moving
+      v.waitT = unserved ? v.waitT + dt : 0
+      v.dots.visible = v.bubble.visible && v.waitT > 4
+      if (v.dots.visible) {
+        v.dots.position.set(v.bubble.x + 30, v.bubble.y - 14)
+        v.dots.alpha = Math.min(1, (v.waitT - 4) * 2)
+        v.dots.children.slice(1).forEach((d, k) => { d.y = Math.sin(this.t * 4 - k * 0.8) * 2; d.alpha = 0.45 + 0.55 * Math.max(0, Math.sin(this.t * 4 - k * 0.8)) })
+      }
+      // A story regular says their line once they sit down (not on the title screen).
+      if (!v.said && !this.demo && (c.state === 'seated' || c.state === 'treating') && persona.story && !moving) {
         v.said = true
         const level = state.ext?.friends[persona.story.id] ?? 0
         const fits = persona.story.favourite === c.plan.treatment
@@ -709,7 +853,9 @@ export class FloorView {
     staff.forEach((s: StaffMember, i) => {
       const v = this.staff.get(s.id)
       if (!v) return
-      const st = s.station ? state.stations.find(x => x.id === s.station) : null
+      // Where they are needed: the station they are working at, else their own.
+      const where = s.task?.station ?? s.station
+      const st = where ? state.stations.find(x => x.id === where && x.slot >= 0) : null
       const onBreak = s.breakLeft > 0
       const goal: Pt = onBreak || !st ? { x: 356 + i * 34, y: 336 + (i % 2) * 12 } : stationSpot(st.slot)
       if (Math.hypot(goal.x - v.goal.x, goal.y - v.goal.y) > 2) { v.goal = goal; v.path = findPath(this.grid, v, goal) }
@@ -730,6 +876,25 @@ export class FloorView {
       v.tag.position.set(v.x, v.y - HEAD_TOP - 8)
       v.tea.visible = onBreak
       v.tea.position.set(v.x + 26, v.y - 60 + Math.sin(this.t * 2) * 2)
+      // At work: what they are doing floats beside them, and the customer gets foam puffs or sparkles.
+      const working = !!s.task && !moving && !!st
+      v.tool.visible = working
+      if (working && st) {
+        const c = state.customers.find(x => x.id === st.customer)
+        const icon = v.tool.children[1] as Sprite
+        const nails = c?.plan.treatment === 'nails'
+        icon.texture = nails ? icons.nails() : icons.facial()
+        v.tool.position.set(v.x - 40, v.y - 96 + Math.sin(this.t * 2.6) * 2.5)
+        v.tool.rotation = Math.sin(this.t * 3) * 0.06
+        v.puff -= dt
+        if (v.puff <= 0 && c) {
+          v.puff = 0.35 + Math.random() * 0.3
+          const at = SLOTS[st.slot]
+          const x = at.x + (nails ? -20 : 14) + (Math.random() - 0.5) * 26, y = at.y + (nails ? -12 : -58) + (Math.random() - 0.5) * 16
+          if (nails) this.burst(x, y, 'sparkle', 1)
+          else this.fx.spawn({ texture: bits.glow(), x, y, vx: (Math.random() - 0.5) * 16, vy: -18 - Math.random() * 14, life: 1.1, scale: 0.12, scaleEnd: 0.32, alpha: 0.85, alphaEnd: 0, tint: 0xffffff })
+        }
+      }
     })
   }
 
@@ -737,7 +902,7 @@ export class FloorView {
     for (const st of state.stations) {
       const info = this.stationInfo.get(st.id)
       const glow = this.stationGlows.get(st.id)
-      if (!info || !glow) continue
+      if (!info || !glow || st.slot < 0) continue
       const c = st.customer !== null ? state.customers.find(cu => cu.id === st.customer) : null
       const waitingForYou = !!c && c.state === 'seated' && st.lead === null
       glow.alpha = waitingForYou ? 0.75 + Math.sin(this.t * 3.2) * 0.25 : Math.max(0, glow.alpha - 0.05)
@@ -766,7 +931,7 @@ export class FloorView {
         bg.roundRect(-w / 2, -11, w, 22, 11).fill({ color: 0xffffff, alpha: 0.94 }).stroke({ width: 1.2, color: 0xbfeadb })
       }
       info.label.position.set(p.x + 10, p.y + 72)
-      info.label.visible = !!label
+      info.label.visible = !!label && !this.demo
     }
   }
 
@@ -778,6 +943,7 @@ export class FloorView {
       const catName = state.ext?.catName ?? 'the cat'
       consider({ kind: 'cat', x: this.cat.x, y: this.cat.y }, `Pet ${catName}`)
       for (const st of state.stations) {
+        if (st.slot < 0) continue
         const c = st.customer !== null ? state.customers.find(cu => cu.id === st.customer) : null
         if (!c || (c.state !== 'seated' && c.state !== 'treating')) continue
         if (st.lead !== null && st.lead >= STAFF_ID_BASE) continue
@@ -799,8 +965,8 @@ export class FloorView {
     this.promptBg.circle(-w / 2 + 20, 0, 13).fill({ color: 0xe98aa8 })
     this.promptKey.position.set(-w / 2 + 20, 0)
     this.promptText.position.set(-w / 2 + 40, 0)
-    const slotOf = (id: string) => SLOTS[state.stations.find(s => s.id === id)?.slot ?? 0]
-    const anchor = best.kind === 'station' ? { x: slotOf(best.id).x + 10, y: slotOf(best.id).y - 150 } : best.kind === 'computer' ? { x: DESK.x + 105, y: DESK.y - 70 } : { x: this.cat.pos.x, y: this.cat.pos.y - 70 }
+    const slotOf = (id: string) => SLOTS[Math.max(0, state.stations.find(s => s.id === id)?.slot ?? 0)]
+    const anchor = best.kind === 'station' ? { x: slotOf(best.id).x + 10, y: slotOf(best.id).y - 196 } : best.kind === 'computer' ? { x: DESK.x + 105, y: DESK.y - 70 } : { x: this.cat.pos.x, y: this.cat.pos.y - 70 }
     this.prompt.position.set(anchor.x, anchor.y + Math.sin(this.t * 3) * 2)
     this.prompt.scale.set(easeOutBack(this.promptPop))
     this.prompt.visible = true
@@ -902,6 +1068,21 @@ export class FloorView {
     }
     // Tall phone screens: the room sits low, leaving the top for the HUD.
     this.world.y = worldH <= h ? (h > w * 1.3 && !this.demo ? Math.max((h - worldH) / 2, h - worldH - 24) : (h - worldH) / 2) : 0
+    // A purchase or a new station: glide in on it, hold a moment, glide back.
+    const f = this.focus
+    if (f) {
+      f.t += dt
+      const k = f.t < 0.6 ? easeInOut(f.t / 0.6) : f.t > f.dur - 0.7 ? easeInOut(Math.max(0, (f.dur - f.t) / 0.7)) : 1
+      const zs = s * (1 + 0.45 * k)
+      // Centre on it, but never show past the room's walls.
+      const tx = Math.min(OUTSIDE_W * zs * 0.3, Math.max(w - FLOOR_W * zs, w / 2 - f.x * zs))
+      const ty = Math.min(0, Math.max(h - FLOOR_H * zs, h / 2 - f.y * zs))
+      this.world.scale.set(zs)
+      this.world.x += (tx - this.world.x) * k
+      this.world.y += (ty - this.world.y) * k
+      this.scale = zs
+      if (f.t >= f.dur) this.focus = null
+    }
   }
 
   /** Screen position of a world point (for DOM overlays). */
@@ -917,6 +1098,22 @@ export class FloorView {
 }
 
 // ------------------------------------------------------------------ small helpers
+
+const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
+
+/** The painted piece for a regular's gift: the closest thing the art has, until the art paints each one. */
+const GIFT_ART: Record<string, string | (() => Piece)> = {
+  rosa: () => paintPlant(0.62), maya: 'pastel-pop:macaron-shelf', jade: () => paintFloorLamp(), mira: () => paintWallArt(), tomas: 'retro-diner:milkshake-counter',
+  hazel: 'zen-garden:bonsai', dev: 'neon-night:arcade-cabinet', bea: 'cottagecore:teapot-set', lulu: 'pastel-pop:bubble-lamp', ivan: 'tropical:surf-sign',
+  sol: 'retro-diner:jukebox', celeste: 'luxe-gold:gilded-frame', noor: 'cottagecore:herb-shelf', 'lady-v': 'luxe-gold:gold-mirror', gus: 'retro-diner:neon-clock',
+  kai: 'tropical:surf-sign', elise: 'pastel-pop:heart-mirror', pip: 'tropical:hammock', stella: 'neon-night:neon-sign', greta: 'cottagecore:floral-armchair',
+  iris: () => paintSucculent(), finn: 'zen-garden:paper-lantern',
+}
+function giftPiece(id: string): Piece {
+  const art = GIFT_ART[GIFT_BY_ID[id]?.regular ?? '']
+  if (typeof art === 'function') return cached(`gift:${id}`, art)
+  return (art && decorPiece(art)) || cached('succulent', paintSucculent)
+}
 
 const pieceCache = new Map<string, Piece>()
 const texCache = new Map<string, Texture>()

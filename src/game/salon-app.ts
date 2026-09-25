@@ -2,8 +2,9 @@ import type { Application } from 'pixi.js'
 import { music } from '../audio/music.ts'
 import { sfx } from '../audio/sfx.ts'
 import { handleGuestMessage, parseGuestMessage, publicState, routeOps, type GuestMessage, type HostMessage, type PublicState } from '../core/coop/protocol.ts'
-import { ambienceStars, toolTier } from '../core/economy.ts'
-import { stationSpot } from '../core/floor.ts'
+import { ambienceStars, arrivals, ITEM_BY_ID, toolTier } from '../core/economy.ts'
+import { spawnPoint, stationSpot } from '../core/floor.ts'
+import { goalTally } from '../core/goals.ts'
 import { average } from '../core/reviews.ts'
 import { awards, newSave, reduce, startDay, tick, toSave, type Action, type SalonState } from '../core/salon.ts'
 import { ext } from '../core/salon-ext.ts'
@@ -129,7 +130,9 @@ export class SalonGame {
       const now = performance.now()
       const dt = Math.min(0.25, (now - last) / 1000)
       last = now
-      if (!document.hidden || !this.host || !this.hostLink?.paired) return
+      // Hidden, or simply not getting frames (a background tab or window some browsers pause without hiding).
+      const stalled = now - this.lastFrame > 400
+      if ((!document.hidden && !stalled) || !this.host || !this.hostLink?.paired) return
       tick(this.host, dt)
       this.sendSnap()
     }, 100)
@@ -164,7 +167,9 @@ export class SalonGame {
     this.floor = new FloorView(this.app, this.me, {
       onAction: a => this.act(a),
       onStartTreatment: (st, c) => this.startTreatment(st, c),
-      onOpenComputer: () => this.openComputer(),
+      onOpenComputer: tab => this.openComputer(tab),
+      // Something that stands in the salon was bought here: close the shop so the camera can show it.
+      onBoughtHere: item => { const e = ITEM_BY_ID[item]?.effect; if (e && (e.kind === 'decor' || e.kind === 'station' || e.kind === 'treatment')) setTimeout(() => this.computer?.close(), 350) },
     })
     this.app.stage.addChildAt(this.floor.root, 0)
     this.hud = new FloorHud(this.ui, {
@@ -190,8 +195,10 @@ export class SalonGame {
     this.me = 0
     reduce(this.host, 0, { a: 'join', name: this.myName() })
     this.enterFloor()
-    this.floor!.placeMe(240, 420)
+    const at = spawnPoint(0)
+    this.floor!.placeMe(at.x, at.y)
     this.save()
+    this.newInShop(this.host.day)
   }
 
   private hostGame() {
@@ -203,11 +210,12 @@ export class SalonGame {
         if (!this.host || joined) return
         const name = this.host.players.find(p => p.id === id)?.name
         reduce(this.host, id, { a: 'leave' })
+        // A friend leaving is a toast, never a room window popping up (over the receipt or anything else).
         if (name) this.hud?.toast(`${name} left the salon`, '#cdbdf2')
         // Everyone still here was ready: open without waiting for the one who left.
         const ready = this.host.ext?.today.ready ?? []
         if (this.host.phase === 'prep' && ready.length && this.host.players.every(p => ready.includes(p.id))) reduce(this.host, 0, { a: 'open' })
-        this.showRoom('')
+        if (this.lobby.roomOpen) this.showRoom('')
       },
     )
     this.hostLink = link
@@ -216,7 +224,7 @@ export class SalonGame {
 
   private onHostStatus(status: CoopStatus) {
     if (status.kind === 'waiting') this.showRoom('Waiting for friends to join.')
-    else if (status.kind === 'paired') this.showRoom('')
+    else if (status.kind === 'paired' && (this.lobby.roomOpen || this.host?.phase === 'prep')) this.showRoom('')
     else if (status.kind === 'error') { this.hud?.toast(`${status.reason} You are playing solo.`, '#f59ab7', 5000); this.lobby.hide() }
   }
 
@@ -239,6 +247,8 @@ export class SalonGame {
           this.me = link.id
           link.send({ t: 'hello', name: this.myName() })
           this.enterFloor()
+          const at = spawnPoint(this.me)
+          this.floor?.placeMe(at.x, at.y)
           this.hud?.toast('Joined! Say hi to your salon partner.', '#8fe0c4')
         } else if (status.kind === 'error' || (status.kind === 'alone' && this.joined)) {
           const reason = status.kind === 'error' ? status.reason : 'Your friend closed their salon.'
@@ -278,7 +288,7 @@ export class SalonGame {
       if (d.to === this.me) this.deliver(d.msg)
       else this.hostLink?.send(d.msg, { to: d.to })
     }
-    if (wasNew) { const name = this.host.players.find(p => p.id === from)?.name ?? 'A friend'; this.hud?.toast(`${name} joined the salon`, '#8fe0c4'); sfx.door(); this.showRoom('') ; this.sendSnap() }
+    if (wasNew) { const name = this.host.players.find(p => p.id === from)?.name ?? 'A friend'; this.hud?.toast(`${name} joined the salon`, '#8fe0c4'); sfx.door(); if (this.lobby.roomOpen || this.host.phase === 'prep') this.showRoom(''); this.sendSnap() }
   }
 
   private onHost(msg: HostMessage) {
@@ -324,11 +334,11 @@ export class SalonGame {
 
   // ------------------------------------------------------------------ the computer
 
-  private openComputer() {
+  private openComputer(tab?: 'stations') {
     const s = this.view()
     if (!s || this.computer) return
     this.floor!.inputEnabled = false
-    this.computer = new Computer(this.ui, { onAction: a => this.act(a), onClose: () => { this.computer = null; if (this.floor) this.floor.inputEnabled = true } })
+    this.computer = new Computer(this.ui, { onAction: a => this.act(a), onClose: () => { this.computer = null; if (this.floor) this.floor.inputEnabled = true } }, tab)
     this.computer.update(s)
   }
 
@@ -400,22 +410,35 @@ export class SalonGame {
     const st = s.stats
     const wages = e?.today.wages ?? 0
     const news: string[] = []
-    for (const f of e?.today.friendUps ?? []) news.push(f.gift ? `${f.name} is now a close friend and left you a gift: ${f.gift.split(':')[1].replace(/-/g, ' ')}.` : `${f.name} likes your salon more: friendship ${f.level} of 5.`)
+    for (const f of e?.today.friendUps ?? []) news.push(f.gift ? `${f.name} is now a close friend and left you a gift: ${f.gift}. It is on the gift shelf.` : `${f.name} likes your salon more: friendship ${f.level} of 5.`)
     for (const n of e?.today.levelUps ?? []) news.push(`${n} levelled up and got a little raise.`)
     if (s.day % 7 === 0) news.push('New staff candidates arrive tomorrow at the salon computer.')
     for (const c of e?.campaigns ?? []) if (c.day === 0) news.push('Your new campaign starts tomorrow.')
+    const goal = e?.today.goal ?? null
+    const bonus = goal?.done ? goal.reward : 0
     const data: ReceiptData = {
       day: s.day, salonName: e?.salonName ?? 'Glow Salon', revenue: st.revenue, tips: st.tips, costs: st.costs, wages,
-      net: st.revenue + st.tips - st.costs - wages, served: st.served, ratingBefore: st.ratingBefore, ratingAfter: average(s.rating),
+      net: st.revenue + st.tips + bonus - st.costs - wages, served: st.served, ratingBefore: st.ratingBefore, ratingAfter: average(s.rating),
       reviewsTotal: s.rating.count, histBefore: histBefore(s), reviews: st.reviews, allReviews: s.reviews, awards: awards(st), players: s.players, owned: s.owned, money: s.money, news,
+      goal: goal ? { text: goal.text, reward: goal.reward, done: goal.done } : null,
     }
-    this.receipt = new Receipt(this.ui, data, { onNext: () => { this.receipt = null; this.act({ a: 'next' }); this.floor?.placeMe(240, 420) } })
+    const tomorrow = s.day + 1
+    this.receipt = new Receipt(this.ui, data, { onNext: () => { this.receipt = null; this.act({ a: 'next' }); const at = spawnPoint(this.me); this.floor?.placeMe(at.x, at.y); this.newInShop(tomorrow) } })
     this.save()
+  }
+
+  /** A morning toast for what just arrived in the shop. */
+  private newInShop(day: number) {
+    const fresh = arrivals(day)
+    if (fresh.length) setTimeout(() => this.hud?.toast(`New in the shop: ${fresh.map(i => i.name).slice(0, 3).join(', ')}${fresh.length > 3 ? ' and more' : ''}`, '#b9a5ee', 5000), 900)
   }
 
   // ------------------------------------------------------------------ the frame
 
+  private lastFrame = performance.now()
+
   private frame(dt: number) {
+    this.lastFrame = performance.now()
     if (this.mode === 'title' && this.demo) {
       const d = this.demo
       tick(d.state, dt)
@@ -430,7 +453,8 @@ export class SalonGame {
     if (this.floor) { this.floor.setState(s); this.floor.update(dt) }
     if (this.hud) {
       const pending = s.pending
-      this.hud.update({ day: s.day, phase: s.phase, money: s.money, rating: average(s.rating), reviews: s.rating.count, arrived: s.spawned, total: this.host ? this.host.schedule.length : (s as PublicState).scheduled, served: s.stats.served, players: s.players, events: s.events, pending, vote: s.ext?.vote ?? null, ready: s.ext?.today.ready ?? [], me: this.me }, dt)
+      const goal = s.ext?.today.goal ?? null
+      this.hud.update({ day: s.day, phase: s.phase, money: s.money, rating: average(s.rating), reviews: s.rating.count, arrived: s.spawned, total: this.host ? this.host.schedule.length : (s as PublicState).scheduled, served: s.stats.served, players: s.players, events: s.events, pending, vote: s.ext?.vote ?? null, ready: s.ext?.today.ready ?? [], me: this.me, goal: goal ? { text: goal.text, target: goal.target, reward: goal.reward, done: goal.done, now: goalTally(s)[goal.kind] } : null }, dt)
     }
     this.computer?.update(s)
     // The close-up: keep it running; a helper's view closes when the lead finishes.

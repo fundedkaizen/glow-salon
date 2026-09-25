@@ -29,6 +29,8 @@ export type HudView = {
   /** Players ready to open (co-op). */
   ready: number[]
   me: number
+  /** Today's relaxed goal and how far along it is. */
+  goal: { text: string; target: number; reward: number; done: boolean; now: number } | null
 }
 
 export type HudHandlers = {
@@ -64,6 +66,8 @@ export class FloorHud {
   private lastKey = ''
   private readyKey = '-'
   private readyRow = h('div', 'gs-ready-row')
+  private goalEl = h('div', 'gs-goal')
+  private goalKey = ''
   private h: HudHandlers
 
   constructor(host: HTMLElement, handlers: HudHandlers) {
@@ -86,7 +90,10 @@ export class FloorHud {
     gear.title = 'Settings'
     gear.style.pointerEvents = 'auto'
     gear.onclick = () => handlers.onSettings()
-    top.append(this.dayEl, this.moneyEl, this.rateEl, h('div', 'gs-spacer'), musicChip, gear)
+    const left = h('div', 'gs-hud-left')
+    left.append(this.dayEl, this.goalEl)
+    this.goalEl.hidden = true
+    top.append(left, this.moneyEl, this.rateEl, h('div', 'gs-spacer'), musicChip, gear)
     const bottom = h('div', 'gs-hud-bottom')
     this.openBtn = h('button', 'gs-btn pink big gs-open', 'Open the salon')
     this.openBtn.onclick = () => handlers.onOpen()
@@ -145,10 +152,24 @@ export class FloorHud {
     if (last) this.lastSeq = Math.max(this.lastSeq, last.seq)
     else if (this.lastSeq < 0) this.lastSeq = 0
     this.updateVote(v)
+    // Today's goal: a small card under the day, ticking up, with a check when it pays out.
+    const g = v.goal
+    const gk = g ? `${g.text}|${Math.min(g.now, g.target)}|${g.done}` : ''
+    if (gk !== this.goalKey) {
+      const was = this.goalKey
+      this.goalKey = gk
+      this.goalEl.hidden = !g
+      if (g) {
+        const pct = Math.min(100, (Math.min(g.now, g.target) / Math.max(1, g.target)) * 100)
+        this.goalEl.innerHTML = `<div class="gs-goal-line"><span class="gs-goal-tag">${g.done ? '&#10003;' : 'Goal'}</span><b>${esc(g.text)}</b></div><div class="gs-goal-line"><div class="gs-dayline-bar"><i style="width:${pct}%"></i></div><span>${g.done ? `+${money(g.reward)}` : `${Math.min(g.now, g.target)} / ${g.target}`}</span></div>`
+        this.goalEl.classList.toggle('done', g.done)
+        if (g.done && was && !was.endsWith('|true')) { this.goalEl.classList.remove('bump'); void this.goalEl.offsetWidth; this.goalEl.classList.add('bump') }
+      }
+    }
   }
 
   private eventToast(e: GameEvent, v: HudView) {
-    const colour = e.kind === 'arrive' ? '#8fe0c4' : e.kind === 'paid' ? '#f7c948' : e.kind === 'bought' ? '#b9a5ee' : e.kind === 'declined' ? '#f59ab7' : '#f7b7cc'
+    const colour = e.kind === 'arrive' ? '#8fe0c4' : e.kind === 'paid' || e.kind === 'goal' ? '#f7c948' : e.kind === 'bought' || e.kind === 'placed' ? '#b9a5ee' : e.kind === 'gift' ? '#f48fb1' : e.kind === 'declined' ? '#f59ab7' : '#f7b7cc'
     if (e.kind === 'vote') return
     if (e.kind === 'paid' && v.players.length > 1 && e.player !== undefined && e.player >= 100) return
     this.toast(e.text, colour)

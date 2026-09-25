@@ -36,6 +36,11 @@ const KIT = {
   peelSnap: clips('peel', [11]),
   paperRip: clips('rip', [9, 11, 12, 14]),
   snip: [{ file: 'scissors/scissors-2.mp3', offset: 0.3, dur: 0.16 }, { file: 'scissors/scissors-4.mp3', offset: 0.6, dur: 0.14 }, { file: 'scissors/scissors-1.mp3', offset: 0.84, dur: 0.14 }],
+  // The recorded clippers, cut at the moment they bite (the switch-on transient), for nail clipping.
+  clipper: [{ file: 'clipper/clipper-1.mp3', offset: 0.41, dur: 0.16 }, { file: 'clipper/clipper-2.mp3', offset: 0.35, dur: 0.16 }],
+  comb: clips('comb', [1, 2, 3]),
+  drill: [{ file: 'drill/drill-4.mp3' }, { file: 'drill/drill-1.mp3', offset: 0.34, dur: 0.18 }],
+  squirt: clips('gel', [2, 5, 6]),
   gel: clips('gel', [1, 3, 4]),
   pot: clips('gel', [7, 8, 9, 10]),
   spray: clips('spray', [5, 6, 7, 9]),
@@ -79,6 +84,10 @@ export class Sfx {
   private noise: AudioBuffer | null = null
   volumes: Volumes = { master: 0.9, music: 0.55, sfx: 0.9, ding: 0.7 }
   private lastPlay = new Map<string, number>()
+  /** The tool in hand (set when a step starts), so a sound can fit it: clippers clip, the nipper snips. */
+  private tool = ''
+  /** The pressure tone while a whitehead is squeezed: one voice that rises with the squeeze. */
+  private tension: { osc: OscillatorNode; sub: OscillatorNode; gain: GainNode; panner: StereoPannerNode; idle: ReturnType<typeof setTimeout> | null } | null = null
 
   /** Browsers start audio only after a gesture: call this from the first click or tap. */
   unlock() {
@@ -108,7 +117,7 @@ export class Sfx {
       this.noise = n
       this.applyVolumes()
       // Warm the most common groups so the first pop is not late.
-      for (const list of [KIT.pop, KIT.bell, KIT.sparkle, KIT.pen, KIT.drip]) for (const c of list) void this.load(c.file)
+      for (const list of [KIT.pop, KIT.bell, KIT.sparkle, KIT.pen, KIT.drip, KIT.squeak, KIT.suction, KIT.clipper]) for (const c of list) void this.load(c.file)
     }
   }
 
@@ -274,25 +283,77 @@ export class Sfx {
   /** Popping a whitehead: a crisp recorded pop, a wet synthetic body and a squelch. Bigger ones sound lower. */
   pop(size: number, pan = 0) {
     if (!this.ctx) return
+    this.releaseTension(true)
     const rate = 1.18 - 0.3 * Math.min(1.4, size)
-    this.clip(KIT.pop, { gain: 1.5, pan, rate })
+    this.clip(KIT.pop, { gain: 0.95, pan, rate })
     if (size > 1.1) this.clip(KIT.popBig, { gain: 0.35, pan, rate: 1.3 })
-    this.tone({ freq: 340 * rate, freqEnd: 90, dur: 0.09, gain: 0.45, pan })
+    this.tone({ freq: 340 * rate, freqEnd: 90, dur: 0.09, gain: 0.3, pan })
     this.burst({ freq: 900 * rate, freqEnd: 300, q: 2.2, dur: 0.12, gain: 0.22, pan, delay: 0.01 })
     this.burst({ freq: 6000, q: 0.8, type: 'highpass', dur: 0.03, gain: 0.08, pan })
   }
 
-  /** Pressure building while a whitehead swells: a faint rising creak. */
+  /**
+   * Pressure building while a whitehead swells: the skin squeaks under the fingers (the rub recordings) and
+   * a soft tension tone rises with the squeeze, peaking about -12 dBFS just before the pop. Called every frame
+   * while squeezing; the tone fades by itself when the calls stop, and the pop cuts it.
+   */
   squeeze(progress: number, pan = 0) {
-    if (!this.ctx || !this.throttle('squeeze', 90)) return
-    this.burst({ freq: 500 + progress * 900, q: 5, dur: 0.1, gain: 0.12 + progress * 0.2, pan })
+    const ctx = this.ctx
+    if (!ctx) return
+    const p = Math.max(0, Math.min(1, progress))
+    const t = ctx.currentTime
+    if (!this.tension) {
+      const gain = ctx.createGain(); gain.gain.value = 0
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.7
+      const panner = ctx.createStereoPanner()
+      const osc = ctx.createOscillator(); osc.type = 'sine'
+      const sub = ctx.createOscillator(); sub.type = 'triangle'
+      const subGain = ctx.createGain(); subGain.gain.value = 0.35
+      osc.connect(lp); sub.connect(subGain).connect(lp)
+      lp.connect(gain).connect(panner).connect(this.sfxBus)
+      osc.start(t); sub.start(t)
+      this.tension = { osc, sub, gain, panner, idle: null }
+    }
+    const v = this.tension
+    const f = 150 + p * 360
+    v.osc.frequency.setTargetAtTime(f, t, 0.04)
+    v.sub.frequency.setTargetAtTime(f * 0.5, t, 0.04)
+    v.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.05)
+    v.gain.gain.cancelScheduledValues(t)
+    // Sine plus a soft sub (1.35 at most) through the buses (0.81): 0.22 peaks at about -12 dBFS.
+    v.gain.gain.setTargetAtTime(0.05 + 0.17 * p ** 1.2, t, 0.03)
+    // No new squeeze for a moment: let the tone go.
+    v.gain.gain.setTargetAtTime(0, t + 0.16, 0.06)
+    if (v.idle) clearTimeout(v.idle)
+    v.idle = setTimeout(() => this.releaseTension(), 1200)
+    if (this.throttle('squeak', 170 - p * 60)) this.clip(KIT.squeak, { gain: 0.28 + 0.2 * p, pan, rate: 0.85 + p * 0.45 })
   }
 
-  /** A blackhead coming out of its pore: a little suction pop. */
+  private releaseTension(fast = false) {
+    const v = this.tension
+    if (!v || !this.ctx) return
+    this.tension = null
+    if (v.idle) clearTimeout(v.idle)
+    const t = this.ctx.currentTime
+    v.gain.gain.cancelScheduledValues(t)
+    // The pop cuts the tension in a few milliseconds (the release is the satisfying part), without a click.
+    if (fast) { v.gain.gain.setValueAtTime(v.gain.gain.value, t); v.gain.gain.linearRampToValueAtTime(0, t + 0.006) }
+    else v.gain.gain.setTargetAtTime(0, t, 0.05)
+    try { v.osc.stop(t + 0.4); v.sub.stop(t + 0.4) } catch { /* already stopped */ }
+  }
+
+  /** A blackhead coming out of its pore: a short suction (or tape) pluck, sped up, and a crisp tick. */
   extract(pan = 0) {
     if (!this.ctx) return
-    this.clip(KIT.suction, { gain: 0.8, pan, rate: range(1.1, 1.35) })
-    this.tone({ freq: 1400, freqEnd: 600, dur: 0.06, gain: 0.08, pan })
+    this.clip(Math.random() < 0.65 ? KIT.suction : KIT.tapeShort, { gain: 0.75, pan, rate: 1.8 })
+    this.tick(pan)
+  }
+
+  /** One crisp tick: a counted extraction. */
+  tick(pan = 0) {
+    if (!this.ctx) return
+    this.tone({ freq: range(3000, 3400), dur: 0.035, gain: 0.32, pan, attack: 0.001 })
+    this.burst({ freq: 7000, q: 1, type: 'highpass', dur: 0.012, gain: 0.25, pan })
   }
 
   drip(pan = 0) {
@@ -327,13 +388,33 @@ export class Sfx {
         break
       case 'buff':
         if (this.throttle('buff', 160)) this.clip(Math.random() < 0.25 ? KIT.squeak : KIT.coat, { gain: 0.35 + 0.3 * s, pan })
+        // Now and then the little buffing drill whirs.
+        if (s > 0.35 && this.throttle('buffDrill', 900)) this.clip(KIT.drill, { gain: 0.22, pan, rate: 1.35, lowpass: 5000 })
         break
       case 'polish':
         if (this.throttle('polish', 200)) this.clip(KIT.softBrush, { gain: 0.25 + 0.2 * s, pan, lowpass: 5000 })
         break
       case 'rasp':
-        if (this.throttle('raspGrain', 35)) this.burst({ freq: range(2800, 4200), q: 2.5, dur: 0.03, gain: 0.07 + 0.08 * s, pan })
-        if (this.throttle('rasp', 230)) this.clip(KIT.toothbrush, { gain: 0.2 * s, pan, rate: 1.4 })
+        // Filing: the brush recordings slowed down to a dry, papery rasp.
+        if (this.throttle('rasp', 150)) this.clip(Math.random() < 0.5 ? KIT.toothbrush : KIT.horsehair, { gain: 0.5, pan, rate: 0.7 })
+        if (this.throttle('raspGrain', 60)) this.burst({ freq: range(2600, 3800), q: 2.5, dur: 0.025, gain: 0.03 + 0.04 * s, pan })
+        break
+      case 'comb':
+        if (this.throttle('comb', 240)) this.clip(KIT.comb, { gain: 0.3 + 0.3 * s, pan, rate: range(1, 1.2) })
+        break
+      case 'roll':
+        // A jade roller: a smooth glassy roll with a soft click of the frame now and then.
+        if (this.throttle('roll', 260)) this.clip(KIT.hands, { gain: 0.25 + 0.2 * s, pan, lowpass: 3500, rate: 0.8 })
+        if (this.throttle('rollClick', 520)) this.clip(KIT.glass, { gain: 0.25, pan, rate: 1.5 })
+        break
+      case 'oil':
+        if (this.throttle('oil', 380)) this.clip(KIT.squirt, { gain: 0.3 + 0.2 * s, pan, rate: range(1.1, 1.3) })
+        if (this.throttle('oilRub', 200)) this.clip(KIT.hands, { gain: 0.2 * s, pan, lowpass: 5000 })
+        break
+      case 'sheet':
+        // A sheet mask smoothed on: a wet squelch and soft cloth.
+        if (this.throttle('sheet', 300)) this.clip(KIT.squirt, { gain: 0.25 + 0.2 * s, pan, rate: range(0.8, 0.95), lowpass: 4000 })
+        if (this.throttle('sheetCloth', 180)) this.clip(KIT.cloth, { gain: 0.2 + 0.25 * s, pan })
         break
       case 'push':
         if (this.throttle('push', 70)) this.burst({ freq: range(1500, 2100), q: 3, dur: 0.06, gain: 0.05 + 0.05 * s, pan })
@@ -349,20 +430,33 @@ export class Sfx {
 
   /** A tool is picked up or a product opened, at the start of a step. */
   toolUp(tool: string) {
+    this.tool = tool
     if (!this.ctx) return
     if (tool === 'tonerPad') this.clip(KIT.spray, { gain: 0.5 })
     else if (tool === 'cream') this.clip(KIT.gel, { gain: 0.6 })
     else if (tool === 'dropper' || tool === 'polishBrush') this.clip(KIT.cap, { gain: 0.5 })
     else if (tool === 'maskBrush') this.clip(KIT.pot, { gain: 0.6 })
-    else if (tool === 'uvLamp') this.clip(KIT.trackpad, { gain: 0.7 })
+    else if (tool === 'uvLamp') { this.clip(KIT.trackpad, { gain: 0.7 }); this.clip(KIT.drill, { gain: 0.15, rate: 2, lowpass: 3000, delay: 0.08 }) }
+    else if (tool === 'browBrush') this.clip(KIT.comb, { gain: 0.35 })
+    else if (tool === 'sheetMask') this.clip(KIT.tapeLong, { gain: 0.35, rate: 1.1 })
     else this.clip(KIT.glass, { gain: 0.25, rate: 1.2 })
   }
 
+  /** A nail clipped (the clipper recording) or a hangnail nipped (the scissors), with a crisp snap on top. */
   snip(pan = 0) {
     if (!this.ctx) return
-    this.clip(KIT.snip, { gain: 0.7, pan })
+    if (this.tool === 'clipper') this.clip(KIT.clipper, { gain: 0.8, pan, rate: range(1.05, 1.2) })
+    else this.clip(KIT.snip, { gain: 0.7, pan })
     this.burst({ freq: 5200, q: 1.5, type: 'highpass', dur: 0.025, gain: 0.25, pan })
     this.tone({ freq: range(3100, 3500), dur: 0.12, gain: 0.04, pan })
+  }
+
+  /** Something new arrives in the salon: a bright chime and a little rising sparkle. */
+  unlockChime() {
+    if (!this.ctx) return
+    this.clip(KIT.reveal, { gain: 0.4, bus: 'ding' })
+    this.clip(KIT.sparkle, { gain: 0.3, bus: 'ding', delay: 0.12, lowpass: 11000 })
+    for (const [f, d] of [[1318.5, 0], [1661.2, 0.09], [1975.5, 0.18], [2637, 0.3]] as const) this.bell(f, 0.07, (d - 0.15) * 2, d)
   }
 
   peelSnap(pan = 0) {

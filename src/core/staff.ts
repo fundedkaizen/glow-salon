@@ -1,5 +1,6 @@
 import { PEOPLE_DATA } from '../content/people.ts'
 import { randomLook, type Look } from './customers.ts'
+import { genderOfName } from './names.ts'
 import { makeRng } from './rng.ts'
 import type { TreatmentResult } from './treatments/session.ts'
 import type { TreatmentId } from './treatments/types.ts'
@@ -13,6 +14,9 @@ import type { TreatmentId } from './treatments/types.ts'
 export type StaffTrait = (typeof PEOPLE_DATA.staffTraits)[number]
 export const STAFF_TRAITS: readonly StaffTrait[] = PEOPLE_DATA.staffTraits
 export const STAFF_TRAIT_BY_ID: Record<string, StaffTrait> = Object.fromEntries(STAFF_TRAITS.map(t => [t.id, t]))
+/** Traits with nothing to act on in the salon yet (there are no spills to tidy): never rolled for new candidates. */
+export const HIDDEN_TRAITS = new Set(['tidy'])
+const ROLLED_TRAITS = STAFF_TRAITS.filter(t => !HIDDEN_TRAITS.has(t.id))
 export const STAFF_LEVELS: readonly string[] = PEOPLE_DATA.staffLevels
 
 export type Skills = Record<TreatmentId, number>
@@ -60,8 +64,8 @@ export function candidatesFor(seed: number, week: number): Candidate[] {
     let first = r.pick(PEOPLE_DATA.firstNames)
     while (used.has(first)) first = r.pick(PEOPLE_DATA.firstNames)
     used.add(first)
-    const traits = [r.pick(STAFF_TRAITS).id]
-    if (r.chance(0.45)) { const t = r.pick(STAFF_TRAITS).id; if (!traits.includes(t)) traits.push(t) }
+    const traits = [r.pick(ROLLED_TRAITS).id]
+    if (r.chance(0.45)) { const t = r.pick(ROLLED_TRAITS).id; if (!traits.includes(t)) traits.push(t) }
     // One star skill, the other a little lower; later weeks bring slightly stronger people.
     const lift = Math.min(1, week * 0.15)
     // Each week: one specialist, one all-rounder and one in between, so the choice is a real one.
@@ -73,7 +77,8 @@ export function candidatesFor(seed: number, week: number): Candidate[] {
     else { skills[star] = 2 + (r.chance(0.35 + lift * 0.3) ? 1 : 0); skills[other] = r.chance(0.5) ? 2 : 1 }
     const total = skills.facial + skills.nails
     const wage = 10 + total * 5 + (traits.includes('perfectionist') ? 3 : 0) + r.int(0, 3)
-    out.push({ name: first, look: randomLook(r), traits, skills, wage, fee: Math.round((wage * 4) / 5) * 5, seed: r.seed() })
+    const gender = genderOfName(first) ?? (r.chance(0.5) ? 'female' : 'male')
+    out.push({ name: first, look: randomLook(r, { gender, age: r.chance(0.25) ? 'young' : 'adult' }), traits, skills, wage, fee: Math.round((wage * 4) / 5) * 5, seed: r.seed() })
   }
   return out
 }
@@ -108,7 +113,7 @@ export function staffResult(s: StaffMember, treatment: TreatmentId, par: number,
   thoroughness = Math.max(0.5, Math.min(0.97, thoroughness))
   const seconds = Math.round(par * (1.25 - 0.08 * s.skills[treatment]))
   const popped = treatment === 'facial' ? r.int(2, 6) : 0
-  return { treatment, seconds, par, required: 10, done: Math.round(10 * thoroughness), skipped: 0, optionalDone: 0, popped, extracted: treatment === 'facial' ? r.int(4, 12) : 0, fourHands: false, wishMatched: treatment === 'nails' ? r.chance(0.7) : null, disaster: false, thoroughness }
+  return { treatment, seconds, par, required: 10, done: Math.floor(10 * thoroughness), skipped: 0, optionalDone: 0, popped, extracted: treatment === 'facial' ? r.int(4, 12) : 0, fourHands: false, wishMatched: treatment === 'nails' ? r.chance(0.7) : null, disaster: false, thoroughness }
 }
 
 /** Practice: xp after a treatment, levels, and a skill step every other level. Returns true on a level up. */
