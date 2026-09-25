@@ -1,8 +1,11 @@
 # Feet: wiring the pedicure art to steps
 
-The pedicure art is done and previewable; the steps are not wired. This is the map for whoever writes
-`core/treatments/feet.ts`: the anatomy regions, the layer ids, the targets and spot art, the tools, and which
-step in `content/treatments.json` (the `feet` family) each piece serves.
+**Wired (round 4).** The steps live in `core/treatments/feet.ts` (the step library, layers with a `top.`/`sole.`
+prefix, `FOOT_VARIANTS`), each customer's own list in `plan.ts` (`feetPlan`: Classic Pedicure, Foot Clinic or Spa
+Pedicure from the foot's problems), the per-customer regions and foot seeding in `session.ts` (`mask()`,
+`footRegion()`, `seedFoot()`), and the close-up in `render/treatment-view.ts` (the `feet` block: two surfaces, the
+turn-over, the bath, shards, plasters, the peel). Play one with `/?view=pedicure&seed=N` (`&disaster`, `&step=`).
+Tests: `tests/feet.test.ts`. The tables below are the original map and still describe the art.
 
 Preview everything with the dev view: `/?view=feet` (see `src/render/foot-preview.ts`):
 
