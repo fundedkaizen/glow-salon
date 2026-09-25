@@ -13,9 +13,10 @@ import { ROOM3 } from './mapping.ts'
 
 /** Which way each station's model turns, so the therapist works where the layout expects (the left, or behind). */
 const STATION_MODEL: Record<StationKind, { id: string; ry: number; seatKind: StationNodes['seatKind']; recline: number; workX?: number }> = {
-  // The recliner's head end to the left; the therapist stands behind it, facing the room.
-  // The model's work spot is inside its base's side panel: the therapist stands just clear of it.
-  facial: { id: 'facial-chair', ry: Math.PI / 2, seatKind: 'chair', recline: 1, workX: 0.78 },
+  // The recliner turned so its magnifier lamp stands behind it (away from the camera, never in front of the face),
+  // the head end to the right and the therapist on the near side. The model's work spot is inside its base's side
+  // panel: the therapist stands just clear of it.
+  facial: { id: 'facial-chair', ry: -Math.PI / 2, seatKind: 'chair', recline: 1, workX: 0.78 },
   // The nail desk and the pedicure throne: the therapist on the left, the customer on the right.
   nails: { id: 'nail-desk', ry: -Math.PI / 2, seatKind: 'stool', recline: 0 },
   feet: { id: 'pedicure-chair', ry: -Math.PI / 2, seatKind: 'pedicure', recline: 0.15 },

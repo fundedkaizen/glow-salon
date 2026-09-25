@@ -62,7 +62,8 @@ function allowed(a: string, b: string) {
   const mounted = (x: string) => x.startsWith('mount:')
   // Wall pieces touch the wall; the ground (plinth, kerb) is under everything outside.
   if ((mounted(a) && b === 'room') || (mounted(b) && a === 'room')) return true
-  if (a === 'ground' || b === 'ground') return true
+  // The ground outside and the rugs inside lie under whatever stands on them.
+  if (a === 'ground' || b === 'ground' || a === 'rug' || b === 'rug') return true
   // Curtains hang over the windows' frames.
   const dressing = (x: string, y: string) => x.includes('@window') && y.startsWith('mount:window')
   if (dressing(a, b) || dressing(b, a)) return true
