@@ -216,6 +216,24 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
     ctx.beginPath(); ctx.ellipse(533, n.y + 30, 12, 6, -0.35, 0, Math.PI * 2); ctx.fill()
   })
   blob(ctx, 526, n.y + 52, 62, 16, skin.shadow, 0.55)
+  ctx.save()
+  ctx.lineCap = 'round'
+  blurred(ctx, 2.2, () => {
+    // The shadow side of the bridge, running down into the wing.
+    ctx.strokeStyle = rgba(skin.deep, 0.32)
+    ctx.lineWidth = 4
+    ctx.beginPath(); ctx.moveTo(538, 520); ctx.bezierCurveTo(544, 560, 548, 596, 552, n.y + 2); ctx.stroke()
+    // Wings (alae): soft crescents around the nostrils.
+    ctx.strokeStyle = rgba(skin.deep, 0.45)
+    ctx.lineWidth = 3.4
+    ctx.beginPath(); ctx.moveTo(468, n.y + 2); ctx.bezierCurveTo(452, n.y + 12, 456, n.y + 34, 476, n.y + 38); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(556, n.y + 2); ctx.bezierCurveTo(572, n.y + 12, 568, n.y + 34, 548, n.y + 38); ctx.stroke()
+    // The underside of the tip between the nostrils.
+    ctx.strokeStyle = rgba(skin.deep, 0.3)
+    ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(494, n.y + 26); ctx.quadraticCurveTo(512, n.y + 34, 530, n.y + 26); ctx.stroke()
+  })
+  ctx.restore()
   // Cheekbones: a lifted highlight (brighter on the lit side) with a soft hollow below.
   blob(ctx, 372, 600, 80, 28, skin.light, 0.55)
   blob(ctx, 650, 604, 70, 24, skin.light, 0.28)
@@ -274,29 +292,15 @@ function paintBase(look: Look, skin: SkinTone, hair: typeof HAIR[number], band: 
       for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(512 + side * 52, 676); ctx.quadraticCurveTo(512 + side * 96, 716, 512 + side * 92, 780); ctx.stroke() }
     })
   }
-  // Peach fuzz catching the light along the edge of the face.
-  ctx.globalCompositeOperation = 'screen'
-  const out = FACE.outline
-  for (let i = 0; i < 700; i++) {
-    const k = r.int(0, out.length / 2 - 1)
-    const x = out[k * 2], y = out[k * 2 + 1]
-    const dx = x - 512, dy = y - 520, l = Math.hypot(dx, dy)
-    const inset = r.range(4, 26)
-    const px = x - (dx / l) * inset, py = y - (dy / l) * inset
-    ctx.strokeStyle = rgba(skin.light, r.range(0.12, 0.3))
-    ctx.lineWidth = 0.8
-    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + (dx / l) * 7 + r.range(-2, 2), py + (dy / l) * 7 + r.range(-2, 2)); ctx.stroke()
-  }
   ctx.restore()
   // A thin, warm contour: darker than the skin, never black, heavier on the shadow side.
   ctx.save()
   ctx.lineJoin = 'round'
-  ctx.strokeStyle = rgba(mixRGB(skin.deep, skin.shadow, 0.3), 0.55)
-  ctx.lineWidth = 3
-  ctx.beginPath(); smoothPath(ctx, FACE.outline); ctx.stroke()
-  ctx.strokeStyle = rgba(skin.deep, 0.35)
-  ctx.lineWidth = 2.5
-  ctx.beginPath(); smoothPath(ctx, FACE.outline.map((v, i) => (i % 2 === 0 ? v + 2 : v + 2))); ctx.stroke()
+  blurred(ctx, 1.2, () => {
+    ctx.strokeStyle = rgba(mixRGB(skin.deep, skin.shadow, 0.4), 0.38)
+    ctx.lineWidth = 2.2
+    ctx.beginPath(); smoothPath(ctx, FACE.outline); ctx.stroke()
+  })
   ctx.restore()
 
   // Hairline: soft shadow and wisps of hair over the top of the forehead.
@@ -565,6 +569,19 @@ function grimeSmear(ctx: Ctx, x: number, y: number, len: number, body: RGB, seed
   }
 }
 
+/** Soften a layer sheet's edges (where the skin region clips it) so it fades out instead of cutting off. */
+function feather(sheet: HTMLCanvasElement, px: number) {
+  const [m, mctx] = canvas(sheet.width, sheet.height)
+  mctx.filter = `blur(${px}px)`
+  mctx.drawImage(sheet, 0, 0)
+  const ctx = sheet.getContext('2d')!
+  ctx.save()
+  ctx.globalCompositeOperation = 'destination-in'
+  ctx.drawImage(m, 0, 0)
+  ctx.drawImage(m, 0, 0)
+  ctx.restore()
+}
+
 function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasElement> {
   const layers: Record<string, HTMLCanvasElement> = {}
   const r = makeRng(seed + 30)
@@ -598,7 +615,7 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
     for (let i = 0; i < 90; i++) { ctx.fillStyle = rgba([220, 80, 96], r.range(0.15, 0.4)); ctx.beginPath(); ctx.arc(r.range(100, 412), r.range(150, 470), r.range(1, 2.5), 0, Math.PI * 2); ctx.fill() }
   })
   layers.marks = clipped(512, (ctx) => {
-    ctx.drawImage(tintedByNoise(512, [226, 84, 96], fbm(512, 12, 2, seed + 61), 0.5, 0.78), 0, 0)
+    ctx.drawImage(tintedByNoise(512, [222, 92, 104], fbm(512, 12, 2, seed + 61), 0.32, 0.6), 0, 0)
   })
   layers.serum = clipped(512, (ctx) => {
     ctx.drawImage(tintedByNoise(512, [255, 214, 130], fbm(512, 40, 2, seed + 71), 0.28, 0.45), 0, 0)
@@ -619,7 +636,7 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
   })
   layers.mask = paintClay(false, seed)
   layers.foam = clipped(S, (ctx) => {
-    ctx.fillStyle = 'rgba(253,251,255,0.97)'
+    ctx.fillStyle = 'rgba(253,251,255,0.9)'
     ctx.fillRect(0, 0, S, S)
     const rf = makeRng(seed + 101)
     for (let i = 0; i < 5200; i++) {
@@ -632,6 +649,8 @@ function paintLayers(skin: SkinTone, seed: number): Record<string, HTMLCanvasEle
       ctx.beginPath(); ctx.arc(x - rr * 0.4, y - rr * 0.4, rr * 0.22, 0, Math.PI * 2); ctx.fill()
     }
   })
+  feather(layers.foam, 14)
+  feather(layers.cream, 8)
   return layers
 }
 
@@ -695,8 +714,8 @@ function drawEye(ctx: Ctx, ex: number, ey: number, side: number, state: EyeState
   const cx = ex + side * 4, cy = ey + sag
   const point = (t: number) => ({ x: (1 - t) ** 2 * inner.x + 2 * (1 - t) * t * cx + t * t * outer.x, y: (1 - t) ** 2 * inner.y + 2 * (1 - t) * t * cy + t * t * outer.y })
   // The lid: lighter, rounded over the eyeball, with the crease above it.
-  blob(ctx, ex, ey - 4 + (state === 'happy' ? -8 : 0), 66, 30, skin.base, 0.9, 0.5)
-  blob(ctx, ex - side * 6, ey - 12 + (state === 'happy' ? -8 : 0), 44, 16, skin.light, 0.55)
+  blob(ctx, ex, ey - 4 + (state === 'happy' ? -8 : 0), 62, 26, mixRGB(skin.base, skin.shadow, 0.25), 0.55, 0.3)
+  blob(ctx, ex - side * 8, ey - 12 + (state === 'happy' ? -8 : 0), 40, 14, skin.light, 0.4)
   blurred(ctx, 1.5, () => {
     ctx.strokeStyle = rgba(skin.deep, state === 'squeeze' ? 0.55 : 0.32)
     ctx.lineWidth = state === 'squeeze' ? 3.5 : 2.5

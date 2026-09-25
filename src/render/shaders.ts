@@ -52,15 +52,16 @@ void main() {
   float ndh = max(dot(n, H), 0.0);
   float ndhSoft = max(dot(nSoft, H), 0.0);
   float drySheen = pow(ndhSoft, 14.0) * 0.05;
-  float wetSpec = pow(ndh, 70.0 + 220.0 * wet) * 1.1 * wet;
+  float wetSpec = pow(ndhSoft, 60.0 + 160.0 * wet) * 1.0 * wet;
   // Tiny glints where pores catch the light through a film of water.
   float sparkleSeed = hash(floor(vUV * 700.0));
-  float glint = step(0.985, sparkleSeed) * pow(ndh, 60.0) * wet * (0.6 + 0.4 * sin(uSkin.z * 3.0 + sparkleSeed * 40.0));
+  float glint = step(0.9975, sparkleSeed) * pow(ndhSoft, 20.0) * smoothstep(0.5, 1.0, wet) * (0.5 + 0.5 * sin(uSkin.z * 3.0 + sparkleSeed * 40.0));
   float dewy = pow(ndhSoft, 30.0) * uSkin.w * 0.32;
   col *= mix(vec3(1.0), vec3(1.07, 0.95, 0.94), uSkin.x);
   // Wet skin reads a touch deeper and richer under the shine.
   col = mix(col, col * col * 1.18, wet * 0.18);
-  col += vec3(1.0, 0.985, 0.97) * (drySheen + wetSpec + glint * 1.4 + dewy);
+  col += vec3(1.0, 0.985, 0.97) * (drySheen + wetSpec + dewy);
+  col += vec3(glint) * 0.0;
   float a = alb.a * uColor.a;
   finalColor = vec4(col * a, a);
 }`

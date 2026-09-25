@@ -130,7 +130,8 @@ export class TreatmentView {
     const backdrop = new Sprite(this.assets.backdrop)
     backdrop.position.set(-BACKDROP_OFFSET, -BACKDROP_OFFSET)
     this.photoRoot.addChild(backdrop, this.artRoot)
-    this.artRoot.addChild(this.surface.root, this.targetsLayer, this.foam.root, this.featuresLayer)
+    this.artRoot.addChild(this.surface.root, this.foam.root, this.featuresLayer)
+    this.surface.insertBelow(treatment === 'facial' ? 'cream' : 'scrub', this.targetsLayer)
     this.world.addChild(this.photoRoot, this.overFx, this.flap, this.fx.root, this.revealLayer, this.toolLayer)
     this.root.addChild(this.world)
     this.hint.anchor.set(0.5)
@@ -206,7 +207,7 @@ export class TreatmentView {
       // Deep ones sit under the skin: a bigger, redder bump with no head yet.
       if (t.stage === 2) { b.scale.set(0.62 * t.size); b.tint = 0xffd0d0; head.visible = false }
     }
-    else if (t.kind === 'blackhead') { sprite(bits.blackhead(), 0.42 * t.size); const plug = sprite(bits.plug(), 0.4 * t.size, 0.1); plug.visible = false }
+    else if (t.kind === 'blackhead') { sprite(bits.blackhead(), 0.32 * t.size); const plug = sprite(bits.plug(), 0.4 * t.size, 0.1); plug.visible = false }
     else if (t.kind === 'drop' || t.kind === 'patch') { const r = sprite(bits.ring(), t.kind === 'drop' ? 0.9 : 0.7); if (t.kind === 'patch') r.tint = 0xf49ac0; r.visible = false }
     else if (t.kind === 'tip') {
       const f = HAND.fingers[t.n ?? 0]
@@ -336,6 +337,12 @@ export class TreatmentView {
   }
 
   snapshot(): SessionSnapshot { return this.session.snapshot() }
+
+  /** For browser checks: where an art-space point is on screen (CSS pixels). */
+  artToScreen(x: number, y: number) {
+    const rect = this.opts.app.canvas.getBoundingClientRect()
+    return { x: rect.left + this.world.x + x * this.world.scale.x, y: rect.top + this.world.y + y * this.world.scale.y }
+  }
 
   /** A late join: take the lead's state and redraw everything from it. */
   applySnapshot(snap: SessionSnapshot) {

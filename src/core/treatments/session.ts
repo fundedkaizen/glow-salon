@@ -455,7 +455,7 @@ export class TreatmentSession {
     for (const t of this.stepTargets()) {
       if (t.done) continue
       const d = dist(x, y, t.x, t.y)
-      if (d > radius + hitRadius(t) * 0.5) continue
+      if (d > radius * 0.6 + hitRadius(t) * 0.4) continue
       const lamp = this.lamp && dist(this.lamp.x, this.lamp.y, t.x, t.y) < 170 ? 2 : 1
       t.progress = clamp(t.progress + (rate * lamp) / (0.6 + 0.6 * t.size))
       this.emit({ e: 'target', id: t.id, progress: t.progress })
@@ -518,8 +518,8 @@ export class TreatmentSession {
     t.done = true
     t.progress = 1
     if (lamp) this.lampAssists++
-    if (t.kind === 'whitehead') { this.popped++; this.stampLayer('marks', t.x, t.y, 22 + 16 * t.size, 0.9, 'skin') }
-    if (t.kind === 'blackhead') { this.extracted++; this.stampLayer('marks', t.x, t.y, 12 + 6 * t.size, 0.35, 'skin') }
+    if (t.kind === 'whitehead') { this.popped++; this.stampLayer('marks', t.x, t.y, 12 + 9 * t.size, 0.85, 'skin') }
+    if (t.kind === 'blackhead') { this.extracted++; this.stampLayer('marks', t.x, t.y, 8 + 4 * t.size, 0.3, 'skin') }
     if (t.kind === 'drop') { this.stampLayer('serum', t.x, t.y, 96, 1, 'skin'); this.stampLayer(WET, t.x, t.y, 100, 0.9, 'everywhere') }
     if (t.kind === 'gem') t.n = this.targets.filter(o => o.kind === 'gem' && o.done).length
     this.emit({ e: 'targetDone', id: t.id, kind: t.kind, x: t.x, y: t.y, size: t.size, n: t.n })

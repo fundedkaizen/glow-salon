@@ -160,6 +160,13 @@ export class Surface {
     s.blendMode = 'normal'
   }
 
+  /** Put a container (the targets) between the layers, just under `id`. */
+  insertBelow(id: string, child: Container) {
+    const layer = this.layers.get(id)
+    const index = layer ? this.root.getChildIndex(layer.mesh) : this.root.children.length
+    this.root.addChildAt(child, index)
+  }
+
   setLayerMix(id: string, mix: number) { const l = this.layers.get(id); if (l) l.uniforms.uniforms.uP[0] = mix }
   setLayerTint(id: string, color: number, amount = 1) {
     const l = this.layers.get(id)
