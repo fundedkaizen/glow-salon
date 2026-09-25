@@ -30,9 +30,9 @@ function faceOutline(): number[] {
     const t = (i / 72) * Math.PI * 2
     const s = Math.sin(t), c = Math.cos(t)
     const top = c > 0
-    const ry = top ? 372 : 388
+    const ry = top ? 372 : 376
     // The lower half narrows into a soft jaw and chin; the temples narrow a little too.
-    const jaw = top ? 1 - 0.07 * c ** 4 : 1 - 0.34 * (-c) ** 1.9
+    const jaw = top ? 1 - 0.07 * c ** 4 : 1 - 0.33 * (-c) ** 2.2
     const cheek = 1 + 0.03 * Math.exp(-(((t % Math.PI) - Math.PI / 2) ** 2) * 6)
     pts.push(cx + 274 * s * jaw * cheek, cy - ry * c)
   }

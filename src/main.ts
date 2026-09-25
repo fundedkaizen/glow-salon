@@ -3,7 +3,7 @@ import { Application } from 'pixi.js'
 import { randomLook } from './core/customers.ts'
 import { makeRng } from './core/rng.ts'
 import { TreatmentView } from './render/treatment-view.ts'
-import { sfx } from './audio/sfx.ts'
+import { sfx, Sfx } from './audio/sfx.ts'
 import { startGame } from './game/game.ts'
 
 /**
@@ -29,6 +29,8 @@ async function boot() {
     app.ticker.add(t => tv.update(Math.min(0.05, t.deltaMS / 1000)))
     window.addEventListener('resize', () => tv.resize(app.screen.width, app.screen.height))
     window.addEventListener('pointerdown', () => sfx.unlock(), { once: true })
+    ;(window as unknown as { __sfx: typeof sfx; __Sfx: typeof Sfx }).__sfx = sfx
+    ;(window as unknown as { __Sfx: typeof Sfx }).__Sfx = Sfx
   } else {
     await startGame(app, ui)
   }
