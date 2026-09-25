@@ -630,15 +630,19 @@ function grimeSmear(ctx: Ctx, x: number, y: number, len: number, body: RGB, seed
     ctx.lineWidth = len * 0.35
     ctx.beginPath(); ctx.moveTo(x - dx * len / 2, y - dy * len / 2); ctx.quadraticCurveTo(x + dy * len * 0.15, y - dx * len * 0.15, x + dx * len / 2, y + dy * len / 2); ctx.stroke()
   })
-  for (let k = 0; k < 4; k++) {
-    const off = rr.range(-0.12, 0.12) * len
-    ctx.strokeStyle = rgba(shade(body, rr.range(-0.25, -0.05)), rr.range(0.12, 0.28))
-    ctx.lineWidth = rr.range(3, 7)
-    ctx.beginPath()
-    ctx.moveTo(x - dx * len * 0.4 - dy * off, y - dy * len * 0.4 + dx * off)
-    ctx.lineTo(x + dx * len * 0.4 - dy * off, y + dy * len * 0.4 + dx * off)
-    ctx.stroke()
-  }
+  // A few soft darker streaks along the wipe direction (blurred, so they read as smears, not sticks).
+  blurred(ctx, 3, () => {
+    for (let k = 0; k < 3; k++) {
+      const off = rr.range(-0.1, 0.1) * len
+      ctx.strokeStyle = rgba(shade(body, rr.range(-0.2, -0.05)), rr.range(0.1, 0.2))
+      ctx.lineWidth = rr.range(6, 12)
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(x - dx * len * 0.3 - dy * off, y - dy * len * 0.3 + dx * off)
+      ctx.quadraticCurveTo(x + dy * len * 0.1, y - dx * len * 0.1, x + dx * len * 0.3 - dy * off, y + dy * len * 0.3 + dx * off)
+      ctx.stroke()
+    }
+  })
 }
 
 /** Soften a layer sheet's edges (where the skin region clips it) so it fades out instead of cutting off. */
