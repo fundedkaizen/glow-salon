@@ -1,4 +1,4 @@
-import { BufferAttribute, BufferGeometry, CapsuleGeometry, Color, CylinderGeometry, Euler, Group, LatheGeometry, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Quaternion, SphereGeometry, TorusGeometry, Vector2, Vector3, type Material } from 'three'
+import { Box3, BufferAttribute, BufferGeometry, CapsuleGeometry, Color, CylinderGeometry, Euler, Group, LatheGeometry, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Quaternion, SphereGeometry, TorusGeometry, Vector2, Vector3, type Material } from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
@@ -60,6 +60,25 @@ export function tf(x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx,
 
 const _c = new Color()
 
+/**
+ * The layout check's record of every shape the kit adds (tests/floor3d-mesh.test.ts): its box in the room, the
+ * piece it belongs to and an optional tag (a worker's own stool, say). Off in the game.
+ */
+export type PartBox = { piece: string; tag: string; tier: Tier; box: Box3 }
+export const PARTS: { on: boolean; list: PartBox[]; piece: string; tag: string } = { on: false, list: [], piece: '', tag: '' }
+/** Build `fn` as one named piece (for the layout check). */
+export function piece<T>(name: string, fn: () => T): T {
+  const was = PARTS.piece
+  PARTS.piece = name
+  try { return fn() } finally { PARTS.piece = was }
+}
+/** Tag the shapes `fn` adds (for the layout check), e.g. the stool a worker sits on. */
+export function tagged<T>(tag: string, fn: () => T): T {
+  const was = PARTS.tag
+  PARTS.tag = tag
+  try { return fn() } finally { PARTS.tag = was }
+}
+
 export class Kit {
   private parts: Record<Tier, BufferGeometry[]> = { matte: [], satin: [], gloss: [], metal: [], glass: [], glow: [] }
   private stack: Matrix4[] = [new Matrix4()]
@@ -76,6 +95,7 @@ export class Kit {
     for (let i = 0; i < n; i++) { col[i * 3] = _c.r; col[i * 3 + 1] = _c.g; col[i * 3 + 2] = _c.b }
     g.setAttribute('color', new BufferAttribute(col, 3))
     this.parts[tier].push(g)
+    if (PARTS.on) { g.computeBoundingBox(); PARTS.list.push({ piece: PARTS.piece, tag: PARTS.tag, tier, box: g.boundingBox!.clone() }) }
     return this
   }
 

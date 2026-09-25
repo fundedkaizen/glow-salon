@@ -1,6 +1,6 @@
 import { CanvasTexture, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, MultiplyBlending, PlaneGeometry, type Object3D } from 'three'
 import { DOOR_Y0, DOOR_Y1 } from '../art/salon/room.ts'
-import { G, Kit, tf } from './kit.ts'
+import { G, Kit, piece, tf } from './kit.ts'
 import { PARTITIONS } from '../core/floor.ts'
 import { lenX, lenZ, ROOM3, toWorld } from './mapping.ts'
 import { buildGarden } from './garden.ts'
@@ -39,7 +39,9 @@ export type RoomParts = {
 
 const { w: W, d: D, wallH: H, wallT: T, lowWallH: LOW } = ROOM3
 
-export function buildRoom(): RoomParts {
+export function buildRoom(): RoomParts { return piece('room', buildShell) }
+
+function buildShell(): RoomParts {
   const group = new Group()
   group.name = 'room'
   const kit = new Kit()
@@ -124,21 +126,25 @@ export function buildRoom(): RoomParts {
   door.position.set(-W / 2 - T / 2, 0, doorZ0 + 0.08)
   const leafLen = doorZ1 - doorZ0 - 0.16
   const leaf = new Kit()
+  piece('skip:door', () => {
   leaf.add(G.box(0.06, 0.9, 0.08, 0.03), COLORS.frame, 'satin', tf(0, 0.5, 0.04))
   leaf.add(G.box(0.06, 0.9, 0.08, 0.03), COLORS.frame, 'satin', tf(0, 0.5, leafLen - 0.04))
   leaf.add(G.box(0.07, 0.08, leafLen, 0.03), COLORS.frame, 'satin', tf(0, 0.94, leafLen / 2))
   leaf.add(G.box(0.07, 0.08, leafLen, 0.03), COLORS.frame, 'satin', tf(0, 0.1, leafLen / 2))
   leaf.add(G.box(0.02, 0.76, leafLen - 0.12, 0.005), 0xcfe8f4, 'glass', tf(0, 0.52, leafLen / 2))
   leaf.add(G.box(0.03, 0.02, leafLen - 0.1, 0.005), COLORS.gold, 'metal', tf(0.02, 0.52, leafLen / 2))
+  })
   door.add(leaf.build())
   group.add(door)
   // The shop bell, on a little gold bracket from the inner pillar.
   const bell = new Group()
   bell.position.set(-W / 2 + 0.1, postH + 0.02, doorZ0 - 0.06)
   const bk = new Kit()
+  piece('skip:bell', () => {
   bk.add(G.lathe('bell', [[0, -0.16], [0.07, -0.16], [0.065, -0.12], [0.045, -0.06], [0.03, -0.03], [0, -0.02]]), COLORS.gold, 'metal')
   bk.add(G.sphere(0.018, 8), COLORS.brass, 'metal', tf(0, -0.17, 0))
   bk.add(G.cyl(0.004, 0.004, 0.02, 6), COLORS.brass, 'metal', tf(0, -0.01, 0))
+  })
   bell.add(bk.build(false))
   kit.add(G.box(0.26, 0.025, 0.025, 0.01), COLORS.gold, 'metal', tf(-W / 2 - T / 2 + 0.13, postH + 0.03, doorZ0 - 0.06))
   group.add(bell)
@@ -163,16 +169,16 @@ export function buildRoom(): RoomParts {
     glass.translateZ(0.006)
     group.add(glass)
   }
-  for (const w of WINDOW_SPOTS) { const p = onWall(w.wall, w.u); addWindow(p.x, p.z, p.ry) }
+  WINDOW_SPOTS.forEach((w, i) => { const p = onWall(w.wall, w.u); piece(`mount:window${i}`, () => addWindow(p.x, p.z, p.ry)) })
   const sconce = (x: number, z: number, ry: number) => kit.at(tf(x, 0, z, 0, ry, 0), () => {
     kit.add(G.box(0.12, 0.2, 0.05, 0.02), COLORS.gold, 'metal', tf(0, 1.96, 0.025))
     kit.add(G.sphere(0.09, 12), 0xfff1d6, 'glow', tf(0, 2.04, 0.11, 0, 0, 0, 1, 0.8, 1))
     kit.add(G.cyl(0.11, 0.06, 0.1, 14), COLORS.gold, 'metal', tf(0, 1.96, 0.11))
   })
-  for (const sp of SCONCE_SPOTS) { const p = onWall(sp.wall, sp.u); sconce(p.x, p.z, p.ry) }
+  SCONCE_SPOTS.forEach((sp, i) => { const p = onWall(sp.wall, sp.u); piece(`mount:sconce${i}`, () => sconce(p.x, p.z, p.ry)) })
 
   // ---- partitions: low white walls with rounded ends that split the salon into zones
-  for (const p of PARTITIONS) {
+  PARTITIONS.forEach((p, i) => piece(`mount:partition${i}`, () => {
     const a = toWorld(p.x + p.w / 2, p.y + p.h / 2)
     const alongX = p.w >= p.h
     const len = alongX ? lenX(p.w) : lenZ(p.h)
@@ -185,7 +191,7 @@ export function buildRoom(): RoomParts {
       for (const s of [-1, 1]) kit.add(G.cyl(th / 2 + 0.02, th / 2 + 0.02, 0.05, 16), 0xf6d2c8, 'satin', tf(s * (len - th) / 2, ph + 0.01, 0))
       kit.add(G.box(len - th, 0.03, th + 0.01, 0.01), COLORS.gold, 'metal', tf(0, 0.12, 0))
     })
-  }
+  }))
 
   group.add(kit.build())
   let tiers = '1,1'

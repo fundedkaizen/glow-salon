@@ -6,7 +6,7 @@ import { tierOf } from '../core/unlocks.ts'
 import { aquarium, bigPlant, decorItem, desk, facialChair, floorDecal, fountainGarden, lounge, nailDesk, pedicureChair, pendantLight, starShape, type Build } from './furniture.ts'
 import { G, tf } from './kit.ts'
 import { lenX, lenZ, ROOM3, toWorld } from './mapping.ts'
-import { AQUARIUM_SPOT, ART, decorSpot, LIGHTS, NEON, onWall, PLANT_SPOT, TROPHY, WIN, WINDOW_SPOTS } from './layout.ts'
+import { AQUARIUM_SPOT, ART, CURTAIN_Y, decorSpot, LIGHTS, NEON, onWall, PLANT_SPOT, TROPHY, WINDOW_SPOTS } from './layout.ts'
 import { setPalette, styleColor, STYLE_COLORS } from './styles.ts'
 import { rugTexture } from './textures.ts'
 
@@ -104,7 +104,7 @@ export function buildAt(b: Build, spot: Spot, ctx: SpotCtx): { anchor: Vector3; 
     if (d.place === 'wall') { decorItem(b, d.kind, pal, sp.x, sp.y, 0); around(sp.x, 0.1, 0.6, 0.3, 2.4); return { anchor: new Vector3(sp.x, sp.y + 0.6, 0.2), box } }
     if (d.place === 'ceiling') { decorItem(b, d.kind, pal, sp.x, sp.y, sp.z); around(sp.x, sp.z, 0.5, 0.5, 2.8); return { anchor: new Vector3(sp.x, 2.7, sp.z), box } }
     if (d.place === 'rug') { floorDecal(b, rugTexture('round', '#e6e1ea', '#cfc8d6', '#ffffff'), sp.x, sp.z, 2.3, 1.5, 0.008); around(sp.x, sp.z, 1.15, 0.75, 0.3); return { anchor: new Vector3(sp.x, 0.5, sp.z), box } }
-    if (d.place === 'window') { const w = WINDOW_SPOTS[0], p = onWall(w.wall, w.u); decorItem(b, 'curtains', pal, p.x, WIN.bottom + WIN.h + WIN.w / 2 + 0.08, p.z, p.ry); around(p.x, 0.2, 0.8, 0.3, 2.8); return { anchor: new Vector3(p.x, 2.7, 0.3), box } }
+    if (d.place === 'window') { const w = WINDOW_SPOTS[0], p = onWall(w.wall, w.u); decorItem(b, 'curtains', pal, p.x, CURTAIN_Y, p.z, p.ry); around(p.x, 0.2, 0.8, 0.3, 2.8); return { anchor: new Vector3(p.x, 2.7, 0.3), box } }
     decorItem(b, d.kind, pal, sp.x, sp.y, sp.z, sp.ry, sp.k)
     around(sp.x, sp.z, 0.6, 0.5, sp.y + 1.5)
     return { anchor: new Vector3(sp.x, sp.y + 1.8, sp.z), box }
@@ -112,7 +112,7 @@ export function buildAt(b: Build, spot: Spot, ctx: SpotCtx): { anchor: Vector3; 
   if (spot.kind === 'prop') {
     const id = spot.id
     const at = (x: number, y: number) => toWorld(x, y)
-    if (id === 'plant') { bigPlant(b, PLANT_SPOT.x, PLANT_SPOT.z, 0xf2e6df, 1.1); around(PLANT_SPOT.x, PLANT_SPOT.z, 0.5, 0.5, 1.8); return { anchor: new Vector3(PLANT_SPOT.x, 2.1, PLANT_SPOT.z), box } }
+    if (id === 'plant') { bigPlant(b, PLANT_SPOT.x, PLANT_SPOT.z, 0xf2e6df, PLANT_SPOT.k); around(PLANT_SPOT.x, PLANT_SPOT.z, 0.5, 0.5, 1.8); return { anchor: new Vector3(PLANT_SPOT.x, 2.1, PLANT_SPOT.z), box } }
     if (id === 'aquarium') { const { x, z } = AQUARIUM_SPOT; aquarium(b, x, z, Math.PI / 2); around(x, z, 0.35, 0.6, 1.4); return { anchor: new Vector3(x, 1.8, z), box } }
     if (id === 'rug') { const a = at(420, 560); floorDecal(b, rugTexture('cloud', '#e6e1ea', '#cfc8d6', '#ffffff'), a.x, a.z, 2.6, 1.9, 0.008); around(a.x, a.z, 1.3, 0.9, 0.3); return { anchor: new Vector3(a.x, 0.5, a.z), box } }
     if (id === 'chandelier') { const a = at(PROP_SPOTS.chandelier.x, 0); decorItem(b, 'chandelier', [0xf7c6d4, 0xffffff, 0xffffff, 0xfbe0a0], a.x, 2.45, 1.7); around(a.x, 1.7, 0.5, 0.5, 3); return { anchor: new Vector3(a.x, 2.9, 1.7), box } }

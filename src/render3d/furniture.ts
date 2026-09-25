@@ -1,6 +1,6 @@
 import { DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Vector3, type Texture } from 'three'
 import type { DecorKind } from '../core/decor.ts'
-import { G, Kit, shade, tf } from './kit.ts'
+import { G, Kit, shade, tagged, tf } from './kit.ts'
 import { COLORS } from './room.ts'
 import { lenX, lenZ } from './mapping.ts'
 import type { ShadeBlob } from './textures.ts'
@@ -107,13 +107,10 @@ export function lounge(b: Build, z: number, seatsX: number[], color = 0x6fd0c0, 
   })
   const mid = (seatsX[0] + seatsX[n - 1]) / 2
   b.blobs.push({ x: mid, z: z + 0.1, rx: (seatsX[n - 1] - seatsX[0]) / 2 + 0.6, rz: 0.6, a: 0.32 })
-  // Velvet (tier 2): a round coffee table with magazines. Grand (tier 3): brass lamps at the ends.
+  // Velvet (tier 2): round cushions on the end seats and a throw over the middle. Grand (tier 3): brass lamps at the ends.
   if (tier >= 2) {
-    kit.add(G.cyl(0.36, 0.36, 0.05, 28), C.marble, 'gloss', tf(mid, 0.42, z + 0.95))
-    kit.add(G.cyl(0.05, 0.08, 0.4, 12), C.gold, 'metal', tf(mid, 0.2, z + 0.95))
-    kit.add(G.box(0.26, 0.015, 0.18, 0.004), 0xf6a9c2, 'satin', tf(mid - 0.08, 0.455, z + 0.92, 0, 0.4, 0))
-    kit.add(G.cyl(0.05, 0.04, 0.1, 10), color, 'gloss', tf(mid + 0.12, 0.5, z + 1.0))
-    b.blobs.push({ x: mid, z: z + 0.95, rx: 0.42, rz: 0.42, a: 0.3 })
+    for (const i of [0, n - 1]) { const t = n > 1 ? i / (n - 1) - 0.5 : 0; kit.at(tf(seatsX[i], 0, z + Math.abs(t) * 0.35, 0, -t * 0.7, 0), () => kit.add(G.cyl(0.17, 0.17, 0.09, 18), 0xf6a9c2, 'satin', tf(0, 0.64, -0.14, 1.25, 0, 0))) }
+    kit.add(G.box(0.5, 0.03, 0.62, 0.015), 0xfff4ec, 'satin', tf(mid + 0.2, 0.495, z + 0.05, 0, 0.1, 0))
   }
   if (tier >= 3) for (const lx of [seatsX[0] - 0.62, seatsX[n - 1] + 0.62]) {
     kit.add(G.cyl(0.16, 0.18, 0.04, 16), C.gold, 'metal', tf(lx, 0.02, z + 0.3))
@@ -230,36 +227,37 @@ export function facialChair(b: Build, x: number, z: number, color = 0xf2798f, ti
   const f = { x, z, ry: 0 }
   kit.at(tf(x, 0, z), () => {
     // Pedestal.
-    kit.add(G.cyl(0.32, 0.38, 0.05, 24), C.gold, 'metal', tf(0.05, 0.025, 0))
-    kit.add(G.cyl(0.09, 0.12, 0.36, 14), C.gold, 'metal', tf(0.05, 0.22, 0))
-    kit.add(G.box(1.2, 0.08, 0.5, 0.03), C.gold, 'metal', tf(0.1, 0.4, 0))
-    // Seat, reclined back and leg rest.
-    kit.add(G.box(0.6, 0.16, 0.62, 0.07), color, 'satin', tf(0.05, 0.5, 0))
-    kit.add(G.box(0.8, 0.14, 0.6, 0.07), color, 'satin', tf(-0.52, 0.72, 0, 0, 0, -0.62))
-    kit.add(G.box(0.24, 0.12, 0.3, 0.06), shade(color, 0.15), 'satin', tf(-0.86, 1.0, 0, 0, 0, -0.62))
-    kit.add(G.box(0.78, 0.13, 0.56, 0.06), color, 'satin', tf(0.72, 0.47, 0, 0, 0, 0.1))
+    kit.add(G.cyl(0.32, 0.38, 0.05, 24), C.gold, 'metal', tf(-0.05, 0.025, 0))
+    kit.add(G.cyl(0.09, 0.12, 0.36, 14), C.gold, 'metal', tf(-0.05, 0.22, 0))
+    kit.add(G.box(1.1, 0.08, 0.5, 0.03), C.gold, 'metal', tf(-0.03, 0.4, 0))
+    // Seat, reclined back and leg rest (short enough that the next station's worker stands clear of it).
+    kit.add(G.box(0.6, 0.16, 0.62, 0.07), color, 'satin', tf(-0.05, 0.5, 0))
+    kit.add(G.box(0.8, 0.14, 0.6, 0.07), color, 'satin', tf(-0.62, 0.72, 0, 0, 0, -0.62))
+    kit.add(G.box(0.24, 0.12, 0.3, 0.06), shade(color, 0.15), 'satin', tf(-0.96, 1.0, 0, 0, 0, -0.62))
+    kit.add(G.box(0.62, 0.13, 0.56, 0.06), color, 'satin', tf(0.52, 0.47, 0, 0, 0, 0.1))
     // Plush (tier 2): tufting and a bolster. Luxe (tier 3): a rose-gold arch over the head end.
     if (tier >= 2) {
-      for (let i = 0; i < 3; i++) for (const bz of [-0.15, 0.15]) kit.add(G.sphere(0.022, 6), shade(color, -0.22), 'satin', tf(-0.32 - i * 0.16, 0.66 + i * 0.12, bz, 0, 0, -0.62))
-      kit.add(G.capsule(0.07, 0.4, 10), C.cream, 'satin', tf(-0.78, 0.98, 0, Math.PI / 2, 0, 0))
+      for (let i = 0; i < 3; i++) for (const bz of [-0.15, 0.15]) kit.add(G.sphere(0.022, 6), shade(color, -0.22), 'satin', tf(-0.42 - i * 0.16, 0.66 + i * 0.12, bz, 0, 0, -0.62))
+      kit.add(G.capsule(0.07, 0.4, 10), C.cream, 'satin', tf(-0.88, 0.98, 0, Math.PI / 2, 0, 0))
     }
     if (tier >= 3) {
-      kit.add(G.torus(0.62, 0.035, Math.PI, 28), 0xe8b4a0, 'metal', tf(-0.55, 0.3, 0, 0, Math.PI / 2, 0))
-      kit.add(G.cyl(0.4, 0.44, 0.04, 28), 0xe8b4a0, 'metal', tf(0.05, 0.05, 0))
+      kit.add(G.torus(0.62, 0.035, Math.PI, 28), 0xe8b4a0, 'metal', tf(-0.65, 0.3, 0, 0, Math.PI / 2, 0))
+      kit.add(G.cyl(0.4, 0.44, 0.04, 28), 0xe8b4a0, 'metal', tf(-0.05, 0.05, 0))
     }
     // Arm rests.
-    for (const s of [-1, 1]) kit.add(G.box(0.46, 0.06, 0.08, 0.03), C.gold, 'metal', tf(0.02, 0.66, s * 0.34))
-    for (const s of [-1, 1]) kit.add(G.box(0.4, 0.07, 0.1, 0.04), shade(color, 0.1), 'satin', tf(0.02, 0.7, s * 0.34))
-    // Magnifier lamp on an arm over the head end, and a trolley.
-    kit.add(G.cyl(0.14, 0.16, 0.04, 16), 0xf2f0f4, 'satin', tf(-1.0, 0.02, -0.55))
-    kit.add(G.cyl(0.015, 0.015, 1.5, 8), 0xf2f0f4, 'satin', tf(-1.0, 0.77, -0.55))
-    kit.add(G.cyl(0.012, 0.012, 0.6, 8), 0xf2f0f4, 'satin', tf(-0.82, 1.52, -0.35, 0.7, 0, -0.9))
-    kit.add(G.torus(0.13, 0.025, Math.PI * 2, 20), 0xf2f0f4, 'satin', tf(-0.62, 1.42, -0.12, 1.2, 0, 0.3))
-    kit.add(G.cyl(0.12, 0.12, 0.01, 18), 0xdff3ff, 'glass', tf(-0.62, 1.42, -0.12, 1.2 - Math.PI / 2, 0, 0.3))
-    trolley(kit, -1.05, 0.62)
+    for (const s of [-1, 1]) kit.add(G.box(0.46, 0.06, 0.08, 0.03), C.gold, 'metal', tf(-0.08, 0.66, s * 0.34))
+    for (const s of [-1, 1]) kit.add(G.box(0.4, 0.07, 0.1, 0.04), shade(color, 0.1), 'satin', tf(-0.08, 0.7, s * 0.34))
+    // Magnifier lamp on an arm over the head end, behind the chair; the trolley behind the back, clear of the worker.
+    kit.add(G.cyl(0.14, 0.16, 0.04, 16), 0xf2f0f4, 'satin', tf(-1.05, 0.02, -0.52))
+    kit.add(G.cyl(0.015, 0.015, 1.5, 8), 0xf2f0f4, 'satin', tf(-1.05, 0.77, -0.52))
+    kit.add(G.cyl(0.012, 0.012, 0.6, 8), 0xf2f0f4, 'satin', tf(-0.9, 1.52, -0.32, 0.7, 0, -0.9))
+    kit.add(G.torus(0.13, 0.025, Math.PI * 2, 20), 0xf2f0f4, 'satin', tf(-0.72, 1.42, -0.1, 1.2, 0, 0.3))
+    kit.add(G.cyl(0.12, 0.12, 0.01, 18), 0xdff3ff, 'glass', tf(-0.72, 1.42, -0.1, 1.2 - Math.PI / 2, 0, 0.3))
+    trolley(kit, -0.3, -0.64)
   })
-  b.blobs.push({ x: x + 0.05, z, rx: 1.1, rz: 0.55, a: 0.32 })
-  return { seat: node(f, 0.05, 0.56, 0, Math.PI / 2), work: node(f, WORK.x, 0, WORK.z, Math.PI / 2 - 0.3), recline: 1.0, seatKind: 'chair' }
+  b.blobs.push({ x: x - 0.05, z, rx: 1.05, rz: 0.55, a: 0.32 })
+  // The therapist stands beside the head end, on the front side.
+  return { seat: node(f, -0.05, 0.56, 0, Math.PI / 2), work: node(f, WORK.x - 0.02, 0, 0.52, Math.PI / 2 - 0.5), recline: 1.0, seatKind: 'chair' }
 }
 
 function trolley(kit: Kit, x: number, z: number) {
@@ -301,13 +299,15 @@ export function pedicureChair(b: Build, x: number, z: number, color = 0xa78be8, 
       for (const bz of [-0.2, 0, 0.2]) kit.add(G.sphere(0.045, 8), C.gold, 'metal', tf(0.71, 1.58, bz))
       kit.add(G.torus(0.34, 0.04, Math.PI * 2, 28), C.gold, 'metal', tf(-0.42, 0.24, 0, Math.PI / 2, 0, 0))
     }
-    // A little stool for the therapist, and a towel.
-    kit.add(G.cyl(0.18, 0.16, 0.08, 16), shade(color, 0.2), 'satin', tf(-1.05, 0.42, 0.28))
-    kit.add(G.cyl(0.02, 0.02, 0.38, 6), C.gold, 'metal', tf(-1.05, 0.19, 0.28))
+    // A little stool for the therapist (they sit on it to work), and a towel.
+    tagged('worker-seat', () => {
+      kit.add(G.cyl(0.18, 0.16, 0.08, 16), shade(color, 0.2), 'satin', tf(-1.05, 0.42, 0.5))
+      kit.add(G.cyl(0.02, 0.02, 0.38, 6), C.gold, 'metal', tf(-1.05, 0.19, 0.5))
+    })
     kit.add(G.box(0.3, 0.06, 0.2, 0.03), C.white, 'matte', tf(0.3, 0.33, 0.52))
   })
   b.blobs.push({ x: x + 0.05, z, rx: 0.95, rz: 0.55, a: 0.32 })
-  return { seat: node(f, 0.3, 0.6, 0, -Math.PI / 2), work: node(f, WORK.x, 0, WORK.z, Math.PI / 2 - 0.4), feet: node(f, -0.42, 0.12, 0, 0), recline: 0.15, seatKind: 'pedicure' }
+  return { seat: node(f, 0.3, 0.6, 0, -Math.PI / 2), work: node(f, -1.05, 0, 0.5, Math.PI / 2 - 0.4), feet: node(f, -0.42, 0.12, 0, 0), recline: 0.15, seatKind: 'pedicure' }
 }
 
 /** The nail desk: a marble-topped desk with a lamp and a polish rack, a stool for the customer on the right. */
@@ -315,40 +315,42 @@ export function nailDesk(b: Build, x: number, z: number, color = 0xffc94d, tier 
   const { kit } = b
   const f = { x, z, ry: 0 }
   kit.at(tf(x, 0, z), () => {
-    const dx = -0.55
-    kit.add(G.box(0.62, 0.7, 1.15, 0.05), C.white, 'satin', tf(dx, 0.35, 0))
-    kit.add(G.box(0.56, 0.5, 0.02, 0.01), color, 'satin', tf(dx, 0.35, 0.58))
-    kit.add(G.box(0.72, 0.05, 1.25, 0.02), C.marble, 'gloss', tf(dx, 0.73, 0))
-    kit.add(G.box(0.74, 0.015, 1.27, 0.006), C.gold, 'metal', tf(dx, 0.7, 0))
+    const dx = -0.52
+    kit.add(G.box(0.54, 0.7, 1.15, 0.05), C.white, 'satin', tf(dx, 0.35, 0))
+    kit.add(G.box(0.48, 0.5, 0.02, 0.01), color, 'satin', tf(dx, 0.35, 0.58))
+    kit.add(G.box(0.56, 0.05, 1.25, 0.02), C.marble, 'gloss', tf(dx, 0.73, 0))
+    kit.add(G.box(0.58, 0.015, 1.27, 0.006), C.gold, 'metal', tf(dx, 0.7, 0))
     // A hand cushion, a lamp and a rack of polish.
     kit.add(G.box(0.22, 0.06, 0.16, 0.03), C.pink, 'satin', tf(dx + 0.12, 0.78, 0))
     kit.add(G.cyl(0.08, 0.1, 0.02, 14), C.gold, 'metal', tf(dx - 0.18, 0.76, -0.45))
     kit.add(G.cyl(0.01, 0.01, 0.42, 6), C.gold, 'metal', tf(dx - 0.18, 0.96, -0.45))
     kit.add(G.cyl(0.02, 0.1, 0.12, 14), C.white, 'satin', tf(dx - 0.08, 1.15, -0.4, 0, 0, -0.6))
     kit.add(G.sphere(0.04, 8), 0xfff0cf, 'glow', tf(dx - 0.05, 1.11, -0.4))
-    kit.add(G.box(0.1, 0.36, 0.5, 0.02), C.white, 'satin', tf(dx - 0.28, 0.93, 0.28))
+    kit.add(G.box(0.1, 0.36, 0.5, 0.02), C.white, 'satin', tf(dx - 0.2, 0.93, 0.28))
     const polish = [0xf07aa0, 0xe2729a, 0xcdbdf2, 0xa9e3cf, 0xfbd9a0, 0xf5a99a, 0x9f86e0, 0x6fd3ad]
-    polish.forEach((c, i) => kit.add(G.cyl(0.018, 0.018, 0.05, 8), c, 'gloss', tf(dx - 0.24, 0.84 + Math.floor(i / 4) * 0.13, 0.12 + (i % 4) * 0.1)))
+    polish.forEach((c, i) => kit.add(G.cyl(0.018, 0.018, 0.05, 8), c, 'gloss', tf(dx - 0.16, 0.84 + Math.floor(i / 4) * 0.13, 0.12 + (i % 4) * 0.1)))
     // The customer's stool.
     kit.add(G.cyl(0.2, 0.18, 0.1, 18), color, 'satin', tf(0.14, 0.52, 0))
     kit.add(G.cyl(0.025, 0.025, 0.45, 8), C.gold, 'metal', tf(0.14, 0.24, 0))
     kit.add(G.torus(0.14, 0.012, Math.PI * 2, 18), C.gold, 'metal', tf(0.14, 0.2, 0, Math.PI / 2, 0, 0))
     kit.add(G.cyl(0.16, 0.18, 0.02, 16), C.gold, 'metal', tf(0.14, 0.01, 0))
     // The therapist's chair on the far side.
-    const tx = WORK.x - 0.05
-    kit.add(G.cyl(0.19, 0.17, 0.09, 16), shade(color, -0.1), 'satin', tf(tx, 0.5, 0))
-    kit.add(G.box(0.08, 0.36, 0.34, 0.04), shade(color, -0.1), 'satin', tf(tx - 0.2, 0.72, 0))
-    kit.add(G.cyl(0.025, 0.025, 0.45, 8), C.gold, 'metal', tf(tx, 0.24, 0))
-    kit.add(G.cyl(0.16, 0.18, 0.02, 16), C.gold, 'metal', tf(tx, 0.01, 0))
+    const tx = WORK.x + 0.02
+    tagged('worker-seat', () => {
+      kit.add(G.cyl(0.17, 0.15, 0.09, 16), shade(color, -0.1), 'satin', tf(tx, 0.5, 0))
+      kit.add(G.box(0.07, 0.36, 0.32, 0.03), shade(color, -0.1), 'satin', tf(tx - 0.16, 0.72, 0))
+      kit.add(G.cyl(0.025, 0.025, 0.45, 8), C.gold, 'metal', tf(tx, 0.24, 0))
+      kit.add(G.cyl(0.16, 0.18, 0.02, 16), C.gold, 'metal', tf(tx, 0.01, 0))
+    })
     // Ring light (tier 2); a crystal top (tier 3).
     if (tier >= 2) {
       kit.add(G.cyl(0.01, 0.01, 0.5, 6), C.gold, 'metal', tf(dx - 0.1, 0.98, 0.42))
       kit.add(G.torus(0.14, 0.022, Math.PI * 2, 24), 0xfff6ea, 'glow', tf(dx - 0.1, 1.28, 0.42, 0, Math.PI / 2, 0))
     }
-    if (tier >= 3) kit.add(G.box(0.7, 0.03, 1.2, 0.015), 0xeaf6ff, 'glass', tf(dx, 0.775, 0))
+    if (tier >= 3) kit.add(G.box(0.54, 0.03, 1.2, 0.015), 0xeaf6ff, 'glass', tf(dx, 0.775, 0))
   })
   b.blobs.push({ x: x - 0.4, z, rx: 1.0, rz: 0.7, a: 0.3 })
-  return { seat: node(f, 0.14, 0.58, 0, -Math.PI / 2), work: node(f, WORK.x - 0.05, 0, 0, Math.PI / 2), recline: 0, seatKind: 'stool' }
+  return { seat: node(f, 0.14, 0.58, 0, -Math.PI / 2), work: node(f, WORK.x + 0.02, 0, 0, Math.PI / 2), recline: 0, seatKind: 'stool' }
 }
 
 /** Where a station will go: a folding screen with a little sign (more room is coming). */
@@ -729,18 +731,23 @@ export function vanityMirror(b: Build, x: number, z: number, ry = 0, frame = C.g
   b.blobs.push({ x, z, rx: 0.45, rz: 0.3, a: 0.28 })
 }
 
-/** The day-one waiting corner: two armchairs facing each other across a round coffee table, and a plant. */
+/**
+ * The lounge's armchairs: two armchairs facing each other along X across a round coffee table, each turned a
+ * little towards the sofa behind (-Z). `w` x `d` is the group's footprint, centred at (x, z).
+ */
 export function waitingCorner(b: Build, x: number, z: number, w: number, d: number) {
   const { kit } = b
+  void d
   const chair = (cx: number, cz: number, ry: number, color: number) => kit.at(tf(cx, 0, cz, 0, ry, 0), () => {
-    kit.add(G.box(0.72, 0.28, 0.7, 0.13), shade(color, -0.05), 'satin', tf(0, 0.22, 0))
-    kit.add(G.box(0.62, 0.14, 0.56, 0.07), shade(color, 0.12), 'satin', tf(0, 0.42, 0.05))
-    kit.add(G.box(0.72, 0.52, 0.22, 0.11), color, 'satin', tf(0, 0.62, -0.26, -0.18, 0, 0))
-    for (const s of [-1, 1]) kit.add(G.box(0.16, 0.3, 0.64, 0.08), color, 'satin', tf(s * 0.33, 0.46, 0))
-    for (const fx of [-0.28, 0.28]) for (const fz of [-0.25, 0.25]) kit.add(G.cyl(0.025, 0.02, 0.12, 6), C.gold, 'metal', tf(fx, 0.06, fz))
+    kit.add(G.box(0.72, 0.28, 0.66, 0.13), shade(color, -0.05), 'satin', tf(0, 0.22, 0))
+    kit.add(G.box(0.46, 0.14, 0.5, 0.07), shade(color, 0.12), 'satin', tf(0, 0.42, 0.05))
+    kit.add(G.box(0.72, 0.52, 0.2, 0.1), color, 'satin', tf(0, 0.62, -0.24, -0.18, 0, 0))
+    for (const s of [-1, 1]) kit.add(G.box(0.14, 0.3, 0.6, 0.07), color, 'satin', tf(s * 0.3, 0.46, 0.02))
+    for (const fx of [-0.27, 0.27]) for (const fz of [-0.24, 0.24]) kit.add(G.cyl(0.025, 0.02, 0.12, 6), C.gold, 'metal', tf(fx, 0.06, fz))
   })
-  chair(x - w / 2 + 0.36, z, Math.PI / 2 - 0.25, 0xf4a3bd)
-  chair(x + w / 2 - 0.36, z, -Math.PI / 2 + 0.25, 0xf4a3bd)
+  const cx = w / 2 - 0.4
+  chair(x - cx, z, Math.PI / 2 + 0.3, 0xf4a3bd)
+  chair(x + cx, z, -Math.PI / 2 - 0.3, 0xf4a3bd)
   kit.at(tf(x, 0, z), () => {
     kit.add(G.cyl(0.3, 0.3, 0.05, 26), C.marble, 'gloss', tf(0, 0.44, 0))
     kit.add(G.cyl(0.04, 0.07, 0.42, 12), C.gold, 'metal', tf(0, 0.21, 0))
@@ -748,6 +755,5 @@ export function waitingCorner(b: Build, x: number, z: number, w: number, d: numb
     kit.add(G.cyl(0.05, 0.04, 0.1, 10), 0xffffff, 'gloss', tf(0.1, 0.52, -0.05))
     for (const [fx, fz, c] of [[0.1, -0.05, 0xf48fb1], [0.13, -0.02, 0xffffff], [0.08, -0.08, 0xfff3a8]] as const) kit.add(G.sphere(0.035, 6), c, 'matte', tf(fx, 0.6, fz))
   })
-  plantInPot(kit, x, 0, z - d / 2 - 0.05, 1.1)
-  b.blobs.push({ x, z, rx: w / 2 + 0.2, rz: d / 2 + 0.2, a: 0.3 })
+  b.blobs.push({ x, z, rx: w / 2 + 0.1, rz: 0.55, a: 0.3 })
 }

@@ -38,19 +38,19 @@ export const PARTITIONS: Rect[] = [
 ]
 
 /**
- * Fixed furniture with a footprint (it blocks walking): a waiting corner of armchairs round a coffee table, and a
- * little fountain planter in the front right corner.
+ * Fixed furniture with a footprint (it blocks walking): two armchairs round a coffee table facing the sofa (the
+ * lounge group, clear of the desk and of the way in from the door), and a little fountain planter in the front
+ * right corner.
  */
 export const FIXTURES: Record<'waiting' | 'planter', Rect> = {
-  // Clear of the desk's front (two tiles) and of the players' start spots, with a way past it on the door side.
-  waiting: { x: 170, y: 435, w: 100, h: 160 },
+  waiting: { x: 420, y: 385, w: 210, h: 72 },
   planter: { x: 1190, y: 702, w: 74, h: 86 },
 }
 
 export const SOFA = { x: 380, y: 196, w: 250, h: 92 }
 export const SOFA_SEATS: Pt[] = [{ x: 420, y: 262 }, { x: 480, y: 262 }, { x: 540, y: 262 }, { x: 600, y: 262 }]
 /** More customers than seats wait standing near the sofa. */
-export const STANDING: Pt[] = [{ x: 360, y: 350 }, { x: 430, y: 360 }, { x: 500, y: 355 }, { x: 570, y: 360 }, { x: 640, y: 350 }]
+export const STANDING: Pt[] = [{ x: 385, y: 336 }, { x: 445, y: 340 }, { x: 505, y: 338 }, { x: 565, y: 340 }, { x: 620, y: 336 }]
 
 /** Station slots: two rows of three on the right, then two more along the front of the salon. */
 export const SLOTS: Pt[] = [
@@ -88,13 +88,13 @@ export const PROP_SPOTS: Record<string, Pt> = {
   neon: { x: 505, y: 80 },
   aquarium: { x: 70, y: 420 },
   chandelier: { x: 640, y: 210 },
-  // The fountain garden (a salon upgrade, unlocks.ts): the centrepiece of the room, as in Serenity's salons.
-  'up-fountain': { x: 560, y: 470 },
+  // The fountain garden (a salon upgrade, unlocks.ts): the little planter in the front right corner grows into it.
+  'up-fountain': { x: 1202, y: 734 },
 }
 export const PROP_BLOCK: Record<string, Rect> = {
   plant: { x: 1180, y: 190, w: 70, h: 60 },
   aquarium: { x: 40, y: 380, w: 70, h: 90 },
-  'up-fountain': { x: 506, y: 430, w: 108, h: 80 },
+  'up-fountain': { x: 1140, y: 684, w: 124, h: 100 },
 }
 
 // ------------------------------------------------------------------ pathfinding

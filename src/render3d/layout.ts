@@ -26,6 +26,8 @@ export const TOP_MARGIN = 0.14
 
 /** The arched windows: glass width, sill height, straight height (the arch adds half the width). */
 export const WIN = { w: 1.2, bottom: 0.92, h: 0.95, frame: 0.13 }
+/** The curtain pole over a window, just under the fairy lights. */
+export const CURTAIN_Y = WIN.bottom + WIN.h + WIN.w / 2 + 0.01
 export const WINDOW_SPOTS: { wall: Wall; u: number }[] = [
   { wall: 'back', u: 8.0 }, { wall: 'back', u: 11.9 },
   { wall: 'right', u: 1.35 }, { wall: 'right', u: 6.0 },
@@ -75,25 +77,25 @@ const around = (x: number, z: number, w: number, d: number): Box => ({ x0: x - w
 
 /** The six floor decor slots (core decor.ts DECOR_SLOTS.floor, by index), with the footprint a piece may use. */
 export const FLOOR_SLOTS: { x: number; z: number; w: number; d: number; ry: number }[] = [
-  { x: 1.55, z: 0.5, w: 1.2, d: 0.7, ry: 0 },
-  { x: 3.05, z: 0.5, w: 1.2, d: 0.7, ry: 0 },
-  { x: 5.0, z: 0.5, w: 0.9, d: 0.7, ry: 0 },
+  { x: 1.55, z: 0.56, w: 1.2, d: 0.7, ry: 0 },
+  { x: 3.05, z: 0.56, w: 1.2, d: 0.7, ry: 0 },
+  { x: 4.95, z: 0.56, w: 0.9, d: 0.7, ry: 0 },
   { x: 0.3, z: 6.62, w: 1.0, d: 0.6, ry: Math.PI },
-  { x: -5.9, z: 6.55, w: 1.0, d: 0.6, ry: Math.PI - 0.5 },
+  { x: -5.85, z: 6.4, w: 1.0, d: 0.6, ry: Math.PI },
   { x: 3.6, z: 6.62, w: 1.0, d: 0.6, ry: Math.PI },
 ]
 /** The eight gift stands (core decor.ts GIFT_SLOTS, by index), each about 0.44 m round. */
 export const GIFT_SPOTS: { x: number; z: number; ry: number }[] = [
   { x: -6.1, z: 2.2, ry: Math.PI / 2 }, { x: 3.95, z: 0.35, ry: 0 }, { x: 6.1, z: 3.25, ry: -Math.PI / 2 }, { x: 1.3, z: 6.62, ry: Math.PI },
-  { x: 2.2, z: 6.62, ry: Math.PI }, { x: 5.2, z: 6.62, ry: Math.PI }, { x: -1.4, z: 6.62, ry: Math.PI }, { x: -3.0, z: 6.62, ry: Math.PI },
+  { x: 2.2, z: 6.62, ry: Math.PI }, { x: 4.45, z: 6.62, ry: Math.PI }, { x: -1.4, z: 6.62, ry: Math.PI }, { x: -3.45, z: 6.62, ry: Math.PI },
 ]
 export const GIFT_R = 0.44
 /** Fixed pieces: the tea cart, the front lamp, the welcome sign, the topiaries, the plant corner, the aquarium. */
-export const TEA_CART = { x: -2.87, z: 0.42, ry: Math.PI / 2, w: 0.42, d: 0.7 }
-export const FRONT_LAMP = { x: -2.2, z: 6.6 }
+export const TEA_CART = { x: -2.9, z: 0.36, ry: Math.PI / 2, w: 0.42, d: 0.7 }
+export const FRONT_LAMP = { x: -2.6, z: 6.62 }
 export const WELCOME = { x: -4.92, z: 6.11 }
 export const TOPIARIES: { x: number; z: number; k: number }[] = [{ x: 0.3, z: 0.34, k: 1 }, { x: -3.05, z: 1.7, k: 0.8 }, { x: 4.5, z: 3.74, k: 0.8 }]
-export const PLANT_SPOT = { x: W / 2 - 0.45, z: 0.45, r: 0.8 }
+export const PLANT_SPOT = { x: W / 2 - 0.55, z: 0.62, r: 0.8, k: 0.95 }
 export const AQUARIUM_SPOT = { x: -W / 2 + 0.3, z: toWorld(0, 460).z, w: 0.5, d: 1.1 }
 
 /** The floor size of a decor piece of each kind, before it is fitted to its slot. */
@@ -114,7 +116,6 @@ export function floorItems(owned: readonly string[], slots: number[], decorOrder
   out.push({ id: 'desk', ...rectBox(DESK), kind: 'furniture' })
   out.push({ id: 'lounge', ...rectBox(SOFA), kind: 'furniture' })
   out.push({ id: 'waiting', ...rectBox(FIXTURES.waiting), kind: 'furniture' })
-  out.push({ id: 'planter', ...rectBox(FIXTURES.planter), kind: 'furniture' })
   PARTITIONS.forEach((p, i) => out.push({ id: `partition${i}`, ...rectBox(p), kind: 'wall' }))
   for (const s of slots) if (s >= 0) out.push({ id: `station${s}`, ...rectBox(stationRect(s)), kind: 'station' })
   out.push({ id: 'tea', ...around(TEA_CART.x, TEA_CART.z, TEA_CART.w, TEA_CART.d), kind: 'furniture' })
@@ -122,6 +123,7 @@ export function floorItems(owned: readonly string[], slots: number[], decorOrder
   out.push({ id: 'welcome', ...around(WELCOME.x, WELCOME.z, 0.5, 0.45), kind: 'furniture' })
   TOPIARIES.forEach((t, i) => out.push({ id: `topiary${i}`, ...around(t.x, t.z, 0.5 * t.k, 0.5 * t.k), kind: 'plant' }))
   if (owned.includes('plant')) out.push({ id: 'plant', ...around(PLANT_SPOT.x, PLANT_SPOT.z, PLANT_SPOT.r, PLANT_SPOT.r), kind: 'plant' })
+  if (!owned.includes('up-fountain')) out.push({ id: 'planter', ...rectBox(FIXTURES.planter), kind: 'furniture' })
   if (owned.includes('aquarium')) out.push({ id: 'aquarium', ...around(AQUARIUM_SPOT.x, AQUARIUM_SPOT.z, AQUARIUM_SPOT.w, AQUARIUM_SPOT.d), kind: 'furniture' })
   if (owned.includes('up-fountain')) out.push({ id: 'up-fountain', ...rectBox(PROP_BLOCK['up-fountain']), kind: 'furniture' })
   const decor = placeDecor(owned, decorOrder)
@@ -156,7 +158,13 @@ export function clearZones(slots: number[]): (Box & { id: string; station?: numb
 /** The entrance path outside, from the door to the street: the garden keeps it clear. */
 export function entrancePath(): Box {
   const z0 = toWorld(0, DOOR_Y0).z, z1 = toWorld(0, DOOR_Y1).z
-  return { x0: -W / 2 - 3.6, x1: -W / 2 - ROOM3.wallT, z0: z0 + 0.05, z1: z1 - 0.05 }
+  return { x0: STREET.fence, x1: -W / 2 - ROOM3.wallT, z0: z0 + 0.05, z1: z1 - 0.05 }
+}
+
+/** The door opening in the left wall (metres): its middle, and the round pillars either side of it. */
+export function doorway() {
+  const z0 = toWorld(0, DOOR_Y0).z, z1 = toWorld(0, DOOR_Y1).z
+  return { z0, z1, zm: (z0 + z1) / 2, x: -W / 2 - ROOM3.wallT / 2, pillars: [z0 - 0.06, z1 + 0.06], pillarR: 0.15, pillarH: 1.25 }
 }
 
 /** Every decor item the shop sells, for the layout test (any of them can stand in any slot of its kind). */
@@ -165,56 +173,63 @@ export { H as WALL_H3 }
 
 // ------------------------------------------------------------------ outside: the street-front garden
 
-export type OutsideKind = 'bed' | 'topiary' | 'fence' | 'post' | 'mailbox' | 'sign' | 'bench' | 'lamp' | 'tree' | 'rack' | 'streetlamp' | 'hedge' | 'shrub' | 'stone' | 'paver' | 'awning'
+export type OutsideKind = 'bed' | 'topiary' | 'fence' | 'post' | 'mailbox' | 'sign' | 'bench' | 'lamp' | 'tree' | 'rack' | 'streetlamp' | 'hedge' | 'shrub' | 'stone' | 'paver'
 export type OutsideItem = Box & { id: string; kind: OutsideKind; solid: boolean; h: number; seed: number }
 
-/** The street runs along the door side: the fence line, the pavement and the road, in X (metres). */
-export const STREET = { fence: -10.3, paveIn: -10.5, paveOut: -12.4, roadOut: -19 }
+/** The street runs along the door side, close to the salon: the fence line, the pavement and the road, in X (metres). */
+export const STREET = { fence: -9.1, paveIn: -9.3, paveOut: -11.2, roadOut: -18 }
+/** The entrance set is laid out symmetrically about the door's middle: the pots flank the pillars, the gate posts the path. */
+export const ENTRANCE = { potOut: 0.36, potGap: 0.42, potR: 0.25, pathW: 1.1, gateGap: 0.14 }
 
 /**
- * The garden outside, as data (the validator keeps the entrance path clear and nothing overlapping): flower beds
- * along the walls, topiaries flanking the door, pavers to the street, a bench and a lamp post, small trees, stepping
- * stones, a low fence with gold caps (open at the path), a mailbox and the lit salon sign at the gate; along the
- * street a kerbed pavement with streetlamps and a bike rack; along the front a lawn edged with varied hedges.
+ * The garden outside, as data (the validators keep the entrance path clear, the entrance set symmetric about the
+ * door and nothing overlapping): flower beds along the door wall, two potted topiaries flanking the door outside
+ * its pillars, pavers straight out to a gate in a low fence with gold caps, the lit salon sign on one side of the
+ * gate and the mailbox on the other, a bench by a lamp post and round trees in the garden, stepping stones to the
+ * bench; along the street a kerbed pavement with streetlamps at its outer edge and a bike rack; along the front a
+ * lawn edged with hedges of clustered leaves.
  */
 export function outsideItems(): OutsideItem[] {
   const T = ROOM3.wallT
   const out: OutsideItem[] = []
   let seed = 1
   const add = (id: string, kind: OutsideKind, x: number, z: number, w: number, d: number, h: number, solid = true) => out.push({ id, kind, ...around(x, z, w, d), solid, h, seed: seed++ })
-  const path = entrancePath()
-  const zp0 = path.z0, zp1 = path.z1, zm = (zp0 + zp1) / 2
-  // Flower beds along the door wall (either side of the door) and along the front wall.
-  add('bed-door-back', 'bed', -W / 2 - T - 0.55, 1.9, 0.9, 3.4, 0.45)
-  add('bed-door-front', 'bed', -W / 2 - T - 0.55, 6.68, 0.9, 0.9, 0.45)
-  add('bed-front', 'bed', 0.4, D + T + 0.55, W - 1.4, 0.9, 0.45)
-  // The door: topiaries either side, an awning over the entrance, pavers out to the street.
-  add('topiary-door-a', 'topiary', -W / 2 - T - 0.45, zp0 - 0.36, 0.5, 0.5, 1.5)
-  add('topiary-door-b', 'topiary', -W / 2 - T - 0.45, zp1 + 0.36, 0.5, 0.5, 1.5)
-  add('awning', 'awning', -W / 2 - T - 0.3, zm, 0.55, zp1 - zp0 + 0.5, 2.35, false)
-  for (let x = path.x1 - 0.35; x > STREET.fence - 0.2; x -= 0.62) add(`paver${x.toFixed(1)}`, 'paver', x, zm, 0.56, zp1 - zp0 - 0.1, 0.03, false)
-  // The front garden: a bench by a lamp post, round trees, stepping stones to the bench.
-  add('bench', 'bench', -8.9, 2.55, 0.5, 1.4, 0.8)
-  add('garden-lamp', 'lamp', -8.9, 1.45, 0.3, 0.3, 2.4)
-  add('tree-a', 'tree', -9.3, 0.1, 0.5, 0.5, 3.2)
-  add('tree-b', 'tree', -8.7, 7.3, 0.5, 0.5, 3.0)
-  add('tree-c', 'tree', 8.2, D + 2.6, 0.5, 0.5, 3.4)
-  for (let i = 0; i < 3; i++) add(`stone${i}`, 'stone', -8.2 - i * 0.25, zp0 - 0.5 - i * 0.5, 0.36, 0.3, 0.02, false)
-  // The fence with gold caps along the street, open at the path; the sign and the mailbox at the gate.
-  add('fence-back', 'fence', STREET.fence, (-1.5 + zp0 - 0.62) / 2, 0.12, zp0 - 0.62 + 1.5, 0.7)
-  add('fence-front', 'fence', STREET.fence, (zp1 + 0.62 + D + 2.5) / 2, 0.12, D + 2.5 - zp1 - 0.62, 0.7)
-  add('gate-post-a', 'post', STREET.fence, zp0 - 0.5, 0.2, 0.2, 0.95)
-  add('gate-post-b', 'post', STREET.fence, zp1 + 0.5, 0.2, 0.2, 0.95)
-  add('sign', 'sign', STREET.fence + 0.45, zp0 - 1.3, 0.3, 1.3, 1.6)
-  add('mailbox', 'mailbox', STREET.fence + 0.4, zp1 + 1.05, 0.3, 0.35, 1.1)
-  // The street edge: kerbed pavement with streetlamps and a bike rack.
-  add('streetlamp-a', 'streetlamp', STREET.paveIn - 0.35, -0.8, 0.3, 0.3, 4)
-  add('streetlamp-b', 'streetlamp', STREET.paveIn - 0.35, 8.6, 0.3, 0.3, 4)
-  add('bike-rack', 'rack', STREET.paveIn - 0.45, zp1 + 2.2, 0.5, 1.5, 0.9)
-  // Along the front: hedges of different lengths and heights, boxed and rounded, with shrubs between.
-  const spans: [number, number, number][] = [[-8.6, 1.9, 0.8], [-6.3, 2.6, 1.05], [-3.2, 1.6, 0.7], [-1.0, 2.2, 0.95], [2.1, 2.5, 0.8], [5.05, 1.8, 1.1]]
-  for (const [x, len, h] of spans) add(`hedge${x}`, 'hedge', x, D + T + 2.35, len, 0.85, h)
-  for (const [x, z, s] of [[-4.6, D + T + 2.2, 0.7], [0.42, D + T + 2.25, 0.55], [3.75, D + T + 2.3, 0.7], [6.6, D + T + 2.1, 0.7]]) add(`shrub${x}`, 'shrub', x, z, s, s, 0.75)
+  const door = doorway()
+  const zm = door.zm, face = -W / 2 - T
+  const E = ENTRANCE
+  // The door: a topiary either side, outside the pillars, the same distance from the opening.
+  const potZ = (door.z1 - door.z0) / 2 + 0.06 + door.pillarR + E.potGap
+  add('topiary-door-a', 'topiary', face - E.potOut, zm - potZ, 2 * E.potR, 2 * E.potR, 1.5)
+  add('topiary-door-b', 'topiary', face - E.potOut, zm + potZ, 2 * E.potR, 2 * E.potR, 1.5)
+  // Flower beds along the door wall, either side of the pots.
+  add('bed-door-back', 'bed', face - 0.5, (0.1 + zm - potZ - E.potR - 0.2) / 2, 0.8, zm - potZ - E.potR - 0.2 - 0.1, 0.45)
+  add('bed-door-front', 'bed', face - 0.5, (zm + potZ + E.potR + 0.2 + ROOM3.d + 0.1) / 2, 0.8, ROOM3.d + 0.1 - (zm + potZ + E.potR + 0.2), 0.45)
+  add('bed-front', 'bed', 0.4, ROOM3.d + T + 0.55, W - 1.4, 0.9, 0.45)
+  // Pavers straight out from the door to the gate, centred on the door.
+  for (let x = face - 0.34; x > STREET.fence + 0.2; x -= 0.62) add(`paver${x.toFixed(1)}`, 'paver', x, zm, 0.56, E.pathW, 0.03, false)
+  // The gate: two posts either side of the path, the fence running off from them; the sign and the mailbox beside.
+  const gz = E.pathW / 2 + E.gateGap + 0.1
+  add('gate-post-a', 'post', STREET.fence, zm - gz, 0.2, 0.2, 0.95)
+  add('gate-post-b', 'post', STREET.fence, zm + gz, 0.2, 0.2, 0.95)
+  add('fence-back', 'fence', STREET.fence, (-1.2 + zm - gz - 0.2) / 2, 0.12, zm - gz - 0.2 + 1.2, 0.7)
+  add('fence-front', 'fence', STREET.fence, (zm + gz + 0.2 + ROOM3.d + 1.5) / 2, 0.12, ROOM3.d + 1.5 - zm - gz - 0.2, 0.7)
+  add('sign', 'sign', STREET.fence + 0.45, zm - gz - 0.95, 0.3, 1.3, 1.45)
+  add('mailbox', 'mailbox', STREET.fence + 0.4, zm + gz + 0.6, 0.3, 0.35, 1.1)
+  // The garden: a bench by a lamp post, round trees, stepping stones from the path to the bench.
+  add('bench', 'bench', -8.35, 1.6, 0.5, 1.4, 0.8)
+  add('garden-lamp', 'lamp', -8.35, 0.45, 0.3, 0.3, 2.2)
+  add('tree-a', 'tree', -8.2, -0.45, 0.5, 0.5, 3.2)
+  add('tree-b', 'tree', -8.1, 7.3, 0.5, 0.5, 3.0)
+  add('tree-c', 'tree', 8.2, ROOM3.d + 2.6, 0.5, 0.5, 3.4)
+  for (let i = 0; i < 3; i++) add(`stone${i}`, 'stone', -7.95 - i * 0.12, zm - E.pathW / 2 - 0.45 - i * 0.5, 0.36, 0.3, 0.02, false)
+  // The street edge: streetlamps at the kerb, well away from the gate, and a bike rack.
+  add('streetlamp-a', 'streetlamp', STREET.paveOut + 0.3, -1.4, 0.3, 0.3, 3.4)
+  add('streetlamp-b', 'streetlamp', STREET.paveOut + 0.3, 10.6, 0.3, 0.3, 3.4)
+  add('bike-rack', 'rack', STREET.paveIn - 0.45, zm + gz + 2.3, 0.5, 1.5, 0.9)
+  // Along the front: hedges of different lengths and heights, with shrubs between.
+  const spans: [number, number, number][] = [[-8.6, 1.9, 0.8], [-6.3, 2.6, 1.0], [-3.2, 1.6, 0.7], [-1.0, 2.2, 0.9], [2.1, 2.5, 0.75], [5.05, 1.8, 1.0]]
+  for (const [x, len, h] of spans) add(`hedge${x}`, 'hedge', x, ROOM3.d + T + 2.35, len, 0.85, h)
+  for (const [x, z, s] of [[-4.6, ROOM3.d + T + 2.2, 0.7], [0.42, ROOM3.d + T + 2.25, 0.55], [3.75, ROOM3.d + T + 2.3, 0.7], [6.6, ROOM3.d + T + 2.1, 0.7]]) add(`shrub${x}`, 'shrub', x, z, s, s, 0.75)
   return out
 }
 

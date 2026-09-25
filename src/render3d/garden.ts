@@ -1,12 +1,12 @@
 import { CanvasTexture, Color, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Quaternion, Vector3 } from 'three'
-import { G, Kit, shade, tf } from './kit.ts'
+import { G, Kit, piece, shade, tf } from './kit.ts'
 import { outsideItems, STREET, type OutsideItem } from './layout.ts'
 import { ROOM3 } from './mapping.ts'
 import { pavingTexture, tex } from './textures.ts'
 
 /**
  * The street-front garden, built from the layout's outside items (layout.ts) so the validator checks what shows:
- * flower beds, topiaries flanking the door under a striped awning, pavers to the gate, a bench and a lamp post,
+ * flower beds, topiaries flanking the door, pavers to the gate, a bench and a lamp post,
  * round trees, stepping stones, a low fence with gold caps, the lit salon sign, a mailbox, the kerbed pavement
  * with streetlamps and a bike, and a hint of road. Static pieces merge into a few meshes; the tree canopies and two
  * butterflies are instanced so they can sway and flutter for the cost of two draw calls.
@@ -41,20 +41,22 @@ export function buildGarden(): Garden {
   pavement.position.set((STREET.paveIn + STREET.paveOut) / 2, -0.03, D / 2)
   pavement.receiveShadow = true
   group.add(pavement)
-  kit.add(G.box(0.16, 0.14, 60, 0.03), 0xd9d2d6, 'matte', tf(STREET.paveOut - 0.08, -0.02, D / 2))
+  piece('ground', () => kit.add(G.box(0.16, 0.14, 60, 0.03), 0xd9d2d6, 'matte', tf(STREET.paveOut - 0.08, -0.02, D / 2)))
   const road = new Mesh(new PlaneGeometry(STREET.paveOut - STREET.roadOut, 60), new MeshStandardMaterial({ color: 0x8c8594, roughness: 0.95 }))
   road.rotation.x = -Math.PI / 2
   road.position.set((STREET.paveOut + STREET.roadOut) / 2, -0.08, D / 2)
   road.receiveShadow = true
   group.add(road)
-  for (let z = -24; z < 30; z += 3) kit.add(G.box(0.14, 0.01, 1.4, 0.004), 0xf5f1e8, 'matte', tf(STREET.paveOut - 3.2, -0.07, z))
-  // The salon's plinth.
-  kit.add(G.box(W + 2 * T + 0.3, 0.1, D + 2 * T + 0.3, 0.03), 0xe9dcd6, 'matte', tf(0, -0.05, D / 2))
+  piece('ground', () => {
+    for (let z = -24; z < 30; z += 3) kit.add(G.box(0.14, 0.01, 1.4, 0.004), 0xf5f1e8, 'matte', tf(STREET.paveOut - 3.2, -0.07, z))
+    // The salon's plinth.
+    kit.add(G.box(W + 2 * T + 0.3, 0.1, D + 2 * T + 0.3, 0.03), 0xe9dcd6, 'matte', tf(0, -0.05, D / 2))
+  })
 
   // ---- the pieces
   const canopies: { x: number; y: number; z: number; r: number; c: number }[] = []
   let signAt: OutsideItem | null = null
-  for (const it of items) {
+  for (const it of items) piece(it.id, () => {
     const x = (it.x0 + it.x1) / 2, z = (it.z0 + it.z1) / 2, w = it.x1 - it.x0, d = it.z1 - it.z0
     switch (it.kind) {
       case 'bed': {
@@ -76,18 +78,6 @@ export function buildGarden(): Garden {
         kit.add(G.sphere(0.26, 10), LEAF[1], 'satin', tf(x, 0.95, z))
         kit.add(G.sphere(0.19, 10), LEAF[0], 'satin', tf(x, 1.33, z))
         break
-      case 'awning': {
-        // A striped canopy on two slim gold poles over the door.
-        const h = it.h
-        for (const pz of [it.z0 + 0.05, it.z1 - 0.05]) kit.add(G.cyl(0.025, 0.025, h, 8), GOLD, 'metal', tf(it.x0 + 0.05, h / 2, pz))
-        const stripes = 8
-        for (let i = 0; i < stripes; i++) {
-          const sz = it.z0 + (d / stripes) * (i + 0.5)
-          kit.add(G.box(w + 0.1, 0.04, d / stripes + 0.005, 0.01), i % 2 ? 0xffffff : 0xf29bb8, 'satin', tf(x, h + 0.08, sz, 0, 0, -0.32))
-        }
-        for (let i = 0; i < stripes; i++) kit.add(G.sphere(d / stripes / 2, 6), i % 2 ? 0xffffff : 0xf29bb8, 'satin', tf(it.x0 - 0.02, h - 0.07, it.z0 + (d / stripes) * (i + 0.5), 0, 0, 0, 0.4, 0.6, 1))
-        break
-      }
       case 'paver':
         kit.add(G.box(w, 0.04, d, 0.02), 0xefe6df, 'matte', tf(x, 0.0, z))
         break
@@ -99,12 +89,26 @@ export function buildGarden(): Garden {
         kit.add(G.box(0.06, 0.4, d, 0.02), 0xc99a74, 'matte', tf(it.x0 + 0.03, 0.72, z, 0, 0, 0.15))
         for (const pz of [it.z0 + 0.12, it.z1 - 0.12]) kit.add(G.box(w - 0.06, 0.44, 0.05, 0.015), 0x5a4a52, 'metal', tf(x, 0.22, pz))
         break
-      case 'lamp': case 'streetlamp': {
+      case 'lamp': {
+        // A garden lamp: a slim cream post with a glowing globe.
         const h = it.h
-        kit.add(G.cyl(0.05, 0.08, h, 10), 0x4a4552, 'metal', tf(x, h / 2, z))
-        kit.add(G.cyl(0.14, 0.1, 0.08, 12), 0x4a4552, 'metal', tf(x, 0.04, z))
-        kit.add(G.cyl(0.12, 0.2, 0.2, 12), 0x4a4552, 'metal', tf(x, h + 0.1, z))
-        kit.add(G.sphere(0.14, 10), 0xfff0cf, 'glow', tf(x, h - 0.02, z))
+        kit.add(G.cyl(0.13, 0.16, 0.1, 14), 0xfff6ef, 'satin', tf(x, 0.05, z))
+        kit.add(G.cyl(0.035, 0.045, h - 0.2, 10), 0xfff6ef, 'satin', tf(x, (h - 0.2) / 2 + 0.05, z))
+        kit.add(G.cyl(0.09, 0.07, 0.06, 12), GOLD, 'metal', tf(x, h - 0.12, z))
+        kit.add(G.sphere(0.15, 14), 0xfff0cf, 'glow', tf(x, h + 0.04, z))
+        break
+      }
+      case 'streetlamp': {
+        // A street lamp on the kerb: a fluted post on a stepped base, a curled arm and a lantern hung from it.
+        const h = it.h
+        kit.add(G.cyl(0.17, 0.2, 0.18, 14), 0x5d6b66, 'metal', tf(x, 0.09, z))
+        kit.add(G.cyl(0.11, 0.15, 0.2, 14), 0x5d6b66, 'metal', tf(x, 0.27, z))
+        kit.add(G.cyl(0.05, 0.07, h, 12), 0x5d6b66, 'metal', tf(x, h / 2, z))
+        kit.add(G.sphere(0.08, 10), GOLD, 'metal', tf(x, h + 0.04, z))
+        kit.add(G.box(0.05, 0.05, 0.62, 0.02), 0x5d6b66, 'metal', tf(x, h - 0.2, z + 0.3))
+        kit.add(G.cyl(0.13, 0.08, 0.12, 12), 0x5d6b66, 'metal', tf(x, h - 0.32, z + 0.58))
+        kit.add(G.cyl(0.1, 0.07, 0.26, 12), 0xfff0cf, 'glow', tf(x, h - 0.51, z + 0.58))
+        kit.add(G.cyl(0.05, 0.1, 0.06, 12), 0x5d6b66, 'metal', tf(x, h - 0.67, z + 0.58))
         break
       }
       case 'tree': {
@@ -151,10 +155,18 @@ export function buildGarden(): Garden {
         break
       }
       case 'hedge': {
-        // Boxed hedges of their own length and height, with a softer top.
+        // A hedge of clustered leafy balls in a few greens: a low row, a fuller row and a crown, of its own length.
         const c = LEAF[it.seed % 4]
-        kit.add(G.box(w, it.h, d, Math.min(0.3, it.h / 2 - 0.01)), c, 'satin', tf(x, it.h / 2, z))
-        for (let hx = it.x0 + 0.3; hx < it.x1 - 0.2; hx += 0.45) kit.add(G.sphere(0.2 + rnd() * 0.08, 7), shade(c, 0.08), 'satin', tf(hx, it.h - 0.05, z + (rnd() - 0.5) * 0.3, 0, 0, 0, 1, 0.6, 1))
+        const r = Math.min(d, it.h) * 0.5
+        const n = Math.max(2, Math.round(w / (r * 1.1)))
+        for (let i = 0; i < n; i++) {
+          const hx = it.x0 + r + ((w - 2 * r) * i) / (n - 1)
+          for (const row of [-0.18, 0.18]) {
+            const rr = r * (0.9 + rnd() * 0.2)
+            kit.add(G.sphere(rr, 12), shade(c, (rnd() - 0.5) * 0.14), 'matte', tf(hx + (rnd() - 0.5) * 0.1, rr * 0.85, z + row * d, 0, 0, 0, 1, (it.h / (2 * r)) * 0.95, 1))
+          }
+          if (i % 2 === 0 || rnd() < 0.4) { const rr = r * 0.7; kit.add(G.sphere(rr, 12), shade(c, 0.06 + rnd() * 0.06), 'matte', tf(hx + (rnd() - 0.5) * 0.2, it.h - rr * 0.55, z + (rnd() - 0.5) * 0.12)) }
+        }
         break
       }
       case 'shrub':
@@ -162,7 +174,7 @@ export function buildGarden(): Garden {
         for (let i = 0; i < 4; i++) kit.add(G.sphere(0.04, 5), FLOWERS[(it.seed + i) % FLOWERS.length], 'matte', tf(x + (rnd() - 0.5) * w * 0.6, w * 0.7, z + (rnd() - 0.5) * w * 0.6))
         break
     }
-  }
+  })
   const built = kit.build()
   built.traverse(o => { if (o instanceof Mesh) o.castShadow = true })
   group.add(built)
