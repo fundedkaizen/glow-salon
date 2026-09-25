@@ -9,6 +9,7 @@ import { ext, extOnClose, extOnStartDay, extraCustomers, extReview, extTick, red
 import { STAFF_ID_BASE } from './staff.ts'
 import { planTreatment, stepCount } from './treatments/plan.ts'
 import { TREATMENTS } from './treatments/registry.ts'
+import { levelInfo, salonLevel } from './unlocks.ts'
 import type { TreatmentResult } from './treatments/session.ts'
 import type { TreatmentId } from './treatments/types.ts'
 
@@ -345,7 +346,7 @@ function releaseFromStation(s: Station, by: number) {
 }
 
 function buy(state: SalonState, by: number, id: string): boolean {
-  const check = canBuy(state.owned, state.money, id, state.day)
+  const check = canBuy(state.owned, state.money, id, state.day, salonLevel(state.totals.earned))
   if (!check.ok) return false
   if (state.pending) return false
   if (needsConfirm(id) && state.players.length > 1) {
@@ -364,7 +365,7 @@ function settleVote(state: SalonState) {
   const present = state.players.map(p => p.id)
   if (present.every(id => pending.yes.includes(id))) {
     state.pending = null
-    if (canBuy(state.owned, state.money, pending.item, state.day).ok) complete(state, pending.item, pending.by)
+    if (canBuy(state.owned, state.money, pending.item, state.day, salonLevel(state.totals.earned)).ok) complete(state, pending.item, pending.by)
   }
 }
 
@@ -418,7 +419,15 @@ function finish(state: SalonState, by: number, stationId: string, result: Treatm
   state.stats.costs += def.productCost
   state.stats.served++
   state.totals.served++
+  const levelBefore = salonLevel(state.totals.earned)
   state.totals.earned += price + tip
+  // The salon levels up as it earns: something new to buy opens (the floor shows it as a ghost).
+  const levelNow = salonLevel(state.totals.earned)
+  if (levelNow > levelBefore) {
+    const info = levelInfo(levelNow)
+    const opens = info.opens ? ITEM_BY_ID[info.opens] : null
+    event(state, { kind: 'unlock', text: `Salon level ${levelNow}: ${info.name}!${opens ? ` ${opens.name} is ready to buy.` : ''}`, item: opens?.id, amount: levelNow })
+  }
   const review = extReview(state, c, by, stars, result, price, amb)
   state.stats.reviews.push(review)
   state.reviews.push(review)

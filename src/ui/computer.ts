@@ -5,6 +5,7 @@ import { RES } from '../art/salon/room.ts'
 import { sfx } from '../audio/sfx.ts'
 import { DECOR_SETS, DECOR_ITEM_BY_ID, completeSets, GIFT_BY_ID, placeDecor, SET_BONUS, SET_EFFECT_TEXT } from '../core/decor.ts'
 import { AMBIENCE_GOAL, ambiencePoints, canBuy, CONFIRM_PRICE, ITEM_BY_ID, ITEMS, STATION_NAME, type Item, type ShopTab } from '../core/economy.ts'
+import { levelProgress, salonLevel } from '../core/unlocks.ts'
 import { CAMPAIGNS, canRunCampaign, CAMPAIGN_BY_ID } from '../core/marketing.ts'
 import type { Action, Pending, Player, Station } from '../core/salon.ts'
 import type { SalonExt } from '../core/salon-ext.ts'
@@ -30,6 +31,8 @@ export type ComputerState = {
   players: Player[]
   pending: Pending | null
   ext?: SalonExt
+  /** Lifetime earnings: the salon's level (unlocks.ts) opens its upgrades. */
+  totals?: { earned: number }
 }
 
 export type ComputerHooks = { onAction: (a: Action) => void; onClose: () => void }
@@ -211,14 +214,14 @@ export class Computer {
   private affordable(tab: Tab): number {
     const s = this.state!
     if (tab === 'marketing' || tab === 'staff') return 0
-    return ITEMS.filter(i => i.tab === tab && canBuy(s.owned, s.money, i.id, s.day).ok).length
+    return ITEMS.filter(i => i.tab === tab && canBuy(s.owned, s.money, i.id, s.day, salonLevel(s.totals?.earned ?? 0)).ok).length
   }
 
   private itemCard(item: Item, extra = ''): HTMLElement {
     const s = this.state!
-    const check = canBuy(s.owned, s.money, item.id, s.day)
+    const check = canBuy(s.owned, s.money, item.id, s.day, salonLevel(s.totals?.earned ?? 0))
     const owned = s.owned.includes(item.id)
-    const arriving = !check.ok && check.reason.startsWith('Arrives')
+    const arriving = !check.ok && (check.reason.startsWith('Arrives') || check.reason.startsWith('Opens at'))
     const locked = !owned && !check.ok && ((check.reason.startsWith('Needs') && !check.reason.includes('$')) || arriving)
     const card = h('div', `gs-card${owned ? ' owned' : ''}${locked ? ' locked' : ''}${this.justBought === item.id ? ' just' : ''}`)
     const vote = s.players.length > 1 && item.price >= CONFIRM_PRICE && !owned
@@ -265,7 +268,11 @@ export class Computer {
     const pts = ambiencePoints(s.owned)
     this.main.querySelector('.gs-os-head')!.insertAdjacentHTML('beforeend', `<div class="gs-chip gs-amb" style="height:auto;padding:8px 14px 8px 8px">${ICON.heart}<div><small>Ambience</small><b>${pts} / ${AMBIENCE_GOAL}</b><div class="gs-progress" style="width:120px;margin-top:4px"><i style="width:${Math.min(100, (pts / AMBIENCE_GOAL) * 100)}%"></i></div></div></div>`)
     this.main.append(h('div', 'gs-section', 'Starter touches'))
-    this.renderItems(ITEMS.filter(i => i.tab === 'decor' && !DECOR_ITEM_BY_ID[i.id] && !i.gift))
+    this.renderItems(ITEMS.filter(i => i.tab === 'decor' && !DECOR_ITEM_BY_ID[i.id] && !i.gift && !i.level))
+    // The salon's upgrades: those its level has opened, and the next one.
+    const lp = levelProgress(s.totals?.earned ?? 0)
+    this.main.append(h('div', 'gs-section', `Salon upgrades <small>Level ${lp.level}. ${money(lp.need - lp.have)} more earnings to level ${lp.level + 1}: ${esc(lp.next.name)}</small>`))
+    this.renderItems(ITEMS.filter(i => i.level && i.level <= lp.level + 1 && (!s.owned.includes(i.id) || i.level >= lp.level - 2)))
     // Gifts from regulars who became close friends.
     const gifts = ITEMS.filter(i => i.gift && s.owned.includes(i.id))
     this.main.append(h('div', 'gs-section', `Gifts from friends <small>${gifts.length ? `${gifts.length} on the gift shelf` : 'Regulars who become close friends leave you a gift'}</small>`))

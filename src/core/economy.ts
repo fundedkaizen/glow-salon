@@ -1,6 +1,7 @@
 import type { TreatmentId } from './treatments/types.ts'
 import { DECOR_SET_ITEMS, GIFT_ITEMS, setBonus } from './decor.ts'
 import { SLOTS } from './floor.ts'
+import { UPGRADE_ITEMS } from './unlocks.ts'
 
 /**
  * The shop on the salon computer, and every number that turns purchases into income. Linear and readable:
@@ -32,6 +33,8 @@ export type Item = {
   includes?: string[]
   /** The day it arrives in the shop: something new turns up every few days. */
   unlockDay?: number
+  /** The salon level that opens it (unlocks.ts): the salon's upgrades, sold once the salon has earned enough. */
+  level?: number
 }
 
 export type StationKind = TreatmentId
@@ -86,9 +89,10 @@ export const ITEMS: Item[] = [
   { id: 'gadget-steamer', tab: 'staff', name: 'Auto steamer', blurb: 'A gadget that does the steam towel step for you.', price: 300, effect: { kind: 'staff' }, soon: true },
   { id: 'gadget-uv', tab: 'staff', name: 'Smart UV lamp', blurb: 'Cures the polish by itself.', price: 260, effect: { kind: 'staff' }, soon: true },
   { id: 'stylist', tab: 'staff', name: 'Hire a stylist', blurb: 'Runs whole treatments at slightly lower quality.', price: 900, effect: { kind: 'staff' }, soon: true },
-  // Decor sets from the world content (decor.ts), and the regulars' gifts.
+  // Decor sets from the world content (decor.ts), the regulars' gifts, and the salon's upgrades (unlocks.ts).
   ...DECOR_SET_ITEMS,
   ...GIFT_ITEMS,
+  ...UPGRADE_ITEMS,
 ]
 
 export const ITEM_BY_ID: Record<string, Item> = Object.fromEntries(ITEMS.map(item => [item.id, item]))
@@ -99,14 +103,18 @@ export function owns(owned: Owned, id: string) { return owned.includes(id) }
 
 export type BuyCheck = { ok: true } | { ok: false; reason: string }
 
-/** `day`: today, for items that arrive in the shop later (left out, everything counts as arrived). */
-export function canBuy(owned: Owned, money: number, id: string, day = Infinity): BuyCheck {
+/**
+ * `day`: today, for items that arrive in the shop later (left out, everything counts as arrived). `level`: the
+ * salon's level (unlocks.ts), for the upgrades a level opens (left out, none are open).
+ */
+export function canBuy(owned: Owned, money: number, id: string, day = Infinity, level = 1): BuyCheck {
   const item = ITEM_BY_ID[id]
   if (!item) return { ok: false, reason: 'Unknown item' }
   if (item.soon) return { ok: false, reason: 'Coming soon' }
   if (owns(owned, id)) return { ok: false, reason: 'Owned' }
   if (item.gift) return { ok: false, reason: 'A gift from a friend' }
   if (item.unlockDay && day < item.unlockDay) return { ok: false, reason: `Arrives on day ${item.unlockDay}` }
+  if (item.level && level < item.level) return { ok: false, reason: `Opens at salon level ${item.level}` }
   const missing = (item.needs ?? []).filter(n => !owns(owned, n))
   if (missing.length) return { ok: false, reason: `Needs ${ITEM_BY_ID[missing[0]].name}` }
   if (stationsIn(id) && stationCount(owned) + stationsIn(id) > SLOTS.length) return { ok: false, reason: 'No room for another station' }
@@ -184,8 +192,8 @@ export function tipFor(price: number, stars: number, mood: number, owned: Owned,
 export function arrivals(day: number): Item[] { return ITEMS.filter(i => i.unlockDay === day && !i.soon && !i.gift) }
 
 /** The next thing worth saving for, for the receipt's teaser: the cheapest item not yet owned that can be bought after its needs. */
-export function nextUnlock(owned: Owned, day = Infinity): Item | null {
-  const candidates = ITEMS.filter(i => !i.soon && !i.gift && i.tab !== 'marketing' && !owns(owned, i.id) && (i.needs ?? []).every(n => owns(owned, n)) && (i.unlockDay ?? 0) <= day)
+export function nextUnlock(owned: Owned, day = Infinity, level = 1): Item | null {
+  const candidates = ITEMS.filter(i => !i.soon && !i.gift && i.tab !== 'marketing' && !owns(owned, i.id) && (i.needs ?? []).every(n => owns(owned, n)) && (i.unlockDay ?? 0) <= day && (i.level ?? 0) <= level)
   candidates.sort((a, b) => b.price - a.price)
   // The biggest affordable-soon goal: the most exciting item within reach of about three days.
   const big = candidates.filter(i => i.tab === 'stations' || i.tab === 'treatments' || i.tab === 'tools').sort((a, b) => a.price - b.price)

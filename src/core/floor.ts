@@ -26,11 +26,12 @@ export const COMPUTER_SPOT: Pt = { x: 200, y: 208 }
 /**
  * Low partition walls with rounded ends that split the salon into zones. They block walking. The first closes
  * the staff gap behind the desk on the lounge side, so the gap is a nook entered from the door side only and
- * nobody cuts through behind the desk; the others divide the lounge from the stations, and the two station rows.
+ * nobody cuts through behind the desk; the others divide the lounge from the stations (free-standing, so the
+ * strip behind the station row stays connected), and the two station rows.
  */
 export const PARTITIONS: Rect[] = [
   { x: 306, y: 176, w: 20, h: 130 },
-  { x: 680, y: 176, w: 20, h: 96 },
+  { x: 680, y: 232, w: 20, h: 68 },
   { x: 1112, y: 500, w: 168, h: 20 },
 ]
 
@@ -75,10 +76,13 @@ export const PROP_SPOTS: Record<string, Pt> = {
   neon: { x: 505, y: 80 },
   aquarium: { x: 70, y: 420 },
   chandelier: { x: 640, y: 210 },
+  // The fountain garden (a salon upgrade, unlocks.ts): the centrepiece of the room, as in Serenity's salons.
+  'up-fountain': { x: 560, y: 470 },
 }
-const PROP_BLOCK: Record<string, Rect> = {
+export const PROP_BLOCK: Record<string, Rect> = {
   plant: { x: 1180, y: 190, w: 70, h: 60 },
   aquarium: { x: 40, y: 380, w: 70, h: 90 },
+  'up-fountain': { x: 506, y: 430, w: 108, h: 80 },
 }
 
 // ------------------------------------------------------------------ pathfinding

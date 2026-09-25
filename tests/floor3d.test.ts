@@ -3,6 +3,7 @@ import { Vector3 } from 'three'
 import { blockedGrid, CELL, COLS, COMPUTER_SPOT, DESK, DOOR_INSIDE, findPath, FLOOR_H, FLOOR_W, PARTITIONS, SLOTS, SOFA_SEATS, spawnPoint, STANDING, stationSeat, stationSpot, WALL_H, type Pt } from '../src/core/floor.ts'
 import { DEPTH_K, lenX, lenZ, ROOM3, toSim, toWorld, turnTo, UNITS_PER_M, wallHeight, yawFor } from '../src/render3d/mapping.ts'
 import { CameraRig } from '../src/render3d/camera.ts'
+import { reachable } from './unlocks.test.ts'
 
 /** The 3D floor's coordinate mapping and camera framing (the sim never changes; only how it is drawn). */
 export function run() {
@@ -47,6 +48,11 @@ export function run() {
     for (const i of allSlots) { trips.push([DOOR_INSIDE, stationSeat(i)]); for (const seat of SOFA_SEATS) trips.push([seat, stationSeat(i)]); trips.push([stationSeat(i), DOOR_INSIDE]) }
     const cut = trips.filter(([a, b]) => findPath(grid, a, b).some(behind))
     check(`${label}: no customer route passes behind the desk`, cut.length === 0, cut.slice(0, 3))
+    // Every seat and work spot can be reached from the door and from the lounge (no sealed pockets).
+    const from = [DOOR_INSIDE, ...SOFA_SEATS, spawnPoint(0)]
+    const to = [...allSlots.map(i => stationSeat(i)), ...allSlots.map(i => stationSpot(i)), ...SOFA_SEATS, ...STANDING, COMPUTER_SPOT]
+    const sealed = from.flatMap(a => to.filter(b => !reachable(grid, a, b)).map(b => [a, b]))
+    check(`${label}: every seat and work spot is reachable`, sealed.length === 0, sealed.slice(0, 3))
     // Staff and players still reach every station's work spot.
     check(`${label}: every work spot is reachable`, allSlots.every(i => { const w = stationSpot(i); const path = findPath(grid, spawnPoint(0), w); return path.length > 0 && cellOpen(path[Math.max(0, path.length - 2)]) }))
   }
