@@ -48,7 +48,7 @@ const CSS = `
 @keyframes g3-pop{40%{transform:translateY(-10px) scale(1.14)}}
 @keyframes g3-drop{from{transform:translate(-50%,-80px)}}
 @keyframes g3-rise{from{opacity:0;transform:translate(-50%,40px)}}
-@media (max-width:520px){.g3-deco{bottom:calc(88px + env(safe-area-inset-bottom));min-height:40px;padding:0 14px 0 10px;font-size:14px}.g3-card{width:92px}.g3-card img{width:80px;height:60px}.g3-ribbon{font-size:24px;padding:6px 26px 8px}.g3-bar-main{min-width:118px}}
+@media (max-width:520px){.g3-deco{left:auto;right:8px;bottom:auto;top:calc(64px + env(safe-area-inset-top));min-height:36px;padding:0 12px 0 9px;font-size:13px}.g3-card{width:92px}.g3-card img{width:80px;height:60px}.g3-ribbon{font-size:24px;padding:6px 26px 8px}.g3-bar-main{min-width:118px}}
 `
 
 const BRUSH = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.4 2.6a2 2 0 0 1 3 3L12 15l-4 1 1-4z"/><path d="M7 16c-2 0-3 1.5-3 3s-1 2-2 2c1.5 1 5 1 6.5-.5S10 17 7 16z"/></svg>'

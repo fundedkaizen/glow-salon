@@ -38,6 +38,11 @@ export class CameraRig {
   /** The entrance set: kept on screen while the player is near enough (keepEntrance). */
   private keep: Vector3[] = entranceSet().map(p => new Vector3(p.x, p.y, p.z))
   private demo = false
+  /** A phone (portrait, or 500 px wide or less): close in on the player, who stays in the middle. */
+  phone = false
+  /** Where the camera's attention drifts (a waiting customer, a station that needs the player), eased. */
+  private lead = new Vector3()
+  private leadK = 0
   private right = new Vector3()
   /** Towards the back corner on the ground (panning this way moves the room down the screen). */
   private back = new Vector3()
@@ -111,9 +116,10 @@ export class CameraRig {
     this.fitT.copy(t)
     // A portrait phone shows most of the salon (the whole diamond would make people too small to read) and pans
     // with the player; a landscape screen sees the whole room, like Serenity's.
-    const portrait = view.h > view.w * 1.2
+    const portrait = view.h > view.w * 1.2 || view.w <= 500
+    this.phone = portrait
     // Serenity's view fills the frame (the walls cut by its edges): zoom in and follow the player.
-    this.useD = demo ? Math.min(this.fitD, fitAt('cover')) * 0.86 : portrait ? this.fitD * 0.6 : this.fitD * 0.9
+    this.useD = demo ? Math.min(this.fitD, fitAt('cover')) * 0.86 : portrait ? this.fitD * 0.3 : this.fitD * 0.9
     this.panR = this.panRange(this.right, a, 'x')
     this.panF = this.panRange(this.back, a, 'y')
   }
@@ -153,17 +159,20 @@ export class CameraRig {
   get focusPoint() { return this.target }
 
   /** Follow a ground point (the local player), eased; null holds the fitted view. */
-  update(dt: number, follow: { x: number; z: number } | null) {
+  update(dt: number, follow: { x: number; z: number } | null, lead: { x: number; z: number } | null = null) {
     let pr = 0, pf = 0
     if (follow) {
-      const off = new Vector3(follow.x, 0, follow.z).sub(this.fitT)
+      // A gentle lead towards what needs the player: a third of the way, at most 2 m, eased in and out.
+      this.leadK += ((lead ? 1 : 0) - this.leadK) * Math.min(1, dt * 1.2)
+      if (lead) this.lead.set(lead.x - follow.x, 0, lead.z - follow.z).clampLength(0, 6).multiplyScalar(1 / 3)
+      const off = new Vector3(follow.x, 0, follow.z).addScaledVector(this.lead, this.leadK).sub(this.fitT)
       pr = off.dot(this.right)
       pf = off.dot(this.back)
     }
     pr = Math.max(this.panR[0], Math.min(this.panR[1], pr))
     pf = Math.max(this.panF[0], Math.min(this.panF[1], pf))
     // The entrance may pull the view a little past the room's own pan range (a strip of lawn shows instead).
-    if (follow && !this.demo) {
+    if (follow && !this.demo && !this.phone) {
       const [kr, kf] = this.keepEntrance(pr, pf, follow)
       pr = Math.max(this.panR[0] - 1.5, Math.min(this.panR[1] + 1.5, kr))
       pf = Math.max(this.panF[0] - 1.5, Math.min(this.panF[1] + 1.5, kf))
