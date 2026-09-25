@@ -87,9 +87,9 @@ const ARCHETYPE_OUTFITS: Record<string, OutfitKind[]> = {
   pilot: ['suit'], streamer: ['hoodie'], royal: ['dress', 'suit'],
 }
 
-type Outfit = { kind: OutfitKind; main: RGB; second: RGB; pants: RGB; skirt: boolean; shoes: RGB; sleeve: RGB | null }
+export type Outfit = { kind: OutfitKind; main: RGB; second: RGB; pants: RGB; skirt: boolean; shoes: RGB; sleeve: RGB | null }
 
-function outfitOf(look: Look, fig: Figure, role: Role, tint: number, archetype?: string): Outfit {
+export function outfitOf(look: Look, fig: Figure, role: Role, tint: number, archetype?: string): Outfit {
   const main = hexRGB(OUTFIT[look.outfit % OUTFIT.length])
   const second = hexRGB(OUTFIT[(look.outfit + 3) % OUTFIT.length])
   const shoes = shade(hexRGB(OUTFIT[(look.outfit + 4) % OUTFIT.length]), -0.3)
@@ -130,7 +130,7 @@ function faceVarOf(look: Look, seed?: number): FaceVar {
 
 /** Glasses suit some people more than others: fewer overall, more on the teacher, the lawyer, the grandpa. */
 const GLASSES_FIT = new Set(['teacher', 'businessman', 'grandpa', 'grandma', 'lawyer', 'office', 'artist', 'gamer', 'pilot'])
-function accessoryFor(look: Look, archetype?: string): number {
+export function accessoryFor(look: Look, archetype?: string): number {
   const h = (look.skin * 7 + look.hair * 13 + look.outfit * 17 + look.hairStyle * 3) % 10
   if (look.accessory === 2 && !(archetype && GLASSES_FIT.has(archetype)) && h < 5) return 0
   if (look.accessory === 0 && archetype && GLASSES_FIT.has(archetype) && h < 3) return 2
@@ -209,6 +209,28 @@ function paintHead(ctx: Ctx, look: Look, skin: SkinT, hair: HairT, e: Expr, fig:
   paintHairFront(ctx, look, hair, cx, cy, skin)
   // No bow for masculine customers (glasses and flower clips stay).
   paintAccessory(ctx, fig.masc && look.accessory === 1 ? { ...look, accessory: 0 } : look, cx, cy)
+}
+
+/**
+ * The face alone, for the 3D heads: painted into the head's face frame (catalog PEOPLE.faces.frame, head units round
+ * the head centre) over the skin's base colour, with the same cheeks, freckles, eyes, brows, nose and mouth as the
+ * 2D head, so a customer's face is the same person on the floor, in 2D and in the close-up.
+ */
+export function paintFaceFrame(ctx: Ctx, size: number, frame: { x0: number; x1: number; y0: number; y1: number }, look0: Look, e: Expr, archetype?: string, seed?: number) {
+  const look = { ...look0, accessory: accessoryFor(look0, archetype) }
+  const fig = lookFigure(look), skin = SKIN[look.skin % SKIN.length], face = faceVarOf(look, seed)
+  ctx.fillStyle = rgba(skin.base)
+  ctx.fillRect(0, 0, size, size)
+  ctx.save()
+  const k = size / (frame.x1 - frame.x0)
+  ctx.scale(k, size / (frame.y1 - frame.y0))
+  ctx.translate(-frame.x0, -frame.y0)
+  const blushA = (0.3 + 0.4 * face.blush) * (fig.masc ? 0.55 : 1)
+  blob(ctx, -8.2, 5.2, 3.6, 2.4, skin.blush, blushA)
+  blob(ctx, 8.8, 5.2, 3.6, 2.4, skin.blush, blushA)
+  if (look.freckles) { ctx.fillStyle = rgba(skin.deep, 0.45); for (const [fx, fy] of [[-9, 2.5], [-6.5, 4], [-8, 5.5], [8, 2.5], [10.5, 4], [7.5, 5.5]]) { ctx.beginPath(); ctx.arc(fx, fy, 0.55, 0, Math.PI * 2); ctx.fill() } }
+  paintFace(ctx, 0, 0, e, skin, fig, face)
+  ctx.restore()
 }
 
 function paintFace(ctx: Ctx, cx: number, cy: number, e: Expr, skin: SkinT, fig: Figure, face: FaceVar) {

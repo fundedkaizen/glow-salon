@@ -296,7 +296,7 @@ export class FloorView {
     /** Decor reads at a glance: nothing smaller than about 56 px. */
     const atLeast = (sp: Sprite, p: Piece, min = 56) => { const k = min / Math.max(p.w, p.h); if (k > 1) sp.scale.set(k); return sp }
     // Fixed furniture.
-    add(this.sortLayer, spriteOf(cached('desk', paintDesk)), 110, 288)
+    add(this.sortLayer, spriteOf(cached('desk', paintDesk)), DESK.x, DESK.y + DESK.h)
     add(this.sortLayer, spriteOf(cached('sofa', paintSofa)), 380, 246)
     add(this.rugLayer, spriteOf(cached('baseRug', paintBaseRug)), 560, 430)
     add(this.sortLayer, spriteOf(cached('lamp', paintFloorLamp)), 646, 262)
@@ -361,7 +361,7 @@ export class FloorView {
     const pg = new Graphics()
     pg.roundRect(-pw / 2, -12, pw, 24, 12).fill({ color: 0xe98aa8 }).stroke({ width: 2, color: 0xf0c36a })
     plaque.addChild(pg, name)
-    add(this.sortLayer, plaque, 216, 256, 289)
+    add(this.sortLayer, plaque, DESK.x + 106, DESK.y + DESK.h - 32, DESK.y + DESK.h + 1)
     // Stations.
     for (const st of state.stations) {
       if (st.slot < 0) continue

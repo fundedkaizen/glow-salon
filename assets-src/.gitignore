@@ -1,0 +1,7 @@
+# Downloaded by fetch.py: the CC0 source packs and the gltfpack binary. Never committed (large, re-downloadable).
+vendor/
+tools/
+# Intermediate exports before gltfpack, and Blender backups.
+out/
+*.blend1
+__pycache__/

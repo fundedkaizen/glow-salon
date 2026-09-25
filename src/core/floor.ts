@@ -14,15 +14,43 @@ export type Pt = { x: number; y: number }
 export const DOOR: Pt = { x: -30, y: 610 }
 export const DOOR_INSIDE: Pt = { x: 70, y: 610 }
 
-export const DESK = { x: 110, y: 196, w: 210, h: 92 }
+/**
+ * The reception desk stands out from the back wall, with a staff gap behind it: the computer's screen faces the
+ * gap, the player uses it standing behind the desk, and customers come to the front.
+ */
+export const DESK = { x: 100, y: 256, w: 206, h: 80 }
 const DESK_BOTTOM = DESK.y + DESK.h
-/** Where a player stands to use the salon computer. */
-export const COMPUTER_SPOT: Pt = { x: 215, y: 326 }
+/** Where a player stands to use the salon computer: behind the desk, facing the screen. */
+export const COMPUTER_SPOT: Pt = { x: 200, y: 208 }
+
+/**
+ * Low partition walls with rounded ends that split the salon into zones. They block walking. The first closes
+ * the staff gap behind the desk on the lounge side, so the gap is a nook entered from the door side only and
+ * nobody cuts through behind the desk; the others divide the lounge from the stations (free-standing, so the
+ * strip behind the station row stays connected), and the two station rows.
+ */
+export const PARTITIONS: Rect[] = [
+  { x: 306, y: 176, w: 20, h: 130 },
+  { x: 680, y: 232, w: 20, h: 60 },
+  { x: 1112, y: 500, w: 168, h: 20 },
+  // Behind the gap between the second and third chairs of the back row: the third chair's treatment nook.
+  { x: 1062, y: 232, w: 20, h: 60 },
+]
+
+/**
+ * Fixed furniture with a footprint (it blocks walking): two armchairs round a coffee table facing the sofa (the
+ * lounge group, clear of the desk and of the way in from the door), and a little fountain planter in the front
+ * right corner.
+ */
+export const FIXTURES: Record<'waiting' | 'planter', Rect> = {
+  waiting: { x: 385, y: 385, w: 235, h: 72 },
+  planter: { x: 1190, y: 702, w: 74, h: 86 },
+}
 
 export const SOFA = { x: 380, y: 196, w: 250, h: 92 }
 export const SOFA_SEATS: Pt[] = [{ x: 420, y: 262 }, { x: 480, y: 262 }, { x: 540, y: 262 }, { x: 600, y: 262 }]
 /** More customers than seats wait standing near the sofa. */
-export const STANDING: Pt[] = [{ x: 360, y: 350 }, { x: 430, y: 360 }, { x: 500, y: 355 }, { x: 570, y: 360 }, { x: 640, y: 350 }]
+export const STANDING: Pt[] = [{ x: 385, y: 336 }, { x: 445, y: 340 }, { x: 505, y: 338 }, { x: 565, y: 340 }, { x: 620, y: 336 }]
 
 /** Station slots: two rows of three on the right, then two more along the front of the salon. */
 export const SLOTS: Pt[] = [
@@ -36,7 +64,7 @@ export const SLOTS: Pt[] = [
  * down that the whole figure and its name tag stand clear of the desk (the tag sits about 60 px below it).
  */
 export function spawnPoint(id: number): Pt {
-  return { x: 180 + (Math.max(0, id) % 4) * 60, y: DESK_BOTTOM + 192 }
+  return { x: 306 + (Math.max(0, id) % 4) * 60, y: DESK_BOTTOM + 192 }
 }
 export const STATION_W = 150
 export const STATION_H = 110
@@ -60,10 +88,13 @@ export const PROP_SPOTS: Record<string, Pt> = {
   neon: { x: 505, y: 80 },
   aquarium: { x: 70, y: 420 },
   chandelier: { x: 640, y: 210 },
+  // The fountain garden (a salon upgrade, unlocks.ts): the little planter in the front right corner grows into it.
+  'up-fountain': { x: 1202, y: 734 },
 }
-const PROP_BLOCK: Record<string, Rect> = {
+export const PROP_BLOCK: Record<string, Rect> = {
   plant: { x: 1180, y: 190, w: 70, h: 60 },
   aquarium: { x: 40, y: 380, w: 70, h: 90 },
+  'up-fountain': { x: 1140, y: 684, w: 124, h: 100 },
 }
 
 // ------------------------------------------------------------------ pathfinding
@@ -85,6 +116,8 @@ export function blockedGrid(slots: number[], props: string[]): Uint8Array {
   block({ x: FLOOR_W - 16, y: 0, w: 16, h: FLOOR_H }, 0)
   block(DESK)
   block(SOFA)
+  for (const p of PARTITIONS) block(p, 4)
+  for (const f of Object.values(FIXTURES)) block(f, 4)
   for (const slot of slots) if (slot >= 0 && slot < SLOTS.length) block(stationRect(slot), 4)
   for (const prop of props) if (PROP_BLOCK[prop]) block(PROP_BLOCK[prop])
   return grid

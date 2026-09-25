@@ -1,7 +1,8 @@
 import { withLookDefaults, type CustomerPlan } from './customers.ts'
 import { advanceCampaigns, campaignBias, campaignCustomers, canRunCampaign, CAMPAIGN_BY_ID, type ActiveCampaign } from './marketing.ts'
 import { DECOR_ITEM_BY_ID, GIFT_BY_ID, GIFT_BY_REGULAR } from './decor.ts'
-import { CONFIRM_PRICE } from './economy.ts'
+import { CONFIRM_PRICE, ITEM_BY_ID } from './economy.ts'
+import { STYLE_COUNT, styleKeys } from './unlocks.ts'
 import { stationSpot } from './floor.ts'
 import { goalFor, goalTally, type DailyGoal } from './goals.ts'
 import { personaFor, type Persona } from './persona.ts'
@@ -51,6 +52,8 @@ export type SalonExt = {
     catLines: number
   }
   vote: ExtVote | null
+  /** Each piece's chosen look (unlocks.ts styleKeys: 'desk', 'lounge', 'facial-chair-1', owned item ids), 0 to 2. */
+  styles: Record<string, number>
 }
 
 export type ExtAction =
@@ -67,6 +70,8 @@ export type ExtAction =
   | { a: 'ready' }
   /** A player sets off for a station (or for somewhere else: null), so staff do not take it from under them. */
   | { a: 'claim'; station: string | null }
+  /** Pick one of a piece's three looks (cosmetic). */
+  | { a: 'style'; item: string; style: number }
 
 export const DEFAULT_SALON_NAME = 'Glow Salon'
 export const DEFAULT_CAT_NAME = 'Mochi'
@@ -74,7 +79,7 @@ export const DEFAULT_CAT_NAME = 'Mochi'
 const emptyToday = (): SalonExt['today'] => ({ ready: [], wages: 0, pets: 0, levelUps: [], bias: [], seatedAt: {}, friendUps: [], goal: null, claims: {}, lines: [], catLines: 0 })
 
 export function newExt(): SalonExt {
-  return { salonName: DEFAULT_SALON_NAME, catName: DEFAULT_CAT_NAME, staff: [], hired: [], week: -1, campaigns: [], loyalty: false, friends: {}, decorOrder: [], recent: [], stars: [0, 0, 0, 0, 0], lastDay: 0, names: [], today: emptyToday(), vote: null }
+  return { salonName: DEFAULT_SALON_NAME, catName: DEFAULT_CAT_NAME, staff: [], hired: [], week: -1, campaigns: [], loyalty: false, friends: {}, decorOrder: [], recent: [], stars: [0, 0, 0, 0, 0], lastDay: 0, names: [], today: emptyToday(), vote: null, styles: {} }
 }
 
 /** The ext of a state, created on first use (older saves have none). */
@@ -101,6 +106,7 @@ export function validateExt(raw: unknown): SalonExt {
   e.stars = Array.isArray(d.stars) && d.stars.length === 5 && d.stars.every(n => Number.isInteger(n) && n >= 0) ? [...d.stars] : [0, 0, 0, 0, 0]
   e.lastDay = Number.isInteger(d.lastDay) ? d.lastDay! : 0
   e.names = Array.isArray(d.names) ? d.names.filter(n => n && typeof n.n === 'string' && Number.isInteger(n.d)).slice(-120) : []
+  e.styles = d.styles && typeof d.styles === 'object' ? Object.fromEntries(Object.entries(d.styles).filter(([k, v]) => typeof k === 'string' && k.length <= 40 && Number.isInteger(v) && v >= 0 && v < STYLE_COUNT).slice(0, 200)) : {}
   return e
 }
 
@@ -260,6 +266,12 @@ export function reduceExt(state: SalonState, by: number, action: ExtAction): boo
       return true
     }
     case 'petCat': e.today.pets++; return true
+    case 'style': {
+      const keys = styleKeys(state.owned, id => { const k = ITEM_BY_ID[id]?.effect.kind; return k === 'station' || k === 'decor' })
+      if (!player || !keys.includes(action.item) || !Number.isInteger(action.style) || action.style < 0 || action.style >= STYLE_COUNT) return false
+      ;(e.styles ??= {})[action.item] = action.style
+      return true
+    }
     case 'placeDecor': {
       if (!state.owned.includes(action.id) || !DECOR_ITEM_BY_ID[action.id]) return false
       e.decorOrder.push(action.id)

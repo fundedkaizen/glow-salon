@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Glow Salon 3D models</title>
+  <!-- three.js from the CDN (the floor engine's version); the addons import the bare 'three' specifier -->
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+                   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/" } }
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #f4e9e2; font: 13px/1.4 system-ui, sans-serif; color: #5a3a52; }
+    #app { position: fixed; inset: 0; }
+    #bar { position: fixed; left: 8px; top: 8px; right: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; pointer-events: none; }
+    #bar > * { pointer-events: auto; }
+    select, button { font: inherit; padding: 4px 8px; border-radius: 8px; border: 1px solid #e98aa8; background: #fff7ee; color: #5a3a52; }
+    #status { background: #fff7ee; border-radius: 8px; padding: 4px 8px; }
+    #status.bad { background: #f7c6d4; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="bar">
+    <select id="view"></select>
+    <select id="clip"></select>
+    <button id="ghost">ghost</button>
+    <span id="status">loading...</span>
+  </div>
+  <script type="module" src="./viewer.js"></script>
+</body>
+</html>
