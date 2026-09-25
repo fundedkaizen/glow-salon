@@ -241,7 +241,7 @@ def _normal(m, img):
     tex.image = img
     img.colorspace_settings.name = 'Non-Color'
     nm = nt.nodes.new('ShaderNodeNormalMap')
-    nm.inputs['Strength'].default_value = 0.8
+    nm.inputs['Strength'].default_value = 0.2
     nt.links.new(tex.outputs['Color'], nm.inputs['Color'])
     nt.links.new(nm.outputs['Normal'], bsdf.inputs['Normal'])
 
@@ -425,7 +425,7 @@ def eye_extras(eyes, lashes=True):
     return shine, lash
 
 
-def lighten_sockets(head, eyes, kind, radius=0.05, amount=0.6):
+def lighten_sockets(head, eyes, kind, radius=0.06, amount=0.92):
     """Lift the painted dark shading round the eyes in the face texture, so the eyes never sit in dark holes."""
     import numpy as np
     img = bpy.data.materials['Skin'].node_tree.nodes['Image Texture'].image
@@ -451,6 +451,14 @@ def lighten_sockets(head, eyes, kind, radius=0.05, amount=0.6):
         for ch in range(3):
             c = px[:, :, ch]
             px[:, :, ch] = np.where(c < target, c + (target - c) * k, c)
+    # soft rosy blush discs on the cheeks: below and outside each eye
+    mu = (spots[0][0] + spots[1][0]) / 2
+    for u, v in spots:
+        bu, bv = u + (u - mu) * 0.35, v - 0.045
+        d = np.sqrt((xx - bu * W) ** 2 + (yy - bv * H) ** 2) / (0.032 * W)
+        k = np.clip(1 - d * d, 0, 1) ** 1.5 * 0.32
+        for ch, c in enumerate((0.97, 0.55, 0.58)):
+            px[:, :, ch] = px[:, :, ch] * (1 - k) + c * px[:, :, ch] * k
     img.pixels[:] = px.ravel()
     path = os.path.join(TEX, f'skin_{kind}_lit.jpg')
     img.filepath_raw = path
@@ -460,7 +468,7 @@ def lighten_sockets(head, eyes, kind, radius=0.05, amount=0.6):
     return spots
 
 
-def soften_brows(brows, lift=0.007, thin=0.65):
+def soften_brows(brows, lift=0.006, thin=0.5):
     """Friendlier brows: thinner and a little higher (the sculpted ones sit low and heavy, which reads as a frown)."""
     for s in (1, -1):
         vs = [v for v in brows.data.vertices if v.co.x * s > 0]
@@ -472,11 +480,11 @@ def soften_brows(brows, lift=0.007, thin=0.65):
         for v in vs:
             # a friendly arch: the inner ends up (a frown is the inner ends down), the middle a touch higher
             u = (abs(v.co.x) - x0) / max(x1 - x0, 1e-4)
-            v.co.z = cz + (v.co.z - cz) * thin + lift + 0.009 * (1 - u) ** 1.5 + 0.003 * math.sin(u * math.pi)
+            v.co.z = cz + (v.co.z - cz) * thin + lift + 0.009 * (1 - u) ** 1.3 + 0.011 * math.sin(u * math.pi) - 0.002 * u ** 2
     brows.data.update()
 
 
-def cartoonify(body, eyes, brows, jaw=0.82, cheeks=1.07, tilt=6.0, smile=0.005):
+def cartoonify(body, eyes, brows, jaw=0.74, cheeks=1.1, tilt=6.0, smile=0.005):
     """From realistic toward Serenity's cartoon faces: a shorter lower face (the jaw and chin pulled up toward the eyes),
     fuller cheeks, eyes tilted level to slightly upturned at the outer corners, and the mouth's corners lifted."""
     cs = eye_centres(eyes)

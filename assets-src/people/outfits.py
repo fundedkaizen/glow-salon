@@ -76,7 +76,8 @@ def _region(M, spec, p: Vector, n: Vector):
     neckz = M['neck'] - 0.012
     if spec['neck'] == 'high':
         neckz = M['neck'] + 0.02
-    if p.z > neckz and (p.x ** 2 + (p.y - 0.008) ** 2) ** 0.5 < 0.062:
+    if p.z > neckz + 0.004 and abs(p.x) < M['armx'] - 0.03:
+        # the neck above the collar band is skin, all of it (a clean edge the rolled band covers)
         return 'Skin'
     front = p.y < -0.01
     if spec['neck'] == 'scoop' and front and p.z > neckz - 0.05 * max(0.0, 1 - (ax / 0.085) ** 2):
@@ -347,6 +348,9 @@ def extras(body, M, spec, kind):
     """The parts beyond the painted body, for one outfit."""
     out = []
     nz = M['neck']
+    # every neckline gets a soft rolled edge, so the cloth ends on a clean band, never on a sawtooth of triangles
+    if spec['neck'] != 'high':
+        out.append(band(body, nz - 0.004, 0.008, 0.04, spec['top'], 'neckline'))
     if spec['legs'] == 'skirt' and kind == 'fem':
         top_z = M['waist'] + 0.01 if spec['hem'] == 'full' else M['hip'] + 0.045
         length = (top_z - M['knee']) * spec['skirt_len'] / 0.72 * 0.86

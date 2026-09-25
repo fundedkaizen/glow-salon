@@ -56,8 +56,46 @@ def skin(src, dst, size=1024):
     mask = np.asarray(im, dtype=np.int16)
     skinmask = (mask[:, :, 0] > mask[:, :, 1] + 6) & (mask[:, :, 1] >= mask[:, :, 2] - 4)
     a[skinmask] = flat[skinmask]
+    close_mouth(a, np.asarray(im, dtype=np.float32), size)
     Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)).save(dst, quality=88, optimize=True)
     return (mr, mg, mb)
+
+
+def close_mouth(a, src, size):
+    """A closed small smile: the pale line between the lips (it reads as teeth) becomes lip colour, with a dark
+    smile curve along it, lower in the centre so the corners turn up."""
+    import numpy as np
+    f = size / 1024
+    x0, x1, y0, y1 = int(110 * f), int(250 * f), int(240 * f), int(320 * f)
+    reg = src[y0:y1, x0:x1]
+    lip = (reg[:, :, 0] - reg[:, :, 1] > 66) & (reg[:, :, 0] > 170)
+    ys, xs = np.nonzero(lip)
+    if len(xs) < 20:
+        return
+    # the lips: the largest run of lip rows; the pale line between them: the brightest row in that box
+    rows = np.bincount(ys, minlength=reg.shape[0])
+    core = np.nonzero(rows > rows.max() * 0.3)[0]
+    ty, by = core.min(), core.max()
+    cols = xs[(ys >= ty) & (ys <= by)]
+    lx, rx = int(np.percentile(cols, 3)), int(np.percentile(cols, 97))
+    sub = a[y0:y1, x0:x1]
+    box = sub[ty:by + 1, lx:rx + 1]
+    lipcol = sub[lip].mean(axis=0)
+    lum = box.mean(axis=2)
+    line = ty + int(np.argmax(lum[:, (rx - lx) // 4:3 * (rx - lx) // 4].mean(axis=1)))
+    box[lum > lipcol.mean() + 15] = lipcol
+    near = xs[np.abs(ys - line) <= max(2, int(4 * f))]
+    if len(near) > 4:
+        lx, rx = int(near.min()) + int(2 * f), int(near.max()) - int(2 * f)
+    dark = lipcol * 0.5
+    cx, hw = (lx + rx) / 2, (rx - lx) / 2
+    for x in range(lx + 1, rx):
+        u = (x - cx) / hw
+        y = line + 1.6 * f * (1 - u * u) * 2 - 0.8 * f * 2
+        for dy, k in ((0, 1.0), (1, 0.45), (-1, 0.3)):
+            yy = int(round(y)) + dy
+            if 0 <= yy < sub.shape[0]:
+                sub[yy, x] = sub[yy, x] * (1 - k) + dark * k
 
 
 def hair(src, dst, size=512):

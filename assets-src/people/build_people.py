@@ -47,7 +47,7 @@ def materials(kind):
     ubc.materials(kind)
     for n, (c, r) in PREVIEW.items():
         gs.mat(n, c, rough=r, sheen=SHEEN.get(n, 0.0))
-    gs.mat('Lens', 0xffffff, rough=0.05, alpha=0.18)
+    gs.mat('Lens', 0xffffff, rough=0.03, alpha=0.08)
     gs.mat('Sole', 0xf4efe9, rough=0.6)
 
 
@@ -133,7 +133,7 @@ def build(kind):
     for o in (body, eyes, brows):
         unskin(o)
     ubc.enlarge_eyes(body, eyes, brows, 1.7, open_lids=1.5)
-    ubc.cartoonify(body, eyes, brows)
+    ubc.cartoonify(body, eyes, brows, smile=0.0)
     ubc.soften_brows(brows)
     rig.load_mocap(arm)
     J = rig.joints(arm)
@@ -147,8 +147,6 @@ def build(kind):
     # lighter: the body to ~7k triangles (the face spared), the brows to a few hundred
     decimate_protected(body, 7000, 'Head')
     gs.decimate(brows, 500)
-    for p in ('Hair_Long', 'Hair_Buns'):
-        gs.decimate(pieces[p], 2000)
     head, cut_z = ubc.split_head(body, J)
     head.name = head.data.name = f'head_{kind}'
     ubc.lighten_sockets(head, eyes, kind)
@@ -198,11 +196,10 @@ def build(kind):
     bpy.data.objects.remove(body)
     for o in meshes:
         clean_groups(o, arm)
-    hairs_l = [o for o in meshes if o.name.startswith('hair_')]
-    gs.bake_vertex_ao(hairs_l, samples=96, distance=0.02, strength=0.45, floor=False)
+    # no baked occlusion on people: per-vertex AO on the sculpted hair's long triangles prints every triangle as a
+    # facet; the strand texture and the floor's lights shade them instead
     for o in meshes:
-        if o not in hairs_l:
-            gs.white_vertex_colors(o)
+        gs.white_vertex_colors(o)
     for o in meshes:
         bind(o, arm)
     clips = anims.build_all(arm, gentle=True)

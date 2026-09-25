@@ -32,7 +32,7 @@ def mats(style):
     furn.material('Trim', style.get('trim', 'gold'))
     furn.material('Base', style.get('base', 'white'))
     furn.material('Accent2', style.get('accent2', style['accent']))
-    for n in ('glass', 'water', 'lamp', 'marble', 'wood', 'woodlight', 'bottleA', 'bottleB', 'bottleC', 'bottleD', 'cream', 'leaf', 'terracotta', 'soil', 'stone'):
+    for n in ('glass', 'water', 'lamp', 'marble', 'wood', 'woodlight', 'bottleA', 'bottleB', 'bottleC', 'bottleD', 'cream', 'leaf', 'terracotta', 'soil', 'stone', 'white', 'black', 'screen'):
         furn.material(n.capitalize(), n)
     furn.material('Glass', 'glass', alpha=0.35)
     furn.material('Water', 'water', alpha=0.8)
