@@ -259,10 +259,11 @@ export class TreatmentView {
       root.position.set(nl.tip.x, nl.tip.y)
       if (tip) {
         const s = new Sprite(tip.texture)
-        s.anchor.set(0.5, 1 - 6 / tip.texture.height)
+        // tip.y: how far above the crop's bottom the nail's tip point sits (the free edge starts inside the plate).
+        s.anchor.set(0.5, 1 - tip.y / tip.texture.height)
         s.rotation = Math.atan2(nl.dir.y, nl.dir.x) + Math.PI / 2
         const want = Math.hypot(t.x - nl.tip.x, t.y - nl.tip.y) + 8
-        s.scale.set(1, want / (tip.texture.height - 30))
+        s.scale.set(1, want / (tip.texture.height - 24 - tip.y))
         root.addChild(s); parts.push(s)
       }
     } else if (t.kind === 'hangnail') { const s = sprite(bits.hangnail(), 0.7); const d = fingerDir(HAND.fingers[t.n ?? 0]); s.rotation = Math.atan2(d.y, d.x) + Math.PI / 2 }
@@ -1118,8 +1119,9 @@ export class TreatmentView {
       this.uvGlow.alpha += ((holding ? 0.42 + Math.sin(this.time * 20) * 0.03 : 0.08) - this.uvGlow.alpha) * Math.min(1, dt * 10)
       if (holding && Math.random() < dt * 10) this.twinkle(300 + Math.random() * 450, 250 + Math.random() * 300, 0.25, 0xd8c8ff)
     }
-    // A hint after a few idle seconds at the start of a step.
-    if (!this.touched && this.idle > 2.5 && !this.reveal && this.opts.role === 'lead') {
+    // A hint after a few idle seconds at the start of a step, only where there is a spot to go to (targets,
+    // the peel's edge): a ring floating over the middle of the hand or face just looks like a mark.
+    if (!this.touched && this.idle > 2.5 && !this.reveal && this.opts.role === 'lead' && (step.targets || step.gesture === 'peel')) {
       const spot = this.hintSpot(step)
       this.hint.visible = true
       this.hint.position.set(spot.x, spot.y)

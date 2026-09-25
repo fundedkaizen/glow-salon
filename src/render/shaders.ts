@@ -79,7 +79,8 @@ void main() {
   // soft highlight on the form plus a fine sparkle from the pores inside it. It follows the light, which
   // sways a little with the customer's breathing.
   float gloss = texture(uHeight, vUV).g;
-  float shine = (pow(ndhSoft, 70.0) * 0.34 + pow(ndh, 140.0) * 0.16) * gloss;
+  // (The pore sparkle is kept faint and only where the gloss is strong: on a hand's deep bump it read as a rash.)
+  float shine = pow(ndhSoft, 70.0) * 0.34 * gloss + pow(ndh, 140.0) * 0.05 * gloss * gloss;
   col += sheenCol * (drySheen + dewy + shine) + vec3(1.0, 0.985, 0.97) * wetSpec;
   col += vec3(glint) * 0.0;
   float a = alb.a * uColor.a;
@@ -108,7 +109,11 @@ void main() {
   float alpha = art.a * m * uP.w * uColor.a;
   if (alpha < 0.002) discard;
   vec3 col = art.rgb / max(art.a, 0.001);
-  col = mix(col, col * uTint.rgb, uTint.a);
+  // Tinted layers (polish) are painted at 90% grey: that maps to the chosen colour, darker greys shade it
+  // (the thicker edge), and pure white stays a white gloss highlight.
+  float hl = smoothstep(0.93, 0.99, dot(col, vec3(0.333)));
+  vec3 tinted = mix(min(col / 0.9, vec3(1.0)) * uTint.rgb, vec3(1.0), hl);
+  col = mix(col, tinted, uTint.a);
   vec2 dx = vec2(uTexel.x * 1.5, 0.0), dy = vec2(0.0, uTexel.y * 1.5);
   float mx = cover(vUV + dx) - cover(vUV - dx);
   float my = cover(vUV + dy) - cover(vUV - dy);

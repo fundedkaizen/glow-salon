@@ -5,7 +5,8 @@ import { HAND, SHAPES, fingerDir, nailOf, type Finger } from '../core/treatments
 import { POLISH_COLORS } from '../core/treatments/types.ts'
 import type { HandProfile } from '../core/treatments/profile.ts'
 import { SKIN, type SkinTone } from './palette.ts'
-import { blob, blurred, canvas, dots, fbm, hex, mixRGB, packHeight, rgba, shade, smoothPath, tintedByNoise, type Ctx } from './paint.ts'
+import { blob, blurred, canvas, dots, fbm, hex, mixRGB, packHeight, rgba, shade, smoothPath, softBatch, tintedByNoise, warm, type Ctx, type RGB } from './paint.ts'
+import { makeRng as rng2 } from '../core/rng.ts'
 import type { Crop } from './face.ts'
 
 /**
@@ -141,18 +142,24 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
     blob(sctx, f.tip.x - d.x * 20, f.tip.y - d.y * 20, f.r1 * 1.1, f.r1 * 1.1, skin.blush, 0.3)
     // Knuckle creases: two joints on each finger (one on the thumb).
     const joints = f.name === 'thumb' ? [0.5] : [0.42, 0.7]
-    for (const t of joints) {
+    const kr = rng2(seed + f.base.x)
+    for (const [ji, t] of joints.entries()) {
       const jx = f.base.x + (f.tip.x - f.base.x) * t, jy = f.base.y + (f.tip.y - f.base.y) * t
       blob(sctx, jx, jy, f.r0 * 0.7, f.r0 * 0.45, skin.light, 0.25)
-      sctx.strokeStyle = rgba(skin.deep, 0.28)
-      sctx.lineWidth = 1.6
-      for (let k = -1; k <= 1; k++) {
-        const off = k * 6
-        const w = f.r0 * (0.55 - Math.abs(k) * 0.12)
-        sctx.beginPath()
-        sctx.moveTo(jx + d.x * off - n.x * w, jy + d.y * off - n.y * w)
-        sctx.quadraticCurveTo(jx + d.x * (off - 5), jy + d.y * (off - 5), jx + d.x * off + n.x * w, jy + d.y * off + n.y * w)
-        sctx.stroke()
+      // Knuckle creases: a set of fine curved wrinkles bowing toward the tip, longest in the middle, each
+      // with a lit ridge just beside it.
+      const lines = ji === 0 && f.name !== 'thumb' ? 5 : 3
+      for (let k = 0; k < lines; k++) {
+        const off = (k - (lines - 1) / 2) * 4.5
+        const w = f.r0 * (0.62 - Math.abs(k - (lines - 1) / 2) * 0.1) * kr.range(0.85, 1.1)
+        const bow = kr.range(3, 7)
+        const path = (dd: number) => {
+          sctx.beginPath()
+          sctx.moveTo(jx + d.x * (off + dd) - n.x * w, jy + d.y * (off + dd) - n.y * w)
+          sctx.quadraticCurveTo(jx + d.x * (off + dd + bow), jy + d.y * (off + dd + bow), jx + d.x * (off + dd) + n.x * w, jy + d.y * (off + dd) + n.y * w)
+        }
+        sctx.strokeStyle = rgba(skin.deep, kr.range(0.2, 0.34)); sctx.lineWidth = 1.3; path(0); sctx.stroke()
+        sctx.strokeStyle = rgba(skin.light, 0.22); sctx.lineWidth = 1.1; path(1.8); sctx.stroke()
       }
     }
   }
@@ -162,34 +169,91 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
     blob(sctx, f.base.x + 10, f.base.y + 36, 28, 16, skin.shadow, 0.2)
     blurred(sctx, 6, () => { sctx.strokeStyle = rgba(skin.light, 0.25); sctx.lineWidth = 10; sctx.beginPath(); sctx.moveTo(f.base.x, f.base.y + 40); sctx.quadraticCurveTo(f.base.x * 0.7 + 512 * 0.3, 850, 512 + (f.base.x - 512) * 0.4, 1024); sctx.stroke() })
   }
-  blurred(sctx, 3, () => { sctx.strokeStyle = 'rgba(120,140,190,0.10)'; sctx.lineWidth = 5; sctx.beginPath(); sctx.moveTo(470, 1024); sctx.bezierCurveTo(480, 900, 540, 820, 560, 740); sctx.stroke() })
+  // Extensor tendons fanning from the knuckles to the wrist: a lit ridge with its shadow side to the right.
+  // Extensor tendons: soft form shading that fans out from the wrist to each knuckle, bowing a little.
+  const tendon = (f: typeof HAND.fingers[number], c: Ctx, dx: number) => {
+    const wx = 512 + (f.base.x - 512) * 0.14, bow = (f.base.x - 512) * 0.12
+    c.beginPath(); c.moveTo(wx + dx, 985)
+    c.quadraticCurveTo((wx + f.base.x) / 2 + bow + dx, 830, f.base.x + dx, f.base.y + 50); c.stroke()
+  }
+  softBatch(sctx, 9, c => { c.strokeStyle = rgba(mixRGB(skin.shadow, skin.deep, 0.3), 0.13); c.lineWidth = 10; for (const f of HAND.fingers.slice(1)) tendon(f, c, 9) }, 'multiply')
+  softBatch(sctx, 7, c => { c.strokeStyle = rgba(skin.light, 0.18); c.lineWidth = 10; for (const f of HAND.fingers.slice(1)) tendon(f, c, 0) })
+  // Veins: soft, branching, faintly blue-green on fair skin, just a deeper warm line on deep skin.
+  const fairH = Math.min(1, (skin.base[0] + skin.base[1] + skin.base[2]) / 3 / 215)
+  const veinCol = mixRGB(skin.shadow, [96, 116, 150], 0.45 * fairH)
+  const vr = rng2(seed + 88)
+  const veins: [number, number][][] = []
+  for (let v = 0; v < 3; v++) {
+    // Mostly low on the back of the hand and over the wrist.
+    const x0 = vr.range(430, 630), pts: [number, number][] = [[x0, 1000]]
+    let x = x0, y = 1000
+    for (let k = 0; k < 4; k++) { x += vr.range(-24, 24); y -= vr.range(30, 50); pts.push([x, y]) }
+    veins.push(pts)
+    const bi = vr.int(1, 3)
+    veins.push([pts[bi], [pts[bi][0] + vr.range(-60, 60), pts[bi][1] - vr.range(40, 80)]])
+  }
+  softBatch(sctx, 2.5, c => {
+    c.strokeStyle = rgba(veinCol, 0.08 + 0.07 * fairH); c.lineWidth = 5
+    for (const v of veins) { c.beginPath(); c.moveTo(v[0][0], v[0][1]); for (let k = 1; k < v.length; k++) { const m = [(v[k - 1][0] + v[k][0]) / 2, (v[k - 1][1] + v[k][1]) / 2]; c.quadraticCurveTo(v[k - 1][0], v[k - 1][1], m[0], m[1]) } c.stroke() }
+  }, 'multiply')
   // Darker where fingers meet, and around the whole edge.
   for (let i = 1; i < HAND.fingers.length - 1; i++) {
     const a = HAND.fingers[i], b = HAND.fingers[i + 1]
     blob(sctx, (a.base.x + b.base.x) / 2, (a.base.y + b.base.y) / 2 - 10, 16, 40, skin.deep, 0.6)
   }
-  // Natural nails: pink beds, a pale half-moon, a white free edge and a gloss stripe.
+  // Natural nails with depth: a pink bed darker toward the side walls with faint ridges along it, a pale
+  // lunula, the free edge beyond the smile line (white, a little translucent, with the shadow of the
+  // fingertip under it), the skin fold of the cuticle arching over the base, and a gloss streak.
   for (const f of HAND.fingers) {
     const nl = nailOf(f)
     const shape: Shape = SHAPES.nailShapes[HAND.fingers.indexOf(f)]
+    const a = Math.atan2(nl.dir.y, nl.dir.x)
+    const nx = -nl.dir.y, ny = nl.dir.x, hw = nl.halfWidth
+    const along = (t: number, side = 0) => ({ x: nl.base.x + (nl.tip.x - nl.base.x) * t + nx * side * hw, y: nl.base.y + (nl.tip.y - nl.base.y) * t + ny * side * hw })
     sctx.save()
     sctx.beginPath(); shapePath(sctx, shape); sctx.clip()
-    sctx.fillStyle = rgba(mixRGB(skin.base, [242, 176, 180], 0.55))
+    const bed = mixRGB(skin.base, [240, 170, 176], 0.55)
+    const mid = along(0.5)
+    const g = sctx.createLinearGradient(mid.x - nx * hw, mid.y - ny * hw, mid.x + nx * hw, mid.y + ny * hw)
+    g.addColorStop(0, rgba(shade(bed, -0.14))); g.addColorStop(0.3, rgba(shade(bed, 0.06))); g.addColorStop(0.7, rgba(bed)); g.addColorStop(1, rgba(shade(bed, -0.2)))
+    sctx.fillStyle = g
     sctx.fillRect(0, 0, S, S)
-    blob(sctx, nl.base.x + nl.dir.x * 12, nl.base.y + nl.dir.y * 12, nl.halfWidth * 0.72, nl.halfWidth * 0.46, [255, 240, 240], 0.7, 0.55)
-    const e = { x: nl.tip.x - nl.dir.x * 6, y: nl.tip.y - nl.dir.y * 6 }
-    blob(sctx, e.x, e.y, nl.halfWidth * 1.1, 14, [255, 250, 246], 0.9, 0.4)
+    // Faint longitudinal ridges.
+    sctx.lineWidth = 1
+    for (let k = -3; k <= 3; k++) {
+      const p0 = along(0.05, k * 0.26), p1 = along(0.9, k * 0.24)
+      sctx.strokeStyle = k % 2 ? 'rgba(255,255,255,0.12)' : rgba(shade(bed, -0.2), 0.12)
+      sctx.beginPath(); sctx.moveTo(p0.x, p0.y); sctx.lineTo(p1.x, p1.y); sctx.stroke()
+    }
+    // Lunula: a pale half-moon at the base.
+    const lb = along(0.02)
+    sctx.fillStyle = rgba(mixRGB(bed, [255, 244, 244], 0.65), 0.85)
+    sctx.beginPath(); sctx.ellipse(lb.x, lb.y, hw * 0.62, 17, a + Math.PI / 2, 0, Math.PI * 2); sctx.fill()
+    // The free edge beyond the smile line, and the darker band under it where it leaves the fingertip.
+    const smile = 0.78
+    const sm = along(smile), sl = along(smile - 0.1, -1.1), sr = along(smile - 0.1, 1.1)
+    const edgePath = () => { sctx.beginPath(); sctx.moveTo(sl.x, sl.y); sctx.quadraticCurveTo(sm.x + nl.dir.x * 16, sm.y + nl.dir.y * 16, sr.x, sr.y); const t = along(1.25); sctx.lineTo(t.x + nx * hw * 1.4, t.y + ny * hw * 1.4); sctx.lineTo(t.x - nx * hw * 1.4, t.y - ny * hw * 1.4); sctx.closePath() }
+    edgePath()
+    sctx.fillStyle = rgba([250, 242, 226], 0.92)
+    sctx.fill()
+    blurred(sctx, 1.5, () => { sctx.strokeStyle = rgba(shade(bed, -0.3), 0.45); sctx.lineWidth = 3; sctx.beginPath(); sctx.moveTo(sl.x, sl.y); sctx.quadraticCurveTo(sm.x + nl.dir.x * 16, sm.y + nl.dir.y * 16, sr.x, sr.y); sctx.stroke() })
+    // Gloss: a long soft streak and a small sharp one.
+    const g0 = along(0.15, -0.38), g1 = along(0.72, -0.34)
+    blurred(sctx, 2, () => { sctx.strokeStyle = 'rgba(255,255,255,0.6)'; sctx.lineWidth = 5; sctx.lineCap = 'round'; sctx.beginPath(); sctx.moveTo(g0.x, g0.y); sctx.lineTo(g1.x, g1.y); sctx.stroke() })
+    const gd = along(0.2, 0.3)
+    blob(sctx, gd.x, gd.y, 3, 2, [255, 255, 255], 0.8)
     sctx.restore()
-    sctx.strokeStyle = rgba(skin.deep, 0.35)
-    sctx.lineWidth = 2.5
+    // Side walls and the outline: a fine darker groove.
+    sctx.strokeStyle = rgba(skin.deep, 0.32)
+    sctx.lineWidth = 2
     sctx.beginPath(); shapePath(sctx, shape); sctx.stroke()
-    blurred(sctx, 2, () => {
-      sctx.strokeStyle = 'rgba(255,255,255,0.7)'; sctx.lineWidth = 5
-      const off = -nl.halfWidth * 0.35
-      sctx.beginPath()
-      sctx.moveTo(nl.base.x + nl.dir.x * 16 - nl.dir.y * off, nl.base.y + nl.dir.y * 16 + nl.dir.x * off)
-      sctx.lineTo(nl.tip.x - nl.dir.x * 16 - nl.dir.y * off, nl.tip.y - nl.dir.y * 16 + nl.dir.x * off)
-      sctx.stroke()
+    // The cuticle: the skin fold arching over the nail's base, lit on its rim, a dark groove beneath.
+    const cb = along(-0.02)
+    blurred(sctx, 1, () => {
+      sctx.strokeStyle = rgba(shade(skin.deep, -0.1), 0.5); sctx.lineWidth = 3
+      sctx.beginPath(); sctx.ellipse(cb.x, cb.y, hw * 0.98, 20, a + Math.PI / 2, Math.PI * 0.12, Math.PI * 0.88); sctx.stroke()
+      sctx.strokeStyle = rgba(mixRGB(skin.light, [255, 236, 230], 0.4), 0.7); sctx.lineWidth = 2.5
+      sctx.beginPath(); sctx.ellipse(cb.x - nl.dir.x * 4, cb.y - nl.dir.y * 4, hw * 1.02, 21, a + Math.PI / 2, Math.PI * 0.15, Math.PI * 0.85); sctx.stroke()
     })
   }
   // Broken nails: a jagged missing corner and a hairline crack.
@@ -217,19 +281,45 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
   clipTo(sctx, sil)
   ctx.drawImage(skinC, 0, 0)
   {
+    // The sleeve: a soft knit cuff, ribbed, with a thick rolled edge, rounding away at the sides, and the
+    // skin of the wrist darkening where it goes into it.
     const sleeve = shade(hex(0xf7b7c9), 0.1)
-    blurred(ctx, 14, () => { ctx.fillStyle = rgba(skin.deep, 0.35); ctx.beginPath(); ctx.ellipse(520, 930, 200, 40, 0, 0, Math.PI * 2); ctx.fill() })
+    const cuff = (k: Ctx, dy = 0) => { k.beginPath(); k.moveTo(300, 1030); k.bezierCurveTo(310, 950 + dy, 360, 930 + dy, 520, 928 + dy); k.bezierCurveTo(680, 930 + dy, 730, 950 + dy, 740, 1030); k.closePath() }
+    softBatch(ctx, 10, k => { k.fillStyle = rgba(aoOf(skin), 0.55); k.translate(0, -16); cuff(k); k.fill() }, 'multiply')
     ctx.save()
-    ctx.beginPath(); ctx.moveTo(300, 1030); ctx.bezierCurveTo(310, 950, 360, 930, 520, 928); ctx.bezierCurveTo(680, 930, 730, 950, 740, 1030); ctx.closePath()
+    cuff(ctx)
     const sg = ctx.createLinearGradient(0, 930, 0, 1024)
-    sg.addColorStop(0, rgba(shade(sleeve, 0.35))); sg.addColorStop(1, rgba(sleeve))
+    sg.addColorStop(0, rgba(shade(sleeve, 0.25))); sg.addColorStop(1, rgba(shade(sleeve, -0.06)))
     ctx.fillStyle = sg
     ctx.fill()
     ctx.clip()
-    for (let x = 290; x < 750; x += 14) { ctx.strokeStyle = rgba(shade(sleeve, -0.12), 0.5); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x, 930); ctx.lineTo(x + 4, 1030); ctx.stroke() }
-    blob(ctx, 470, 950, 120, 20, [255, 255, 255], 0.35)
+    // Ribs: each a lit rounded column between shaded grooves, following the cuff's curve.
+    softBatch(ctx, 1.5, k => {
+      for (let x = 296; x < 750; x += 13) {
+        const top = 930 + ((x - 520) / 220) ** 2 * 22
+        k.strokeStyle = rgba(shade(sleeve, -0.2), 0.6); k.lineWidth = 3.5
+        k.beginPath(); k.moveTo(x, top); k.lineTo(x + (x - 520) * 0.04, 1030); k.stroke()
+        k.strokeStyle = rgba(shade(sleeve, 0.35), 0.55); k.lineWidth = 3
+        k.beginPath(); k.moveTo(x + 6, top); k.lineTo(x + 6 + (x - 520) * 0.04, 1030); k.stroke()
+      }
+    })
+    // Rounding away at the sides.
+    const rg = ctx.createLinearGradient(300, 0, 740, 0)
+    rg.addColorStop(0, rgba(shade(sleeve, -0.25), 0.5)); rg.addColorStop(0.25, rgba(sleeve, 0)); rg.addColorStop(0.75, rgba(sleeve, 0)); rg.addColorStop(1, rgba(shade(sleeve, -0.3), 0.6))
+    ctx.fillStyle = rg
+    ctx.fillRect(290, 920, 460, 120)
     ctx.restore()
+    // The rolled edge: a soft tube along the top, lit on top, shaded beneath.
+    const edge = (k: Ctx, dy: number) => { k.beginPath(); k.moveTo(306, 968 + dy); k.bezierCurveTo(330, 942 + dy, 380, 931 + dy, 520, 929 + dy); k.bezierCurveTo(660, 931 + dy, 710, 942 + dy, 734, 968 + dy) }
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = rgba(shade(sleeve, 0.12)); ctx.lineWidth = 16; edge(ctx, 6); ctx.stroke()
+    softBatch(ctx, 2, k => {
+      k.strokeStyle = rgba(shade(sleeve, 0.55), 0.85); k.lineWidth = 5; edge(k, 2); k.stroke()
+      k.strokeStyle = rgba(shade(sleeve, -0.25), 0.6); k.lineWidth = 4; edge(k, 13); k.stroke()
+    })
   }
+
+  const jewel = paintJewellery(ctx, skin, seed)
 
   // ---------------------------------------------------------------- height
   const [height, hctx] = canvas(S)
@@ -263,6 +353,15 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
     for (const t of [0.42, 0.72]) blob(glctx, f.base.x + (f.tip.x - f.base.x) * t - d.y * 8, f.base.y + (f.tip.y - f.base.y) * t + d.x * 8, f.r0 * 0.6, f.r0 * 0.6, [255, 255, 255], 0.4)
   }
   glctx.drawImage(nails, 0, 0)
+  glctx.drawImage(jewel, 0, 0)
+  hctx.globalAlpha = 0.6
+  hctx.drawImage(jewel, 0, 0)
+  hctx.globalAlpha = 1
+  // Tendons stand a little proud of the back of the hand.
+  softBatch(hctx, 9, c => {
+    c.strokeStyle = 'rgba(255,255,255,0.16)'; c.lineWidth = 12
+    for (const f of HAND.fingers.slice(1)) { const wx = 512 + (f.base.x - 512) * 0.14; c.beginPath(); c.moveTo(wx, 985); c.quadraticCurveTo((wx + f.base.x) / 2 + (f.base.x - 512) * 0.12, 830, f.base.x, f.base.y + 50); c.stroke() }
+  })
   const packed = packHeight(height, gl)
 
   // ---------------------------------------------------------------- layers
@@ -271,6 +370,7 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
   hmctx.drawImage(sil, 0, 0)
   hmctx.globalCompositeOperation = 'destination-out'
   hmctx.beginPath(); hmctx.moveTo(300, 1030); hmctx.bezierCurveTo(310, 950, 360, 930, 520, 928); hmctx.bezierCurveTo(680, 930, 730, 950, 740, 1030); hmctx.closePath(); hmctx.fill()
+  hmctx.drawImage(jewel, 0, 0)
   hmctx.globalCompositeOperation = 'source-over'
   const cuticleMask = shapesCanvas(SHAPES.cuticleShapes)
   const tipsMask = shapesCanvas(SHAPES.tipShapes)
@@ -281,7 +381,9 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
       for (let i = 0; i < 120; i++) { const x = r.range(200, 780), y = r.range(260, 1000), rr = r.range(3, 8); blob(l, x, y, rr, rr * 1.2, [255, 255, 255], 0.55, 0.6); blob(l, x - rr * 0.3, y - rr * 0.4, rr * 0.3, rr * 0.25, [255, 255, 255], 0.95) }
     }),
     dull: layer(nails, l => {
-      l.drawImage(tintedByNoise(S, [244, 232, 230], fbm(S, 10, 3, seed + 3), 0.4, 0.7), 0, 0)
+      // Yellowed, dull plates: a stained film with a chalky haze and fine ridges.
+      l.drawImage(tintedByNoise(S, [236, 214, 150], fbm(S, 16, 3, seed + 4), 0.25, 0.6), 0, 0)
+      l.drawImage(tintedByNoise(S, [244, 234, 222], fbm(S, 10, 3, seed + 3), 0.2, 0.45), 0, 0)
       l.strokeStyle = 'rgba(255,255,255,0.35)'; l.lineWidth = 1
       for (let i = 0; i < 400; i++) { const x = r.range(180, 760), y = r.range(200, 700); l.beginPath(); l.moveTo(x, y); l.lineTo(x + r.range(-12, 12), y + r.range(-4, 4)); l.stroke() }
     }),
@@ -300,6 +402,22 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
       })
       l.strokeStyle = 'rgba(255,255,255,0.18)'; l.lineWidth = 1
       for (let i = 0; i < 200; i++) { const x = r.range(180, 760), y = r.range(200, 700); l.beginPath(); l.moveTo(x, y); l.lineTo(x + r.range(-14, 14), y + r.range(-6, 6)); l.stroke() }
+      // Chips: bites out of the polish at the free edge and the corners, their edges a little raised.
+      const cr = rng2(seed + 72)
+      const bites = new Path2D()
+      HAND.fingers.forEach(f => {
+        const nl = nailOf(f)
+        for (let k = 0; k < 1 + Math.round(p.chips * 2); k++) {
+          const side = cr.range(-1, 1), t = cr.range(0.72, 1.05)
+          const cx = nl.base.x + (nl.tip.x - nl.base.x) * t - nl.dir.y * side * nl.halfWidth, cy = nl.base.y + (nl.tip.y - nl.base.y) * t + nl.dir.x * side * nl.halfWidth
+          const rr = cr.range(6, 14)
+          bites.moveTo(cx + rr, cy)
+          for (let j = 1; j <= 8; j++) { const aa = (j / 8) * Math.PI * 2; const d = rr * cr.range(0.6, 1.2); bites.lineTo(cx + Math.cos(aa) * d, cy + Math.sin(aa) * d) }
+          bites.closePath()
+        }
+      })
+      l.save(); l.strokeStyle = 'rgba(255,255,255,0.5)'; l.lineWidth = 3; l.stroke(bites); l.restore()
+      l.save(); l.globalCompositeOperation = 'destination-out'; l.fill(bites); l.restore()
     }),
     dirt: layer(tipsMask, l => {
       // Grime under the free edge: a dark crescent where the nail leaves the fingertip.
@@ -307,22 +425,32 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
         const nl = nailOf(f)
         const a = Math.atan2(nl.dir.y, nl.dir.x)
         blurred(l, 2.5, () => {
-          l.strokeStyle = rgba([92, 74, 58], 0.85)
-          l.lineWidth = 9
+          l.strokeStyle = rgba([70, 52, 36], 0.9)
+          l.lineWidth = 12
           l.lineCap = 'round'
           l.beginPath()
           l.ellipse(nl.tip.x - nl.dir.x * 4, nl.tip.y - nl.dir.y * 4, nl.halfWidth * 0.82, 10, a + Math.PI / 2, Math.PI * 0.08, Math.PI * 0.92)
           l.stroke()
         })
-        for (let i = 0; i < 18; i++) {
-          const t = r.range(-0.8, 0.8)
-          l.fillStyle = rgba([70, 56, 44], r.range(0.4, 0.9))
-          l.fillRect(nl.tip.x - nl.dir.y * t * nl.halfWidth - nl.dir.x * r.range(0, 10), nl.tip.y + nl.dir.x * t * nl.halfWidth - nl.dir.y * r.range(0, 10), 2.5, 2.5)
-        }
+        dots(l, [54, 40, 28], 40, () => { const t = r.range(-0.85, 0.85), k = r.range(0, 14); return { x: nl.tip.x - nl.dir.y * t * nl.halfWidth - nl.dir.x * k, y: nl.tip.y + nl.dir.x * t * nl.halfWidth - nl.dir.y * k, r: r.range(1, 2.4), a: r.range(0.4, 0.9) } }, 2)
       }
     }),
     dry: layer(handMask, l => {
       l.drawImage(tintedByNoise(S, mixRGB(skin.light, [255, 246, 240], 0.5), fbm(S, 26, 3, seed + 7), 0.2, 0.55), 0, 0)
+      // Cracked, chapped skin over the knuckles: fine dark splits with pale lifted edges.
+      const cr = rng2(seed + 71)
+      softBatch(l, 0.6, c => {
+        for (const f of HAND.fingers) for (const t of f.name === 'thumb' ? [0.5, -0.1] : [0.42, 0.7, -0.08]) {
+          const cx = f.base.x + (f.tip.x - f.base.x) * t, cy = f.base.y + (f.tip.y - f.base.y) * t + (t < 0 ? 30 : 0)
+          for (let k = 0; k < 4; k++) {
+            let x = cx + cr.range(-f.r0 * 0.5, f.r0 * 0.5), y = cy + cr.range(-8, 8)
+            c.beginPath(); c.moveTo(x, y)
+            for (let j = 0; j < 4; j++) { x += cr.range(-7, 7); y += cr.range(-4, 4); c.lineTo(x, y) }
+            c.strokeStyle = rgba(shade(skin.deep, -0.2), 0.55); c.lineWidth = 1.3; c.stroke()
+            c.strokeStyle = 'rgba(255,250,244,0.55)'; c.lineWidth = 1; c.translate(0, -1.5); c.stroke(); c.translate(0, 1.5)
+          }
+        }
+      })
       for (let i = 0; i < 900; i++) {
         const x = r.range(200, 780), y = r.range(300, 1000), s = r.range(3, 7)
         l.fillStyle = rgba([255, 252, 248], r.range(0.35, 0.75))
@@ -348,39 +476,162 @@ export function paintHand(look: Look, seed: number, profile: HandProfile): HandA
     }),
     base: layer(nails, l => { l.fillStyle = 'rgba(255,250,252,0.28)'; l.fillRect(0, 0, S, S) }),
     color: layer(nails, l => {
-      l.fillStyle = '#ffffff'
+      // Painted at 90% grey: the layer shader maps that back to the chosen colour, keeps pure white as a
+      // white highlight, and anything darker shades the polish (its thicker, darker edge).
+      l.fillStyle = 'rgb(230,230,230)'
       l.fillRect(0, 0, S, S)
-      l.strokeStyle = 'rgba(214,214,214,0.12)'; l.lineWidth = 3
-      for (const f of HAND.fingers) {
+      for (const [i, f] of HAND.fingers.entries()) {
         const nl = nailOf(f)
+        const shape = SHAPES.nailShapes[i]
+        l.save()
+        l.beginPath(); shapePath(l, shape); l.clip()
+        // The meniscus: polish pools a little thicker and darker along the edges.
+        blurred(l, 5, () => { l.strokeStyle = 'rgb(170,170,170)'; l.lineWidth = 12; l.beginPath(); shapePath(l, shape); l.stroke() })
+        // Faint brush marks along the nail.
+        l.strokeStyle = 'rgba(215,215,215,0.5)'; l.lineWidth = 3
         for (let k = -2; k <= 2; k++) { const off = k * nl.halfWidth * 0.35; l.beginPath(); l.moveTo(nl.base.x - nl.dir.y * off, nl.base.y + nl.dir.x * off); l.lineTo(nl.tip.x - nl.dir.y * off, nl.tip.y + nl.dir.x * off); l.stroke() }
-        blob(l, nl.base.x + (nl.tip.x - nl.base.x) * 0.5, nl.base.y + (nl.tip.y - nl.base.y) * 0.5, nl.halfWidth, nl.halfWidth * 1.6, [255, 255, 255], 0.4)
+        // The gloss: a long soft streak and a sharp dot, pure white.
+        const at = (t: number, side: number) => ({ x: nl.base.x + (nl.tip.x - nl.base.x) * t - nl.dir.y * side * nl.halfWidth, y: nl.base.y + (nl.tip.y - nl.base.y) * t + nl.dir.x * side * nl.halfWidth })
+        const g0 = at(0.18, -0.4), g1 = at(0.7, -0.36)
+        blurred(l, 2.5, () => { l.strokeStyle = 'rgb(255,255,255)'; l.lineWidth = 6; l.lineCap = 'round'; l.beginPath(); l.moveTo(g0.x, g0.y); l.lineTo(g1.x, g1.y); l.stroke() })
+        const gd = at(0.24, 0.32)
+        blob(l, gd.x, gd.y, 3.5, 2.5, [255, 255, 255], 1)
+        l.restore()
       }
     }),
-    top: layer(nails, l => { l.fillStyle = 'rgba(255,255,255,0.2)'; l.fillRect(0, 0, S, S) }),
+    // Top coat: a clear film (barely there) with its own wet streak.
+    top: layer(nails, l => {
+      l.fillStyle = 'rgba(255,255,255,0.07)'; l.fillRect(0, 0, S, S)
+      for (const f of HAND.fingers) {
+        const nl = nailOf(f)
+        const at = (t: number, side: number) => ({ x: nl.base.x + (nl.tip.x - nl.base.x) * t - nl.dir.y * side * nl.halfWidth, y: nl.base.y + (nl.tip.y - nl.base.y) * t + nl.dir.x * side * nl.halfWidth })
+        const g0 = at(0.12, -0.3), g1 = at(0.8, -0.28)
+        blurred(l, 3, () => { l.strokeStyle = 'rgba(255,255,255,0.55)'; l.lineWidth = 4; l.lineCap = 'round'; l.beginPath(); l.moveTo(g0.x, g0.y); l.lineTo(g1.x, g1.y); l.stroke() })
+      }
+    }),
   }
 
   // ---------------------------------------------------------------- tips to clip
+  // The overgrown free edge, continuing the nail plate: the same width and curve, ivory and a little
+  // translucent, tapering to a rounded tip, a fine highlight along its edge and a soft shadow under it. It
+  // starts inside the plate (where the plate is still full width) and fades in there, so there is no seam.
   const tips = HAND.fingers.map((f, i) => {
     const nl = nailOf(f)
+    const hw = nl.halfWidth, ov = Math.round(hw * 0.8)
     const len = Math.max(12, grown[i])
-    const w = nl.halfWidth * 2 + 20, h = len + 30
+    const w = hw * 2 + 24, h = len + 30 + ov
     const [c, tctx] = canvas(Math.ceil(w), Math.ceil(h))
-    // Drawn pointing up; the view rotates it to the finger's direction.
-    tctx.translate(w / 2, h - 6)
-    tctx.beginPath()
-    tctx.moveTo(-nl.halfWidth * 0.96, 0)
-    tctx.bezierCurveTo(-nl.halfWidth * 0.98, -len * 0.6, -nl.halfWidth * 0.7, -len, 0, -len)
-    tctx.bezierCurveTo(nl.halfWidth * 0.7, -len, nl.halfWidth * 0.98, -len * 0.6, nl.halfWidth * 0.96, 0)
-    tctx.closePath()
-    const g = tctx.createLinearGradient(0, 0, 0, -len)
-    g.addColorStop(0, 'rgba(255,250,246,0.95)'); g.addColorStop(1, 'rgba(246,236,230,0.85)')
+    // Drawn pointing up; the view rotates it to the finger's direction. The nail's tip point is at (0, 0).
+    tctx.translate(w / 2, h - 6 - ov)
+    const outline = () => {
+      tctx.beginPath()
+      tctx.moveTo(-hw * 0.99, ov)
+      tctx.bezierCurveTo(-hw * 1.0, -len * 0.45, -hw * 0.82, -len * 0.92, -hw * 0.3, -len)
+      tctx.quadraticCurveTo(0, -len - 3, hw * 0.3, -len)
+      tctx.bezierCurveTo(hw * 0.82, -len * 0.92, hw * 1.0, -len * 0.45, hw * 0.99, ov)
+      tctx.closePath()
+    }
+    blurred(tctx, 4, () => { tctx.save(); tctx.translate(3, 5); outline(); tctx.fillStyle = 'rgba(90,60,70,0.22)'; tctx.fill(); tctx.restore() })
+    outline()
+    const g = tctx.createLinearGradient(0, ov, 0, -len)
+    g.addColorStop(0, 'rgba(250,242,226,0)'); g.addColorStop(Math.min(0.9, ov / (ov + len) + 0.02), 'rgba(250,242,226,0.9)'); g.addColorStop(1, 'rgba(244,232,210,0.82)')
     tctx.fillStyle = g
     tctx.fill()
-    tctx.strokeStyle = 'rgba(210,190,184,0.8)'; tctx.lineWidth = 2; tctx.stroke()
-    tctx.fillStyle = 'rgba(255,255,255,0.8)'; tctx.fillRect(-nl.halfWidth * 0.5, -len * 0.8, 4, len * 0.6)
-    return { canvas: c, x: 0, y: 0 }
+    tctx.save()
+    outline(); tctx.clip()
+    // Curved across: darker at the sides, a little yellower toward the tip.
+    const sg = tctx.createLinearGradient(-hw, 0, hw, 0)
+    sg.addColorStop(0, 'rgba(200,180,150,0.35)'); sg.addColorStop(0.35, 'rgba(255,255,255,0)'); sg.addColorStop(0.8, 'rgba(255,255,255,0)'); sg.addColorStop(1, 'rgba(190,170,140,0.35)')
+    tctx.fillStyle = sg
+    tctx.fillRect(-hw, -len - 4, hw * 2, len + 4)
+    tctx.restore()
+    tctx.strokeStyle = 'rgba(196,176,160,0.55)'; tctx.lineWidth = 1.5
+    tctx.beginPath(); tctx.moveTo(-hw * 0.99, 0); tctx.bezierCurveTo(-hw * 1.0, -len * 0.45, -hw * 0.82, -len * 0.92, -hw * 0.3, -len); tctx.quadraticCurveTo(0, -len - 3, hw * 0.3, -len); tctx.bezierCurveTo(hw * 0.82, -len * 0.92, hw * 1.0, -len * 0.45, hw * 0.99, 0); tctx.stroke()
+    blurred(tctx, 1, () => { tctx.strokeStyle = 'rgba(255,255,255,0.85)'; tctx.lineWidth = 2; tctx.lineCap = 'round'; tctx.beginPath(); tctx.moveTo(-hw * 0.62, -len * 0.1); tctx.quadraticCurveTo(-hw * 0.7, -len * 0.7, -hw * 0.2, -len * 0.93); tctx.stroke() })
+    // y: how far above the canvas bottom the nail's tip point sits (the view anchors there).
+    return { canvas: c, x: 0, y: 6 + ov }
   })
   return { base, height: packed, layers, tips, skin }
 }
 
+
+type Metal = { base: RGB; light: RGB; dark: RGB }
+const METALS: Metal[] = [
+  { base: [222, 180, 96], light: [255, 238, 176], dark: [140, 100, 36] },
+  { base: [206, 210, 218], light: [255, 255, 255], dark: [112, 116, 128] },
+  { base: [226, 160, 144], light: [255, 222, 208], dark: [150, 92, 80] },
+]
+const GEMS: RGB[] = [[120, 190, 240], [240, 110, 150], [150, 220, 170], [190, 150, 240], [255, 255, 255]]
+
+/**
+ * Rings and a bracelet, different for every customer: a band (gold, silver or rose gold) on one or two
+ * fingers, some with a gem or a pearl, and sometimes a bracelet of pearls or gold beads above the cuff.
+ * Returns their silhouette (white), which lifts them in the height map, makes them shine, and keeps the
+ * treatment layers off them.
+ */
+function paintJewellery(ctx: Ctx, skin: SkinTone, seed: number): HTMLCanvasElement {
+  const r = rng2(seed + 777)
+  const [sil, sctx] = canvas(S)
+  const metal = r.pick(METALS)
+  const rings = r.pick([0, 1, 1, 2, 2])
+  const fingers = [2, 3, 1, 4].slice(0, rings)
+  for (const fi of fingers) {
+    const f = HAND.fingers[fi], d = fingerDir(f), n = { x: -d.y, y: d.x }
+    const len = Math.hypot(f.tip.x - f.base.x, f.tip.y - f.base.y)
+    const t = 0.2, c = { x: f.base.x + d.x * len * t, y: f.base.y + d.y * len * t }
+    const w = f.r0 * 1.02, bw = r.range(9, 14)
+    const band = (k: Ctx) => { k.beginPath(); k.moveTo(c.x - n.x * w, c.y - n.y * w); k.quadraticCurveTo(c.x - d.x * 10, c.y - d.y * 10, c.x + n.x * w, c.y + n.y * w) }
+    // Contact shadow on the finger, toward the knuckle.
+    softBatch(ctx, 3, k => { k.strokeStyle = rgba(skin.deep, 0.45); k.lineWidth = bw + 4; k.translate(-d.x * 5 + 2, -d.y * 5 + 3); band(k); k.stroke() }, 'multiply')
+    const g = ctx.createLinearGradient(c.x - n.x * w, c.y - n.y * w, c.x + n.x * w, c.y + n.y * w)
+    g.addColorStop(0, rgba(metal.dark)); g.addColorStop(0.3, rgba(metal.light)); g.addColorStop(0.55, rgba(metal.base)); g.addColorStop(1, rgba(metal.dark))
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = g; ctx.lineWidth = bw; band(ctx); ctx.stroke()
+    ctx.strokeStyle = rgba(metal.light, 0.8); ctx.lineWidth = 2; ctx.save(); ctx.translate(-d.x * bw * 0.25, -d.y * bw * 0.25); band(ctx); ctx.stroke(); ctx.restore()
+    sctx.strokeStyle = '#fff'; sctx.lineWidth = bw + 2; sctx.lineCap = 'round'; band(sctx); sctx.stroke()
+    const top = r.int(0, 2)
+    const gx = c.x - d.x * 8, gy = c.y - d.y * 8
+    if (top === 1) {
+      // A faceted gem in a little setting, with a sparkle.
+      const gem = r.pick(GEMS)
+      ctx.fillStyle = rgba(metal.dark); ctx.beginPath(); ctx.arc(gx, gy, 11, 0, Math.PI * 2); ctx.fill()
+      const gg = ctx.createRadialGradient(gx - 3, gy - 3, 1, gx, gy, 9)
+      gg.addColorStop(0, rgba(shade(gem, 0.6))); gg.addColorStop(0.6, rgba(gem)); gg.addColorStop(1, rgba(shade(gem, -0.4)))
+      ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(gx, gy, 8.5, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = rgba(shade(gem, 0.5), 0.6); ctx.lineWidth = 1
+      for (let k = 0; k < 6; k++) { const aa = (k / 6) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + Math.cos(aa) * 8, gy + Math.sin(aa) * 8); ctx.stroke() }
+      blob(ctx, gx - 3, gy - 3, 3, 2, [255, 255, 255], 0.95)
+      sctx.fillStyle = '#fff'; sctx.beginPath(); sctx.arc(gx, gy, 12, 0, Math.PI * 2); sctx.fill()
+    } else if (top === 2) {
+      // A pearl.
+      const pg = ctx.createRadialGradient(gx - 3, gy - 4, 1, gx, gy, 10)
+      pg.addColorStop(0, '#ffffff'); pg.addColorStop(0.6, '#f4ecee'); pg.addColorStop(1, '#cbb8c4')
+      ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(gx, gy, 9.5, 0, Math.PI * 2); ctx.fill()
+      blob(ctx, gx + 3, gy + 3, 4, 3, [255, 214, 226], 0.5)
+      sctx.fillStyle = '#fff'; sctx.beginPath(); sctx.arc(gx, gy, 10, 0, Math.PI * 2); sctx.fill()
+    }
+  }
+  if (r() < 0.55) {
+    // A bracelet across the wrist, sagging a little in the middle.
+    const pearls = r() < 0.5
+    const beads: { x: number; y: number }[] = []
+    for (let x = 372; x <= 676; x += pearls ? 17 : 14) beads.push({ x, y: 902 + 12 * Math.sin(((x - 372) / 304) * Math.PI) })
+    softBatch(ctx, 4, k => { k.fillStyle = rgba(skin.deep, 0.4); for (const b of beads) { k.beginPath(); k.arc(b.x + 2, b.y + 6, pearls ? 9 : 7.5, 0, Math.PI * 2); k.fill() } }, 'multiply')
+    for (const b of beads) {
+      const rr = pearls ? 8.5 : 7
+      const bg = ctx.createRadialGradient(b.x - 2.5, b.y - 3, 1, b.x, b.y, rr)
+      if (pearls) { bg.addColorStop(0, '#ffffff'); bg.addColorStop(0.6, '#f3eaee'); bg.addColorStop(1, '#c8b4c2') }
+      else { bg.addColorStop(0, rgba(metal.light)); bg.addColorStop(0.55, rgba(metal.base)); bg.addColorStop(1, rgba(metal.dark)) }
+      ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(b.x, b.y, rr, 0, Math.PI * 2); ctx.fill()
+      sctx.fillStyle = '#fff'; sctx.beginPath(); sctx.arc(b.x, b.y, rr + 1, 0, Math.PI * 2); sctx.fill()
+    }
+  }
+  void warm
+  return sil
+}
+
+/** The tone's warm occlusion colour (its deep shade over its base), for multiplying soft contact shadows. */
+function aoOf(skin: SkinTone): RGB {
+  const k = [1.08, 0.97, 0.9]
+  return [0, 1, 2].map(i => Math.min(255, (skin.deep[i] / skin.base[i]) * 255 * k[i])) as RGB
+}
