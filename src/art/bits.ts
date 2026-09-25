@@ -109,6 +109,18 @@ export const bits = {
     ctx.fillStyle = 'rgba(150,190,172,0.8)'
     ctx.beginPath(); ctx.moveTo(8, 34); ctx.lineTo(20, 44); ctx.lineTo(40, 34); ctx.lineTo(38, 38); ctx.lineTo(20, 47); ctx.lineTo(6, 37); ctx.closePath(); ctx.fill()
   }),
+  /** A curl of hard skin off the callus rasp: a pale, translucent shaving that curls on itself (tinted per use). */
+  shaving: () => make('shaving', 48, 48, ctx => {
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = 'rgba(214,206,196,0.9)'; ctx.lineWidth = 7
+    ctx.beginPath(); ctx.arc(24, 26, 13, Math.PI * 0.85, Math.PI * 2.25); ctx.stroke()
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 4.5
+    ctx.beginPath(); ctx.arc(24, 25, 12, Math.PI * 0.9, Math.PI * 2.15); ctx.stroke()
+    ctx.strokeStyle = 'rgba(255,255,255,1)'; ctx.lineWidth = 1.4
+    ctx.beginPath(); ctx.arc(23, 23, 11, Math.PI * 1.1, Math.PI * 1.6); ctx.stroke()
+    ctx.fillStyle = 'rgba(236,230,222,0.9)'
+    ctx.beginPath(); ctx.ellipse(35, 32, 4, 2.6, 0.6, 0, Math.PI * 2); ctx.fill()
+  }),
   plug: () => make('plug', 32, 64, ctx => {
     // A sebum plug squeezed from a pore: a little worm with a dark tip.
     const g = ctx.createLinearGradient(0, 0, 32, 0)

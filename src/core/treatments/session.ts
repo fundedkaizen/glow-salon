@@ -770,6 +770,8 @@ export class TreatmentSession {
     if (t.kind === 'blackhead') { this.extracted++; this.stampLayer('marks', t.x, t.y, 8 + 4 * t.size, 0.3, 'skin') }
     if (t.kind === 'drop') { this.stampLayer('serum', t.x, t.y, 96, 1, 'skin'); this.stampLayer(WET, t.x, t.y, 100, 0.9, 'everywhere') }
     if (t.kind === 'gem') t.n = this.targets.filter(o => o.kind === 'gem' && o.done).length
+    // The ingrown edge eased out of the skin: the swollen fold calms down.
+    if (t.kind === 'ingrown') this.resolveLayer('top.swelling', 0, 'everywhere')
     this.emit({ e: 'targetDone', id: t.id, kind: t.kind, x: t.x, y: t.y, size: t.size, n: t.n })
   }
 

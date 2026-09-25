@@ -1,5 +1,5 @@
 // Browser check: plays the open treatment close-up with real pointer events dispatched on the canvas.
-// Page: /?view=facial or /?view=nails (or any page where window.__treatment is a TreatmentView).
+// Page: /?view=facial, /?view=nails or /?view=pedicure (or any page where window.__treatment is a TreatmentView).
 // Usage: npx agent-browser --session glow1 eval --stdin < scripts/browser/play-treatment.js
 // It defines window.__play(n) (plays n steps, or all when n is omitted, resolving with a log) and
 // window.__playLog. Call it with: npx agent-browser --session glow1 eval "window.__play(3)"
@@ -35,7 +35,11 @@
     send('pointerup', scr(x, y))
   }
 
-  const BOX = { face: [300, 330, 724, 900], skin: [300, 330, 724, 900], tzone: [380, 340, 644, 880], nose: [450, 590, 574, 690], brows: [310, 420, 715, 475], lips: [415, 700, 610, 800], hand: [230, 300, 740, 980], nails: [200, 250, 760, 700], tips: [200, 220, 760, 560], cuticles: [220, 300, 760, 680], nail0: [170, 560, 330, 760], nail1: [350, 290, 450, 440], nail2: [450, 230, 560, 380], nail3: [560, 270, 670, 420], nail4: [650, 380, 760, 520] }
+  const BOX = { face: [300, 330, 724, 900], skin: [300, 330, 724, 900], tzone: [380, 340, 644, 880], nose: [450, 590, 574, 690], brows: [310, 420, 715, 475], lips: [415, 700, 610, 800], hand: [230, 300, 740, 980], nails: [200, 250, 760, 700], tips: [200, 220, 760, 560], cuticles: [220, 300, 760, 680], nail0: [170, 560, 330, 760], nail1: [350, 290, 450, 440], nail2: [450, 230, 560, 380], nail3: [560, 270, 670, 420], nail4: [650, 380, 760, 520],
+    // Feet (the customer's own foot varies a little; the touch-ups find whatever is left).
+    'top.foot': [230, 220, 820, 930], 'top.toes': [180, 560, 820, 930], 'top.nails': [180, 640, 800, 910], 'top.tips': [180, 680, 800, 920], 'top.cuticles': [180, 630, 800, 860],
+    'top.fungal': [180, 640, 800, 910], 'top.treated': [200, 600, 820, 900], 'sole.sole': [340, 130, 740, 980], 'sole.calluses': [360, 300, 720, 970], 'sole.heelRim': [420, 740, 690, 980] }
+  const HOLD_KINDS = ['whitehead', 'hangnail', 'corn', 'splinter', 'ingrown']
 
   async function playStep(log) {
     const s = tv().session
@@ -61,14 +65,15 @@
         case 'hold': await hold(512, 560, 1200); break
         case 'peel': {
           const pts = []
-          for (let k = 0; k <= 60; k++) pts.push([512, 905 - k * 12])
+          const [from, to] = s.peelRange ?? [915, 262]
+          for (let k = 0; k <= 60; k++) pts.push([512, from - 60 - k * ((from - to) / 60)])
           await drag(pts, 40)
           break
         }
         case 'targets': {
           const t = s.stepTargets().find(x => !x.done)
           if (!t) { await sleep(100); break }
-          if (t.kind === 'whitehead' || t.kind === 'hangnail') await hold(t.x, t.y, 900)
+          if (HOLD_KINDS.includes(t.kind)) await hold(t.x, t.y, 1300)
           else { const p = scr(t.x, t.y); send('pointerdown', p); await sleep(50); send('pointerup', p); await sleep(250) }
           break
         }

@@ -3,6 +3,7 @@ import type { Shape } from '../core/geometry.ts'
 import { makeRng } from '../core/rng.ts'
 import { CUFF_Y, alongToe, drapeY, footAnatomy, toeDir, toeNail, type FootAnatomy, type FootProfile, type FootView, type Toe } from '../core/foot.ts'
 import { POLISH_COLORS } from '../core/treatments/types.ts'
+import { footRegion } from '../core/treatments/session.ts'
 import type { Crop } from './face.ts'
 import { shapePath } from './hand.ts'
 import { HAIR, OUTFIT, SKIN, type SkinTone } from './palette.ts'
@@ -38,7 +39,7 @@ export type FootArt = {
 
 /** The layer ids of each view, bottom to top. */
 export const FOOT_LAYERS: Record<FootView, string[]> = {
-  top: ['redness', 'swelling', 'callus', 'fungus', 'oldPolish', 'cuticle', 'dirt', 'hair', 'wet', 'antiseptic', 'cream', 'antifungal', 'oil', 'mask', 'scrub', 'salt', 'base', 'color', 'top', 'water'],
+  top: ['redness', 'swelling', 'callus', 'fungus', 'oldPolish', 'cuticle', 'rough', 'dirt', 'hair', 'wet', 'antiseptic', 'cream', 'antifungal', 'oil', 'mask', 'scrub', 'salt', 'base', 'color', 'top', 'water'],
   sole: ['callus', 'dry', 'cracks', 'dirt', 'wet', 'antiseptic', 'cream', 'oil', 'mask', 'scrub', 'salt', 'water'],
 }
 
@@ -176,6 +177,62 @@ export function paintFoot(look: Look, seed: number, profile: FootProfile, view: 
     shards: paintShards(seed),
     skin, soleSkin: sole, anatomy: a,
   }
+}
+
+/**
+ * The hot towel wrapped round the foot for the spa's towel step (top view): warm white terry over the whole foot
+ * below the drape, a little fuller than the foot, with soft folds, a rolled edge across the instep and steam
+ * dampness darkening it here and there. Drawn on a 1024 sheet in the foot's art space.
+ */
+export function paintFootTowel(seed: number, tint: RGB = [253, 246, 242]): HTMLCanvasElement {
+  const a = footAnatomy(seed)
+  const sil = silhouette(a, 'top')
+  const [c, ctx] = canvas(S)
+  const r = makeRng(seed + 88)
+  // The wrap: the foot's silhouette grown by a soft margin, cut straight across the instep.
+  const top = 330
+  const [m, mctx] = canvas(S)
+  mctx.filter = 'blur(10px)'
+  for (const [dx, dy] of [[-22, 0], [22, 0], [0, 18], [0, -10], [-16, 14], [16, 14]]) mctx.drawImage(sil, dx, dy)
+  mctx.filter = 'none'
+  mctx.globalCompositeOperation = 'destination-in'
+  mctx.fillStyle = '#fff'
+  mctx.beginPath(); mctx.moveTo(0, S); mctx.lineTo(0, top + 30); mctx.quadraticCurveTo(512, top - 40, S, top + 30); mctx.lineTo(S, S); mctx.closePath(); mctx.fill()
+  // Harden the soft edge a little (a folded cloth has a clear outline, not a haze).
+  const img = mctx.getImageData(0, 0, S, S), d = img.data
+  for (let i = 3; i < d.length; i += 4) d[i] = d[i] > 90 ? Math.min(255, (d[i] - 90) * 2.2) : 0
+  mctx.putImageData(img, 0, 0)
+  // Its shadow on the towel under the foot.
+  softBatch(ctx, 20, k => { k.globalAlpha = 0.4; k.drawImage(m, 12, 22); k.globalCompositeOperation = 'source-in'; k.fillStyle = 'rgba(110,60,90,1)'; k.fillRect(0, 0, S, S) })
+  const [cloth, cc] = canvas(S)
+  const g = cc.createLinearGradient(0, top, 0, 980)
+  g.addColorStop(0, rgba(shade(tint, 0.1))); g.addColorStop(1, rgba(shade(tint, -0.06)))
+  cc.fillStyle = g; cc.fillRect(0, 0, S, S)
+  terry(cc, 80, top - 40, 880, 700, tint, seed + 89, 0.018)
+  // Folds wrapping round the foot: diagonal valleys and lit ridges.
+  softBatch(cc, 8, k => {
+    for (let i = 0; i < 8; i++) {
+      const x = 200 + i * 85 + r.range(-20, 20), y = top + 80 + r.range(0, 420)
+      k.strokeStyle = rgba(shade(tint, -0.2), 0.5); k.lineWidth = r.range(10, 18)
+      k.beginPath(); k.moveTo(x - 90, y - 30); k.quadraticCurveTo(x, y + r.range(-20, 30), x + 80, y + 50); k.stroke()
+      k.strokeStyle = 'rgba(255,255,255,0.7)'; k.lineWidth = r.range(6, 10)
+      k.beginPath(); k.moveTo(x - 90, y - 44); k.quadraticCurveTo(x, y - 10, x + 80, y + 36); k.stroke()
+    }
+  })
+  // Warm damp patches where the steam soaks through.
+  softBatch(cc, 26, k => { for (let i = 0; i < 6; i++) { k.fillStyle = rgba(shade(tint, -0.12), 0.35); k.beginPath(); k.ellipse(r.range(260, 780), r.range(top + 120, 880), r.range(50, 110), r.range(30, 70), r(), 0, Math.PI * 2); k.fill() } })
+  clipTo(cc, m)
+  ctx.drawImage(cloth, 0, 0)
+  // The rolled edge across the instep: lit on top, shaded underneath.
+  softBatch(ctx, 2, k => {
+    k.save(); k.globalCompositeOperation = 'source-atop'
+    k.strokeStyle = rgba(shade(tint, 0.25), 0.95); k.lineWidth = 22
+    k.beginPath(); k.moveTo(0, top + 44); k.quadraticCurveTo(512, top - 22, S, top + 44); k.stroke()
+    k.strokeStyle = rgba(shade(tint, -0.3), 0.55); k.lineWidth = 8
+    k.beginPath(); k.moveTo(0, top + 60); k.quadraticCurveTo(512, top - 4, S, top + 60); k.stroke()
+    k.restore()
+  })
+  return c
 }
 
 /** The shadow the foot casts on the towel, down and right, soft. */
@@ -862,6 +919,13 @@ function paintWater(l: Ctx, seed: number) {
     dots(l, [255, 255, 255], 40, () => ({ x: x + r.range(-60, 60), y: y + r.range(-30, 30), r: r.range(3, 10), a: r.range(0.6, 0.9) }), 2)
   }
   blob(l, 300, 220, 160, 60, [255, 255, 255], 0.3)
+  // A basin, not a sheet: the water thins out toward the sheet's edges, so no straight edge ever shows.
+  const [v, vctx] = canvas(S)
+  vctx.filter = 'blur(70px)'
+  vctx.fillStyle = '#fff'
+  vctx.beginPath(); vctx.ellipse(S / 2, S * 0.56, S * 0.4, S * 0.44, 0, 0, Math.PI * 2); vctx.fill()
+  vctx.filter = 'none'
+  l.save(); l.globalCompositeOperation = 'destination-in'; l.drawImage(v, 0, 0); l.restore()
 }
 
 function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil: HTMLCanvasElement, p: FootProfile): Record<string, () => HTMLCanvasElement> {
@@ -1076,6 +1140,34 @@ function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil
         l.restore()
       })
     }, 1),
+    // Freshly clipped free edges: ragged, powdery and a little whiter than the nail, until the file smooths them.
+    rough: () => sheet(nailMask(a, 6), l => {
+      const r = makeRng(seed + 61)
+      toes.forEach(t => {
+        const nl = toeNail(t), hw = nl.halfWidth
+        l.save()
+        // Local frame: x across the nail, +y back toward the cuticle, the free edge at y = 0.
+        l.translate(nl.tip.x, nl.tip.y); l.rotate(Math.atan2(nl.dir.y, nl.dir.x) + Math.PI / 2)
+        const band = hw * 0.28
+        const edge: [number, number][] = []
+        for (let k = 0; k <= 14; k++) { const u = k / 14; edge.push([-hw * 1.05 + u * hw * 2.1, (k % 2 ? -1.2 : 0.6) * r.range(0.5, 1.2) + Math.sin(u * Math.PI) * -hw * 0.1]) }
+        l.beginPath()
+        l.moveTo(-hw * 1.05, band)
+        for (const [x, y] of edge) l.lineTo(x, y)
+        l.lineTo(hw * 1.05, band)
+        l.closePath()
+        const g = l.createLinearGradient(0, -3, 0, band)
+        g.addColorStop(0, 'rgba(252,248,240,0.7)'); g.addColorStop(0.5, 'rgba(246,238,226,0.3)'); g.addColorStop(1, 'rgba(246,238,226,0)')
+        l.fillStyle = g
+        l.fill()
+        // The torn edge itself: a thin darker line with little hangs of keratin.
+        l.strokeStyle = 'rgba(160,136,120,0.35)'; l.lineWidth = 0.9
+        l.beginPath(); edge.forEach(([x, y], k) => (k ? l.lineTo(x, y) : l.moveTo(x, y))); l.stroke()
+        for (let k = 0; k < 3; k++) { const x = r.range(-hw * 0.7, hw * 0.7); l.fillStyle = 'rgba(255,252,246,0.6)'; l.beginPath(); l.moveTo(x - 1.5, 0); l.lineTo(x + r.range(-1, 1), -r.range(2, 3.5)); l.lineTo(x + 1.5, 0); l.fill() }
+        dots(l, [255, 252, 246], 8, () => ({ x: r.range(-hw, hw), y: r.range(-1, band * 0.6), r: r.range(0.4, 1), a: r.range(0.3, 0.7) }), 1)
+        l.restore()
+      })
+    }),
     // Dirt: grows with how dirty they are, from a little dust on the toes to grime everywhere. Earthy brown,
     // never green: patches with darker cores (heaviest toward the toes and the outer edge), dragged smudges,
     // grime ground into the toe creases and clefts, and dark crescents under the nails.
@@ -1160,11 +1252,12 @@ function topLayers(look: Look, skin: SkinTone, seed: number, a: FootAnatomy, sil
     }),
     wet: () => sheet(foot, l => paintWet(l, seed, X0, X1, Y0, Y1)),
     // Antiseptic: an amber wash of iodine, darker where it pooled at its edges.
-    antiseptic: () => sheet(foot, l => {
+    // Only where it is dabbed: the sore fold of an ingrown nail and the lifted corns (the session's 'top.treated').
+    antiseptic: () => sheet(without(shapesCanvas(footRegion(a, p, 'top.treated').include), without(whole(), foot)), l => {
       l.drawImage(tintedByNoise(S, [214, 128, 48], fbm(S, 40, 3, seed + 81), 0.28, 0.45), 0, 0)
       const r = makeRng(seed + 82)
       softBatch(l, 3, c => { c.strokeStyle = 'rgba(170,86,30,0.35)'; c.lineWidth = 4; for (let i = 0; i < 20; i++) { c.beginPath(); c.arc(r.range(X0, X1), r.range(300, 980), r.range(20, 60), r() * 6, r() * 6 + 2); c.stroke() } })
-    }, 3),
+    }, 10),
     cream: () => sheet(foot, l => paintCream(l, seed, X0, X1, Y0, Y1), 6),
     // Antifungal cream: dense and white, over the toes and nails.
     antifungal: () => sheet(toesMask, l => paintCream(l, seed + 7, X0, X1, 600, Y1, [252, 252, 250]), 4),

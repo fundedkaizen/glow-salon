@@ -380,6 +380,8 @@ export class Sfx {
         break
       case 'cream':
         if (this.throttle('cream', 260)) this.clip(KIT.hands, { gain: 0.3 + 0.3 * s, pan, lowpass: 6000 })
+        // A tube of cream: now and then a little gel squeeze as more comes out.
+        if (this.tool === 'creamTube' && this.throttle('creamTube', 700)) this.clip(KIT.squirt, { gain: 0.3, pan, rate: range(0.95, 1.15) })
         if (this.throttle('creamSquish', 120)) this.burst({ freq: range(500, 900), q: 3, dur: 0.07, gain: 0.05 * s, pan })
         break
       case 'scrub':
@@ -395,7 +397,13 @@ export class Sfx {
         if (this.throttle('polish', 200)) this.clip(KIT.softBrush, { gain: 0.25 + 0.2 * s, pan, lowpass: 5000 })
         break
       case 'rasp':
-        // Filing: the brush recordings slowed down to a dry, papery rasp.
+        // Filing: the brush recordings slowed down to a dry, papery rasp. The callus rasp is coarser and deeper:
+        // slowed further, with a low grainy scrape under it.
+        if (this.tool === 'callusRasp') {
+          if (this.throttle('rasp', 130)) this.clip(Math.random() < 0.5 ? KIT.toothbrush : KIT.horsehair, { gain: 0.55, pan, rate: range(0.5, 0.6) })
+          if (this.throttle('raspGrain', 45)) this.burst({ freq: range(1400, 2400), q: 2, dur: 0.03, gain: 0.04 + 0.05 * s, pan })
+          break
+        }
         if (this.throttle('rasp', 150)) this.clip(Math.random() < 0.5 ? KIT.toothbrush : KIT.horsehair, { gain: 0.5, pan, rate: 0.7 })
         if (this.throttle('raspGrain', 60)) this.burst({ freq: range(2600, 3800), q: 2.5, dur: 0.025, gain: 0.03 + 0.04 * s, pan })
         break
@@ -434,6 +442,8 @@ export class Sfx {
     if (!this.ctx) return
     if (tool === 'tonerPad') this.clip(KIT.spray, { gain: 0.5 })
     else if (tool === 'cream') this.clip(KIT.gel, { gain: 0.6 })
+    else if (tool === 'creamTube') this.clip(KIT.squirt, { gain: 0.6 })
+    else if (tool === 'bath') { this.clip(KIT.sink, { gain: 0.45 }); this.clip(KIT.bubbleTiny, { gain: 0.35, delay: 0.1 }) }
     else if (tool === 'dropper' || tool === 'polishBrush') this.clip(KIT.cap, { gain: 0.5 })
     else if (tool === 'maskBrush') this.clip(KIT.pot, { gain: 0.6 })
     else if (tool === 'uvLamp') { this.clip(KIT.trackpad, { gain: 0.7 }); this.clip(KIT.drill, { gain: 0.15, rate: 2, lowpass: 3000, delay: 0.08 }) }
@@ -484,6 +494,17 @@ export class Sfx {
     this.clip(KIT.glass, { gain: 0.85, pan, rate: 1.6 })
     this.bell(range(1800, 2400), 0.05, pan, 0.03, 'ding')
   }
+
+  /** The foot bath: a little cluster of bubbles rising and bursting at the surface. */
+  bubbles(pan = 0) {
+    if (!this.ctx || !this.throttle('bathBubbles', 120)) return
+    const n = 1 + Math.floor(Math.random() * 3)
+    for (let i = 0; i < n; i++) this.clip(KIT.bubbleTiny, { gain: 0.18 + Math.random() * 0.14, pan: pan + (Math.random() - 0.5) * 0.3, rate: range(0.75, 1.3), delay: i * range(0.04, 0.09) })
+    this.tone({ freq: range(220, 380), freqEnd: range(420, 620), dur: 0.06, gain: 0.025, pan })
+  }
+
+  /** The foot turning over on its towel: a soft cloth rustle. */
+  turn() { if (this.ctx) this.clip(KIT.cloth, { gain: 0.3, rate: range(0.85, 1) }) }
 
   miss(pan = 0) { if (this.ctx && this.throttle('miss', 120)) this.tone({ freq: 300, freqEnd: 220, dur: 0.06, gain: 0.05, pan }) }
 

@@ -93,6 +93,7 @@ const FOOT_STYLES: Record<string, LayerStyle> = {
   fungus: { gloss: 0.12, relief: 1.8 },
   oldPolish: { gloss: 0.3, relief: 0.4 },
   cuticle: { gloss: 0.1, relief: 1.2 },
+  rough: { gloss: 0.05, relief: 1.4 },
   callus: { gloss: 0.05, relief: 1.8 },
   dry: { gloss: 0, relief: 1.2 },
   cracks: { gloss: 0.05, relief: 1.4 },

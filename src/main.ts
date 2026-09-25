@@ -16,7 +16,7 @@ import { footPreview } from './render/foot-preview.ts'
  * Checks and screenshots: `?view=facial` or `?view=nails` (with `&seed=`, `&step=`, `&tier=`, `&disaster`)
  * opens a close-up directly. Add `&coop=host` in one tab and `&coop=<CODE>` in another to try four hands
  * through the relay: the host leads, the guest helps (the magnifier lamp on extraction steps).
- * `?view=feet` previews the pedicure art (see render/foot-preview.ts for its options).
+ * `?view=feet` previews the pedicure art (see render/foot-preview.ts for its options); `?view=pedicure` plays one.
  */
 async function boot() {
   const app = new Application()
@@ -25,10 +25,10 @@ async function boot() {
   const ui = document.getElementById('ui')!
   const params = new URLSearchParams(location.search)
   const view = params.get('view')
-  if (view === 'facial' || view === 'nails') {
+  if (view === 'facial' || view === 'nails' || view === 'pedicure') {
     // `&warm`: warm the close-ups first, as the title screen does, to measure a treatment opened from the game.
     if (params.has('warm')) { warmCloseUps(app.renderer); await new Promise(r => setTimeout(r, 1500)) }
-    closeUp(app, ui, view, params)
+    closeUp(app, ui, view === 'pedicure' ? 'feet' : view, params)
   } else if (view === 'feet') footPreview(app, debugLook(randomLook(makeRng(Number(params.get('seed') ?? 7))), params), params)
   else await startGame(app, ui)
   document.getElementById('boot')?.classList.add('done')
@@ -45,7 +45,7 @@ function debugLook(look: Look, params: URLSearchParams): Look {
 
 type DebugMsg = { t: 'ops'; ops: Op[]; from?: number } | { t: 'syncReq'; from?: number } | { t: 'sync'; snap: SessionSnapshot; from?: number }
 
-function closeUp(app: Application, ui: HTMLElement, view: 'facial' | 'nails', params: URLSearchParams) {
+function closeUp(app: Application, ui: HTMLElement, view: 'facial' | 'nails' | 'feet', params: URLSearchParams) {
   const seed = Number(params.get('seed') ?? 7)
   const r = makeRng(seed)
   const coop = params.get('coop')
